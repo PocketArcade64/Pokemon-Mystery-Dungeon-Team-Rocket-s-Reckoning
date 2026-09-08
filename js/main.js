@@ -68,8 +68,8 @@ function setMode(next, { returnTo = null } = {}) {
   }
 
   const key = musicForMode(next, {
-    floorIndex: state.run?.floorIndex ?? 0,
-    boss: battleCtx?.kind === 'giovanni',
+    themeId: state.run?.floor?.theme?.id ?? null,
+    battleKind: battleCtx?.kind ?? null,
   });
   if (key) playMusic(key);
 }
@@ -351,11 +351,17 @@ function beginCatch(wild) {
       const id = catchState.ballId;
       if (inv.countOf(id) <= 0) return false;
       inv.removeItem(id, 1);
-      sfx('throw');
+      sfx(catchState.spin !== 0 ? 'curve' : 'throw');
       ui.renderCatchUI({ dex: wild.dex, activeBall: id, hint: 'Watch it land…' });
       return true;
     },
     onResult: onCatchResult,
+    onGrade: (label) => {
+      // The grade lands the instant the ball touches, well before the wobbles resolve — that
+      // read-ahead is most of what makes a good GO throw feel good.
+      sfx(label.includes('EXCELLENT') ? 'excellent' : label.includes('GREAT') ? 'great' : 'nice');
+      ui.flashCatchGrade(label);
+    },
   });
   setMode('catch');
   ui.setCatchFleeLabel('Leave It');
@@ -383,14 +389,16 @@ function onCatchResult(res) {
       } else {
         syncPlayerModel();
         setMode('playing');
-        ui.toast(`${res.msg} Added to your team.`);
+        const bonus = [res.curve ? 'Curveball' : null, res.grade && res.grade !== 'hit' ? res.grade : null]
+          .filter(Boolean).join(' + ');
+        ui.toast(bonus ? `${res.msg} (${bonus})` : `${res.msg} Added to your team.`);
       }
     }, 1100);
     return;
   }
 
   // Failed throw. Offer another if there is a ball for it, otherwise the attempt is over.
-  sfx(res.msg.includes('broke free') ? 'broke' : 'select');
+  sfx(res.reason === 'broke' ? 'broke' : res.reason === 'deflect' ? 'deflect' : 'select');
   const remaining = inv.totalBalls();
   ui.renderCatchUI({
     dex: wild.dex,
@@ -515,30 +523,38 @@ input.setMode(state.settings.controls);
 input.onTapMarker((_world, ok) => { if (!ok) ui.toast('No route there.'); });
 
 // Catch-minigame throw gestures go straight to the canvas — the catch overlay is pointer-through
-// except for its own buttons, so a flick anywhere on the play area is a throw.
+// except for its own buttons, so a grab-and-flick anywhere on the play area drives the ball.
+// The canvas size goes in on EVERY event, not just the release: the held ball tracks the finger
+// in canvas-relative units, so a move arriving before any release still needs the measurements.
 function catchPoint(e) {
   const t = e.changedTouches ? e.changedTouches[0] : (e.touches ? e.touches[0] : e);
   return { x: t.clientX, y: t.clientY };
 }
+const cw = () => canvas.clientWidth;
+const chh = () => canvas.clientHeight;
 canvas.addEventListener('touchstart', (e) => {
   if (state.mode !== 'catch') return;
   const p = catchPoint(e);
-  catchPointerDown(p.x, p.y);
+  catchPointerDown(p.x, p.y, cw(), chh());
 }, { passive: true });
 canvas.addEventListener('touchmove', (e) => {
   if (state.mode !== 'catch') return;
   const p = catchPoint(e);
-  catchPointerMove(p.x, p.y);
+  catchPointerMove(p.x, p.y, cw(), chh());
 }, { passive: true });
 canvas.addEventListener('touchend', (e) => {
   if (state.mode !== 'catch') return;
   const p = catchPoint(e);
-  catchPointerUp(p.x, p.y, canvas.clientWidth, canvas.clientHeight);
+  catchPointerUp(p.x, p.y, cw(), chh());
 }, { passive: true });
-canvas.addEventListener('mousedown', (e) => { if (state.mode === 'catch') catchPointerDown(e.clientX, e.clientY); });
-window.addEventListener('mousemove', (e) => { if (state.mode === 'catch') catchPointerMove(e.clientX, e.clientY); });
+canvas.addEventListener('mousedown', (e) => {
+  if (state.mode === 'catch') catchPointerDown(e.clientX, e.clientY, cw(), chh());
+});
+window.addEventListener('mousemove', (e) => {
+  if (state.mode === 'catch') catchPointerMove(e.clientX, e.clientY, cw(), chh());
+});
 window.addEventListener('mouseup', (e) => {
-  if (state.mode === 'catch') catchPointerUp(e.clientX, e.clientY, canvas.clientWidth, canvas.clientHeight);
+  if (state.mode === 'catch') catchPointerUp(e.clientX, e.clientY, cw(), chh());
 });
 
 // iOS refuses to start any audio before a real user gesture touches the graph.
