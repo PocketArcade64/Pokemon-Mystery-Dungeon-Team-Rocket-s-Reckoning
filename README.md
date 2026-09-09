@@ -49,6 +49,12 @@ I also added sound effects for when you Evolve (213. Evolution.mp3) and a pokemo
 
 I want to replace the items' menu sprites with better png sprites. please give me a list of which sprites to find.
 
-When in a battle with a shadow pokemon, make its purple particle effects show in battle and on the catching screen, but they disappear once you add them to your team.
+When you select a starter, make it so the first slot is always a grass type, the second slot is always a fire type, and the third slot is always a water type.
+
+When in a battle with a shadow pokemon, make its purple particle effects show in battle and on the catching screen, but they disappear once you add them to your team. In battle, make the pokemon slightly lunge forward when they attack. 
 
 When catching, only make the catching circle show around pokemon when you are touching the poke ball - exactly the same behavior like Pokemon Go. Also, when preparing to throw a curve ball, why does an orange circle appear around the poke ball? (Please remove that) 
+
+When you click on your bag and you can see your pokemon team, make their models be angled 45 degrees facing towards the left.
+
+Below the map, make the floor and dungeon name all fit on one line and be centered underneath the map (decrease the font if necessary) - for example: “B1F, Cavern”
