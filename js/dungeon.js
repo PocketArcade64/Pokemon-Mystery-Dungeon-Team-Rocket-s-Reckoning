@@ -647,10 +647,15 @@ export function disposeFloor(floor) {
 // player when close, unless Max Repel is active.
 export function updateWilds(floor, dt, player, { repelled = false } = {}) {
   const WANDER_SPEED = 1.5, CHASE_SPEED = 2.5, RADIUS = 0.32;
+  const now = performance.now();
   for (const w of floor.wilds) {
     if (w.gone || !w.obj) continue;
     const toPlayer = Math.hypot(player.x - w.x, player.z - w.z);
-    const chasing = w.aggressive && !repelled && toPlayer < 7;
+    // A cooldown means "this one's encounter is suppressed" — so it must stop CHASING as well.
+    // Left chasing, an aggressive wild homed onto the player every frame and, with no
+    // wild-vs-player collision, walked straight through them for the whole cooldown.
+    const onCooldown = w.cooldownUntil && now < w.cooldownUntil;
+    const chasing = w.aggressive && !repelled && !onCooldown && toPlayer < 7;
 
     if (chasing) {
       w.dirX = (player.x - w.x) / (toPlayer || 1);

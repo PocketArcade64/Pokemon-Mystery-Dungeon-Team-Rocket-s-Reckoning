@@ -30,6 +30,7 @@ export const MUSIC_LOOPS = {
   '41. Quicksand Cave.mp3':                  { loopStart: 0,    loopEnd: 66.2037,  loopLen: 66.2037 },
   '43. Crystal Cave.mp3':                    { loopStart: 0,    loopEnd: 93.3196,  loopLen: 93.3196 },
   '58. Hidden Land.mp3':                     { loopStart: 0,    loopEnd: 103.6223, loopLen: 103.6223 },
+  '61. Victory! (Team Galactic).mp3':        { oneShot: true },
   '64. Temporal Tower.mp3':                  { loopStart: 8.5,  loopEnd: 143.7570, loopLen: 135.2570 },
   "68. Dialga's Fight to the Finish!.mp3":   { loopStart: 32.0, loopEnd: 132.5298, loopLen: 100.5298 },
   '90. Aegis Cave.mp3':                      { loopStart: 0,    loopEnd: 79.9935,  loopLen: 79.9935 },
@@ -40,8 +41,10 @@ export const MUSIC_LOOPS = {
 
 // Per-track notes, worth reading before changing any number above:
 //
-// Victory! (Trainer Battle) is the one one-shot. It is a 36 s fanfare that resolves and fades, so
-//   it is played once and left to end rather than looped.
+// The two Victory! fanfares are the one-shots. Both resolve and fade on their own, so they are
+//   played once and left to end rather than looped. Victory! (Trainer Battle) answers a Grunt;
+//   Victory! (Team Galactic) answers Giovanni and is the only track that locks the mixer (see
+//   playMusicExclusive in js/audio.js).
 //
 // Hidden Land is the one low-confidence loop length. Its envelope autocorrelation only reaches
 //   0.602 (the rest run 0.75-0.97) because the track is sparse and ambient, and no clean

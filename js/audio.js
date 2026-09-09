@@ -1,15 +1,19 @@
 // Two independent audio systems with independent volume sliders in Settings:
 //
-//   SFX   — fully synthesized with WebAudio. No files needed, so sound effects always work.
+//   SFX   — synthesized with WebAudio by default, with a SAMPLE overriding the synth wherever one
+//           of the .wav files in SFX_FILES exists (currently just the stairs).
 //   MUSIC — the user-supplied Explorers of Sky mp3s named in TRACKS below.
 //
 // A MISSING MUSIC FILE IS SILENCE, NOT AN ERROR. The mp3s are dropped in later; every track is
 // probed once, a failure marks it unavailable, and the game carries on. Never gate anything on a
-// track existing.
+// track existing. A missing SFX SAMPLE is different: it falls back to the synthesized version, so
+// that effect is never silent.
 import { state } from './state.js';
 import { MUSIC_LOOPS } from './data/music-loops.js';
 
 const MUSIC_DIR = 'assets/Music Shortened/';
+// The sound-effect samples live in the same folder as the music — same rip, same drop-in.
+const SFX_DIR = MUSIC_DIR;
 
 // Every track keyed by the slot that asks for it. The eleven floor slots ARE the theme ids in
 // dungeon.js THEMES, so musicForMode() can hand a theme straight through and a new theme only
@@ -25,7 +29,11 @@ const TRACKS = {
   wild:      { file: '15. Battle! (Wild Pokémon).mp3' },           // any wild encounter, and the catch after it
   grunt:     { file: '128. Dark Wasteland.mp3' },                  // Team Rocket grunt, end of floor
   giovanni:  { file: "68. Dialga's Fight to the Finish!.mp3" },    // Giovanni, final floor
-  victory:   { file: '27. Victory! (Trainer Battle).mp3' },        // any Team Rocket win; one-shot fanfare
+  victory:   { file: '27. Victory! (Trainer Battle).mp3' },        // a Grunt win; one-shot fanfare
+  // Giovanni's own defeat gets a different, bigger fanfare, and it OWNS the audio from that
+  // moment on: playMusicExclusive() locks every later playMusic() out until the lock is released
+  // when the player leaves the win screen. See the lock below.
+  'victory-boss': { file: '61. Victory! (Team Galactic).mp3' },
   // Floor themes, by theme id
   verdant:   { file: '29. Apple Woods.mp3', resume: true },              // Verdant Forest
   rocky:     { file: '90. Aegis Cave.mp3', resume: true },               // Rocky Cavern
@@ -171,6 +179,9 @@ export function unlockAudio() {
   // A wild encounter is seconds away at any moment and its theme has to land on contact, so warm
   // the two tracks that get triggered mid-play rather than by walking into a screen.
   prefetchMusic('wild', 'victory');
+  // The samples are tiny next to a track, and the first stairs descent must not miss its sound
+  // waiting on a decode.
+  prefetchSfx();
 }
 
 // Live volume changes retarget the gain of whatever track is currently sounding.
@@ -179,7 +190,22 @@ export function applyVolumes() {
 }
 
 // ---- Music -------------------------------------------------------------------------------------
+// The lock exists for exactly one moment in the game: Giovanni going down. His fanfare has to run
+// uninterrupted, and setMode() calls playMusic() on EVERY screen change, so suppressing it needs
+// to happen here rather than by hunting down each caller.
+let musicLocked = false;
+
+// Play `key` and then bar everything else from the speakers until releaseMusicLock().
+export function playMusicExclusive(key) {
+  musicLocked = false;          // this one call is the one that gets through
+  playMusic(key, true);
+  musicLocked = true;
+}
+
+export function releaseMusicLock() { musicLocked = false; }
+
 export function playMusic(key, force = false) {
+  if (musicLocked) return;
   if (!key) { stopMusic(); return; }
   if (key === currentKey && !force) return;   // already sounding: leave it alone, do not restart
   if (currentKey && currentKey !== key) stopNode(currentKey);
@@ -247,6 +273,50 @@ export function musicForMode(mode, { themeId = null, battleKind = null } = {}) {
   }
 }
 
+// ---- SFX samples ------------------------------------------------------------------------------
+// A handful of effects have a real recording sitting next to the music. Where one exists it
+// REPLACES the synthesized version of the same name; where it does not, the synth still plays, so
+// no effect is ever silent. Same folder as the music — these are game rips, not generated assets.
+const SFX_FILES = {
+  stairs: 'SE_ACT_STAIRS_DOWN.wav',
+};
+
+const sfxBuffers = new Map();     // name -> AudioBuffer once decoded
+const sfxMissing = new Set();     // names whose file is missing or undecodable
+
+function loadSfxSample(name) {
+  const file = SFX_FILES[name];
+  if (!file || !ctx || sfxMissing.has(name) || sfxBuffers.has(name)) return;
+  sfxMissing.add(name);           // provisional: cleared on success, so one in-flight load only
+  fetch(encodeURI(SFX_DIR) + encodeURIComponent(file))
+    .then(r => { if (!r.ok) throw new Error('missing'); return r.arrayBuffer(); })
+    .then(raw => ctx.decodeAudioData(raw))
+    .then(buf => { sfxBuffers.set(name, buf); sfxMissing.delete(name); })
+    .catch(() => { /* stays in sfxMissing: the synth version covers it forever */ });
+}
+
+// Decode every sample up front, on the same gesture that unlocks the context. Without this the
+// first stairs descent of a run would fall through to the synth while the file was still decoding.
+export function prefetchSfx() {
+  for (const name of Object.keys(SFX_FILES)) loadSfxSample(name);
+}
+
+// Returns true only if a decoded sample actually started, so sfx() knows whether to fall back.
+function playSample(name) {
+  const buf = sfxBuffers.get(name);
+  if (!buf || !ctx || state.settings.sfx <= 0) {
+    loadSfxSample(name);          // no-op unless this is a sample we have not fetched yet
+    return false;
+  }
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  const g = ctx.createGain();
+  g.gain.value = state.settings.sfx;
+  src.connect(g).connect(ctx.destination);
+  src.start(0);
+  return true;
+}
+
 // ---- SFX (synthesized) -------------------------------------------------------------------------
 // One tiny helper covers everything: an oscillator through a gain envelope, optionally swept.
 function tone({ freq = 440, endFreq = null, dur = 0.12, type = 'square', gain = 0.25, delay = 0 }) {
@@ -286,6 +356,9 @@ function noise({ dur = 0.18, gain = 0.2, delay = 0, filterHz = 1200 }) {
 
 export function sfx(name) {
   if (!ctx) return;
+  // A real recording wins over the synthesized stand-in for the same name. Everything below is
+  // the fallback, which is what still plays if the .wav is not on the server.
+  if (SFX_FILES[name] && playSample(name)) return;
   switch (name) {
     case 'select':   tone({ freq: 660, dur: 0.07, gain: 0.18 }); break;
     case 'confirm':  tone({ freq: 520, endFreq: 990, dur: 0.16, type: 'triangle', gain: 0.24 }); break;

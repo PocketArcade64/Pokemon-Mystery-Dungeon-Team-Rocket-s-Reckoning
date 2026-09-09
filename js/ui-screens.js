@@ -10,6 +10,7 @@ import { CATALOG_BY_DEX } from './data/pokemon-catalog.js';
 import { typeIconPath } from './data/type-chart.js';
 import { createPreview } from './three-setup.js';
 import { setPreviewModel, hasModelForDex } from './models.js';
+import { portraitFor, preloadPortraits } from './portraits.js';
 import * as inv from './inventory.js';
 import { sfx, applyVolumes } from './audio.js';
 
@@ -35,6 +36,8 @@ export const uiHooks = {
   catchFlee: () => {},
   chooseBall: (_id) => {},
   resolveSwap: (_index) => {},
+  openSwitch: () => {},
+  chooseSwitch: (_index) => {},
   newRun: () => {},
 };
 
@@ -49,6 +52,7 @@ const SCREEN_FOR_MODE = {
   battle: 'screen-battle',
   catch: 'screen-catch',
   swap: 'screen-swap',
+  switch: 'screen-switch',
   end: 'screen-end',
 };
 
@@ -108,7 +112,7 @@ function ensurePreviews() {
   if (!dexPreview) dexPreview = createPreview($('dex-preview'), { frustum: 1.25 });
 }
 
-// Called from the main loop so both rotating previews keep spinning while their screen is up.
+// Called from the main loop so every screen that owns a 3D canvas keeps rendering while it is up.
 export function updatePreviews(dt, mode) {
   if (mode === 'starter' && starterPreview) {
     starterPreview.holder.rotation.y += dt * 0.7;
@@ -116,6 +120,8 @@ export function updatePreviews(dt, mode) {
   } else if (mode === 'dex' && dexPreview) {
     dexPreview.holder.rotation.y += dt * 0.7;
     dexPreview.render();
+  } else if (mode === 'battle') {
+    updateBattleField(dt);
   }
 }
 
@@ -154,6 +160,14 @@ function selectStarter(i) {
   setPreviewModel(starterPreview.holder, starterPick, 1.5);
 }
 
+// ---- Poke Ball strips ---------------------------------------------------------------------------
+// One ball per Pokemon on a side, greyed out once it has fainted. Used by the dungeon HUD's party
+// indicator and by both battle info boxes.
+function ballStrip(team) {
+  return team.map(m => `<svg class="ball ${m.hp > 0 ? '' : 'out'}" viewBox="0 0 12 12" aria-hidden="true">
+    <use href="#px-ball" /></svg>`).join('');
+}
+
 // ---- HUD --------------------------------------------------------------------------------------
 export function updateHUD() {
   const run = state.run;
@@ -167,9 +181,11 @@ export function updateHUD() {
   const lead = inv.partyAlive()[0] || inv.party()[0];
   if (lead) {
     $('lead-name').textContent = lead.name;
-    $('party-count').textContent = `- ${inv.partyAlive().length}/${inv.party().length}`;
     setHpBar($('lead-hpbar'), lead.hp, lead.maxHp);
   }
+  // The ball row under the card replaces the old "- 3/4" text on the name line: it says the same
+  // thing (how many you are carrying, how many are still standing) without any reading.
+  $('party-balls').innerHTML = ballStrip(inv.party());
 
   const pills = [];
   const bonus = inv.currentAttackBonus();
@@ -190,10 +206,6 @@ function setHpBar(el, hp, maxHp) {
   el.querySelector('i').style.width = pct + '%';
   el.classList.toggle('mid', pct <= 50 && pct > 20);
   el.classList.toggle('low', pct <= 20);
-}
-
-export function setControlHint(mode) {
-  $('tap-hint').classList.toggle('hidden', mode !== 'tap');
 }
 
 // ---- Bag --------------------------------------------------------------------------------------
@@ -218,22 +230,33 @@ function renderBag2() {
   renderBagDetail();
 }
 
-function renderTeamStrip(container, { selected = null, onPick = null, includeEmpty = true } = {}) {
+// A roster card per party member, in the reading order the bag screen asks for: the Pokemon's
+// MODEL at the top, then its NAME, then its HEALTH, then its TYPES under the health bar.
+//
+// The model is a flat portrait from js/portraits.js rather than a live 3D canvas — see that module
+// for why. A portrait that has not been rendered yet leaves the frame empty and the card redraws
+// itself when it lands, so opening the bag never waits on a model load.
+function renderTeamStrip(container, { selected = null, onPick = null, includeEmpty = true,
+                                      disableFainted = false } = {}) {
   const p = inv.party();
   const cells = [];
   for (let i = 0; i < MAX_PARTY; i++) {
     const m = p[i];
     if (!m) {
-      if (includeEmpty) cells.push(`<div class="team-slot empty"><div class="ts-name">-</div></div>`);
+      if (includeEmpty) cells.push(`<div class="team-slot empty">-</div>`);
       continue;
     }
     const pct = Math.max(0, Math.min(100, (m.hp / m.maxHp) * 100));
     const barClass = pct <= 20 ? 'low' : pct <= 50 ? 'mid' : '';
-    cells.push(`<div class="team-slot ${m.hp <= 0 ? 'fainted' : ''} ${selected === i ? 'selected' : ''}" data-i="${i}">
+    const art = portraitFor(m.dex);
+    const dead = m.hp <= 0;
+    cells.push(`<div class="team-slot ${dead ? 'fainted' : ''} ${selected === i ? 'selected' : ''}"
+         ${dead && disableFainted ? '' : `data-i="${i}"`}>
+      ${art ? `<img class="ts-art" src="${art}" alt="" />` : `<div class="ts-art"></div>`}
       <div class="ts-name">${m.name}</div>
       <div class="hpbar ${barClass}"><i style="width:${pct}%"></i></div>
       <div class="ts-hp">${m.hp}/${m.maxHp}</div>
-      <div class="ts-dex">${m.stage}</div>
+      ${typeBadges(m.types)}
     </div>`);
   }
   container.innerHTML = cells.join('');
@@ -242,6 +265,11 @@ function renderTeamStrip(container, { selected = null, onPick = null, includeEmp
       el.addEventListener('click', () => { sfx('select'); onPick(Number(el.dataset.i)); });
     });
   }
+  // Kick off whatever portraits are still missing and redraw this same strip as each arrives.
+  preloadPortraits(p.map(m => m.dex), () => {
+    if (!container.isConnected) return;
+    renderTeamStrip(container, { selected, onPick, includeEmpty, disableFainted });
+  });
 }
 
 function renderBagItems() {
@@ -357,35 +385,122 @@ function selectDex(dex) {
 }
 
 // ---- Battle -----------------------------------------------------------------------------------
+// Mainline Pokemon's screen. The two Pokemon on the field are live 3D in their own small canvases,
+// which is what makes the back view free: your side's holder is turned a half-turn, so the same
+// model that faces the camera on the foe's side faces away on yours.
+const TRAINER_SPRITE_DIR = 'assets/sprites/';
+// A grunt's sprite is drawn at random per battle. There is one grunt sprite in the folder today;
+// this is a list so that dropping more in and naming them here is the whole change.
+const GRUNT_SPRITES = ['Team Rocket Grunt.png'];
+const GIOVANNI_SPRITE = 'Giovanni.png';
+
+let foePreview = null, youPreview = null;
+// Which dex each side's canvas is currently showing, so a re-render only reloads on a real switch.
+let foeShownDex = null, youShownDex = null;
+let fieldBob = 0;
+
+function ensureBattlePreviews() {
+  // frustum 0.9 leaves a little air around a model fitted to 1.0 tall.
+  if (!foePreview) foePreview = createPreview($('foe-model'), { frustum: 0.9 });
+  if (!youPreview) youPreview = createPreview($('you-model'), { frustum: 0.9 });
+}
+
 export function renderBattle(battle) {
-  $('battle-foe').innerHTML = battle.kind === 'giovanni'
-    ? `<span class="vs">GIOVANNI</span>`
-    : battle.kind === 'wild' ? battle.title : `<span class="vs">${battle.title}</span>`;
-  $('battle-sub').textContent = battle.kind === 'wild' ? 'blocks your path!' : 'wants to battle!';
+  ensureBattlePreviews();
+  foeShownDex = null;
+  youShownDex = null;
+  fieldBob = 0;
+
+  // The trainer, standing behind their Pokemon. Wild encounters have nobody there.
+  const img = $('foe-trainer'), nameEl = $('foe-trainer-name');
+  $('battle-field').classList.toggle('wild', battle.kind === 'wild');
+  if (battle.kind === 'wild') {
+    img.classList.add('hidden');
+    nameEl.classList.add('hidden');
+  } else {
+    if (!battle.trainerSprite) {
+      battle.trainerSprite = battle.kind === 'giovanni'
+        ? GIOVANNI_SPRITE
+        : GRUNT_SPRITES[Math.floor(Math.random() * GRUNT_SPRITES.length)];
+    }
+    // A missing sprite file hides the image rather than leaving a broken-image icon on the field.
+    // The name label stays either way, so you always know who you are fighting — same rule the
+    // music follows: an absent asset costs you the asset, not the screen.
+    img.onerror = () => { img.classList.add('hidden'); };
+    img.onload = () => { img.classList.remove('hidden'); };
+    img.src = encodeURI(TRAINER_SPRITE_DIR + battle.trainerSprite);
+    img.alt = '';
+    // Re-setting `src` to a value the browser already has decoded does fire `load` again, but not
+    // on every engine — so un-hide straight away when the image is already there.
+    if (img.complete && img.naturalWidth > 0) img.classList.remove('hidden');
+    nameEl.textContent = battle.kind === 'giovanni' ? 'GIOVANNI' : 'ROCKET GRUNT';
+    nameEl.classList.remove('hidden');
+  }
+
   $('btn-battle-continue').style.display = 'none';
-  $('battle-log').textContent = 'Battle start!';
-  renderCombatSide($('enemy-side'), battle.enemies, battle.enemyIndex);
-  renderCombatSide($('party-side'), battle.party, battle.partyIndex);
+  // Swapping is only ever offered while the fight is live and you have someone to swap TO.
+  updateSwapButton(battle);
+  $('battle-log').textContent = battle.kind === 'wild'
+    ? `A wild ${battle.enemies[0]?.name || 'Pokemon'} blocks your path!`
+    : `${battle.title} wants to battle!`;
+  updateBattleRows(battle);
 }
 
-function renderCombatSide(container, team, leadIndex) {
-  container.innerHTML = team.map((m, i) => {
-    const pct = Math.max(0, Math.min(100, (m.hp / m.maxHp) * 100));
-    const barClass = pct <= 20 ? 'low' : pct <= 50 ? 'mid' : '';
-    return `<div class="combat-row ${i === leadIndex && m.hp > 0 ? 'lead' : ''} ${m.hp <= 0 ? 'fainted' : ''}" data-i="${i}">
-      <div class="cr-main">
-        <div class="cr-name">${m.name}</div>
-        <div class="hpbar ${barClass}"><i style="width:${pct}%"></i></div>
-        <div class="cr-hpnum">${m.hp} / ${m.maxHp} HP - ${m.types.join('/')}</div>
-      </div>
-      <div class="cr-stage">${m.stage === 'Legendary' ? 'LGND' : m.stage.toUpperCase()}</div>
-    </div>`;
-  }).join('');
-}
-
+// Refresh both info boxes and both models against the battle's current state. Called every time
+// anything lands, so it has to be cheap: the models are only touched when the lead actually changes.
 export function updateBattleRows(battle) {
-  renderCombatSide($('enemy-side'), battle.enemies, battle.enemyIndex);
-  renderCombatSide($('party-side'), battle.party, battle.partyIndex);
+  const foe = battle.enemyLead();
+  const you = battle.partyLead();
+
+  fillMonBox('foe', foe, { showNumbers: false });
+  fillMonBox('you', you, { showNumbers: true });
+
+  // The ball strips are TRAINER-BATTLE ONLY: a lone wild Pokemon has no team to count, so both
+  // strips stay empty and collapse (see .mb-balls:empty).
+  const trainerFight = battle.kind !== 'wild';
+  $('foe-balls').innerHTML = trainerFight ? ballStrip(battle.enemies) : '';
+  $('you-balls').innerHTML = trainerFight ? ballStrip(battle.party) : '';
+
+  syncFighter('foe', foe, foePreview, () => foeShownDex, (d) => { foeShownDex = d; });
+  syncFighter('you', you, youPreview, () => youShownDex, (d) => { youShownDex = d; });
+  updateSwapButton(battle);
+}
+
+function fillMonBox(side, mon, { showNumbers }) {
+  if (!mon) return;
+  $(`${side}-name`).textContent = mon.name;
+  // Stands where a level does in the games. "Stage1" -> "STAGE 1"; Basic and Legendary have no
+  // number, and Legendary is shortened because the full word does not fit beside a long name.
+  $(`${side}-stage`).textContent = mon.stage === 'Legendary'
+    ? 'LGND'
+    : mon.stage.replace(/(\d)$/, ' $1').toUpperCase();
+  setHpBar($(`${side}-hpbar`), mon.hp, mon.maxHp);
+  // Exact HP is shown for your own Pokemon only, exactly as the games do it.
+  if (showNumbers) $('you-hpnum').textContent = `${mon.hp} / ${mon.maxHp}`;
+}
+
+function syncFighter(side, mon, preview, getShown, setShown) {
+  const wrap = $(`${side}-fighter`);
+  if (!mon || !preview) return;
+  wrap.classList.toggle('fainted', mon.hp <= 0);
+  if (getShown() === mon.dex) return;
+  setShown(mon.dex);
+  // Your side is turned to face AWAY from the camera — that is the back view.
+  preview.holder.rotation.y = side === 'you' ? Math.PI : 0;
+  setPreviewModel(preview.holder, mon.dex, 1.0);
+}
+
+// Driven from the main loop so both fighters keep rendering: the models load asynchronously, so a
+// single render at battle start would show empty frames.
+export function updateBattleField(dt) {
+  if (!foePreview || !youPreview) return;
+  fieldBob += dt;
+  // A slow breathing bob. The Quest models have no animation of their own, and two dead-still
+  // models on an otherwise static screen read as a frozen game.
+  foePreview.holder.position.y = Math.sin(fieldBob * 1.7) * 0.022;
+  youPreview.holder.position.y = Math.sin(fieldBob * 1.7 + 1.1) * 0.026;
+  foePreview.render();
+  youPreview.render();
 }
 
 export function battleLog(html) { $('battle-log').innerHTML = html; }
@@ -394,23 +509,52 @@ export function showBattleContinue(label = 'Continue') {
   const b = $('btn-battle-continue');
   b.textContent = label;
   b.style.display = 'block';
+  // The fight is over once Continue is up, so there is nothing left to swap into.
+  $('btn-battle-swap').style.display = 'none';
 }
 
-// A damage number that floats off the row that just got hit.
-export function floatDamage(side, index, dmg, superEff) {
-  const container = side === 'enemy' ? $('enemy-side') : $('party-side');
-  const row = container.querySelector(`.combat-row[data-i="${index}"]`);
-  if (!row) return;
-  row.classList.add('hurt');
-  setTimeout(() => row.classList.remove('hurt'), 160);
+function updateSwapButton(battle) {
+  // Offered for the whole live fight, INTRO INCLUDED. Gating it on 'fighting' meant the button
+  // only appeared once the first blow landed, because that is the next thing that re-renders the
+  // screen — so the one moment you most want to choose who leads was the one it was missing.
+  const live = battle.phase === 'intro' || battle.phase === 'fighting';
+  $('btn-battle-swap').style.display = live && battle.partyAlive() > 1 ? 'block' : 'none';
+}
+
+// A damage number that floats off whichever side just got hit — over that side's info box, where
+// the HP bar the player is watching actually is.
+export function floatDamage(side, _index, dmg, superEff) {
+  const box = side === 'enemy' ? $('foe-box') : $('you-box');
+  if (!box) return;
+  box.classList.add('hurt');
+  $(`${side === 'enemy' ? 'foe' : 'you'}-fighter`)?.classList.add('hurt');
+  setTimeout(() => {
+    box.classList.remove('hurt');
+    $(`${side === 'enemy' ? 'foe' : 'you'}-fighter`)?.classList.remove('hurt');
+  }, 160);
   const el = document.createElement('div');
   el.className = 'float-dmg' + (superEff ? ' se' : '');
   el.textContent = `-${dmg}`;
-  const r = row.getBoundingClientRect();
-  el.style.left = (r.right - 54) + 'px';
+  const r = box.getBoundingClientRect();
+  el.style.left = (r.right - 62) + 'px';
   el.style.top = (r.top + 6) + 'px';
   document.body.appendChild(el);
   setTimeout(() => el.remove(), 800);
+}
+
+// ---- Party switch ------------------------------------------------------------------------------
+// One screen for both callers: the Swap button in battle and the lead-Pokemon card on the dungeon
+// HUD. A fainted member is not offered — there is nothing it can do on either side of that call.
+export function renderSwitch({ inBattle, currentIndex }) {
+  $('switch-sub').textContent = inBattle
+    ? 'Send out a different Pokemon. A fainted one cannot be sent out.'
+    : 'Pick who leads the way. A fainted one cannot take the lead.';
+  renderTeamStrip($('switch-team'), {
+    selected: currentIndex,
+    includeEmpty: false,
+    disableFainted: true,
+    onPick: (i) => uiHooks.chooseSwitch(i),
+  });
 }
 
 // ---- Catch overlay ----------------------------------------------------------------------------
@@ -579,6 +723,11 @@ export function bindUI() {
   });
 
   click('btn-battle-continue', () => { sfx('confirm'); uiHooks.battleContinue(); });
+  click('btn-battle-swap', () => { sfx('select'); uiHooks.openSwitch(); });
+
+  // The lead-Pokemon card on the dungeon HUD is the other way into the same screen.
+  click('btn-lead', () => { sfx('select'); uiHooks.openSwitch(); });
+  click('btn-switch-back', () => { sfx('back'); uiHooks.back(); });
   click('btn-catch-ball', () => { sfx('select'); toggleBallMenu(); });
   click('btn-catch-flee', () => { sfx('back'); setBallMenu(false); uiHooks.catchFlee(); });
 

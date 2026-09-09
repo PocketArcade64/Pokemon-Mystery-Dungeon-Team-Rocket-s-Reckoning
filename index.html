@@ -152,12 +152,12 @@
 
   .screen-title {
     font-weight: 700;
-    font-size: clamp(1.15rem, 4.8vw, 1.7rem); line-height: 1.35;
+    font-size: clamp(1.495rem, 6.24vw, 2.21rem); line-height: 1.35;
     color: var(--gold);
     text-shadow: 0 3px 0 var(--gold-dark), 0 4px 8px rgba(0,0,0,0.4);
     margin: 4px 0 12px; text-align: center; flex: 0 0 auto;
   }
-  .screen-sub { color: var(--ink-dim); font-size: 0.85rem; text-align: center; margin: -4px 0 12px; }
+  .screen-sub { color: var(--ink-dim); font-size: 1.105rem; text-align: center; margin: -4px 0 12px; }
 
   .scroll { flex: 1 1 auto; overflow-y: auto; -webkit-overflow-scrolling: touch; touch-action: pan-y; }
 
@@ -189,7 +189,7 @@
   .btn {
     appearance: none; border: 0; border-radius: 12px;
     font: inherit; font-weight: 700;
-    font-size: 1.05rem; line-height: 1.4; letter-spacing: 0.5px;
+    font-size: 1.365rem; line-height: 1.4; letter-spacing: 0.5px;
     color: #23262e;
     background: linear-gradient(180deg, var(--gold-lt), var(--gold-mid));
     padding: 0.7rem 1.5rem;
@@ -217,7 +217,7 @@
   }
   .btn.danger:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--danger-dark); }
 
-  .btn.small { font-size: 0.9rem; padding: 0.5rem 1rem; }
+  .btn.small { font-size: 1.17rem; padding: 0.5rem 1rem; }
   .btn:disabled { opacity: 0.4; cursor: not-allowed; background: #999; box-shadow: 0 4px 0 #555; }
   .btn-row { display: flex; gap: 0.7rem; }
   .btn-col { display: flex; flex-direction: column; gap: 0.7rem; }
@@ -268,13 +268,13 @@
     border-radius: 12px;
   }
   .starter-name {
-    text-align: center; font-weight: 700; font-size: 1.3rem;
+    text-align: center; font-weight: 700; font-size: 1.69rem;
     margin: 0.7rem 0 0.2rem; color: var(--gold); text-shadow: 0 2px 0 rgba(0,0,0,0.5);
   }
-  .starter-meta { text-align: center; color: var(--ink-dim); font-size: 0.8rem; margin-bottom: 12px; }
+  .starter-meta { text-align: center; color: var(--ink-dim); font-size: 1.04rem; margin-bottom: 12px; }
   /* Detail appended after the name. Its own line, regular weight, no shadow. */
   .meta-inline {
-    display: block; font-size: 0.78rem; font-weight: 400;
+    display: block; font-size: 1.014rem; font-weight: 400;
     color: var(--ink-dim); margin-top: 6px; text-shadow: none;
   }
   .starter-row { display: flex; gap: 10px; }
@@ -287,7 +287,7 @@
     border-radius: 10px;
     box-shadow: 0 4px 0 var(--silver-dark);
     padding: 0.55rem 4px 0.5rem; text-align: center;
-    font-size: 0.72rem; cursor: pointer;
+    font-size: 0.936rem; cursor: pointer;
   }
   .starter-card.selected {
     border-color: var(--gold);
@@ -297,7 +297,7 @@
   }
   .starter-card .sc-name {
     /* Three cards across a phone, so this stays small enough that a long name still fits. */
-    font-weight: 700; font-size: 0.58rem; line-height: 1.4;
+    font-weight: 700; font-size: 0.754rem; line-height: 1.4;
     display: block; margin-bottom: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   .type-badges { display: flex; gap: 3px; justify-content: center; }
@@ -318,40 +318,47 @@
   }
   #minimap { width: 100%; height: 100%; display: block; image-rendering: pixelated; }
 
-  /* The bag icon sits DIRECTLY BENEATH the minimap (design brief §5). */
-  #btn-bag { top: calc(var(--sat) + 128px); left: calc(var(--sal) + 10px); }
-  #bag-count {
-    position: absolute; top: -8px; right: -8px;
-    min-width: 22px; height: 20px; padding: 0 4px;
-    background: var(--danger); color: #fff;
-    font-weight: 700; font-size: 0.62rem;
-    display: grid; place-items: center;
-    border-radius: 6px;
-    box-shadow: 0 2px 0 rgba(0,0,0,0.35);
-  }
   #btn-pause { top: calc(var(--sat) + 10px); right: calc(var(--sar) + 10px); }
 
-  /* Centred in the band BETWEEN the minimap and the pause button, not on the whole screen: at
-     left:50% the longest theme ("B1F Rocket Warehouse") ran 21px under the minimap on a 375px
-     phone. left+right fence the band, width:fit-content keeps the pill hugging its text, and
-     margin-inline:auto centres it in whatever is left. */
+  /* The floor name sits DIRECTLY BELOW THE MAP, in the same two-line order as the transition card
+     the game shows on the way down: dungeon name first, floor number under it. It used to be a
+     one-line pill centred in the band between the minimap and the pause button.
+     Its own width is free (fit-content, extending right past the 108px map) but it is capped so a
+     long theme name can never reach under the pause button. */
   #floor-chip {
-    top: calc(var(--sat) + 16px);
-    left: calc(var(--sal) + 122px);
-    right: calc(var(--sar) + 68px);
-    width: fit-content; margin-inline: auto;
+    top: calc(var(--sat) + 124px);
+    left: calc(var(--sal) + 10px);
+    max-width: calc(100% - var(--sal) - var(--sar) - 84px);
+    width: fit-content;
     background: rgba(11,16,32,0.85);
     border: 1px solid var(--edge);
     border-radius: 8px;
     padding: 0.3rem 0.6rem;
-    font-weight: 700; font-size: 0.58rem; white-space: nowrap;
+    font-weight: 700; font-size: 0.754rem; line-height: 1.35;
     text-shadow: 0 2px 4px rgba(0,0,0,0.6);
   }
-  #floor-chip .theme { color: var(--gold); }
+  #floor-chip .theme {
+    display: block; color: var(--gold);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  #floor-chip .fl { display: block; }
+
+  /* The bag icon keeps its place in the left column, now under the floor chip rather than under
+     the map: chip top 124px + its two lines (~32px) + padding and border (~12px) + an 8px gap. */
+  #btn-bag { top: calc(var(--sat) + 176px); left: calc(var(--sal) + 10px); }
+  #bag-count {
+    position: absolute; top: -8px; right: -8px;
+    min-width: 26px; height: 24px; padding: 0 5px;
+    background: var(--danger); color: #fff;
+    font-weight: 700; font-size: 0.806rem;
+    display: grid; place-items: center;
+    border-radius: 6px;
+    box-shadow: 0 2px 0 rgba(0,0,0,0.35);
+  }
 
   #buff-strip {
     top: calc(var(--sat) + 58px); left: 50%; transform: translateX(-50%);
-    display: flex; gap: 6px; font-size: 0.68rem;
+    display: flex; gap: 6px; font-size: 0.884rem;
   }
   .buff-pill {
     background: var(--teal-dark); color: #e8fff0;
@@ -360,17 +367,36 @@
   }
   .buff-pill.repel { background: #5e35b1; color: #ede7f6; }
 
-  /* Lead Pokemon HP, bottom-right so it never fights the joystick for space. Over live gameplay a
-     translucent-white panel would vanish, so this one keeps a dark ground. */
-  #lead-hp {
-    right: calc(var(--sar) + 12px); bottom: calc(var(--sab) + 20px);
-    width: 152px; padding: 0.5rem 0.6rem;
+  /* Bottom-right: who you have out, and under it one Poke Ball per party member. The card is a
+     real button — tapping it opens the party switch — so it carries the SWAP tag rather than
+     relying on the player guessing. Right-hand corner so it never fights the joystick for space.
+     Over live gameplay a translucent-white panel would vanish, so this one keeps a dark ground. */
+  #lead-panel {
+    right: calc(var(--sar) + 12px); bottom: calc(var(--sab) + 22px);
+    width: 182px;
+    display: flex; flex-direction: column; align-items: stretch; gap: 7px;
+  }
+  #btn-lead {
+    appearance: none; font: inherit; color: inherit; text-align: left;
+    width: 100%; padding: 0.5rem 0.6rem;
     background: rgba(11,16,32,0.72);
     border: 1px solid var(--edge);
     border-radius: 12px;
+    cursor: pointer;
+    transition: transform 0.06s ease, border-color 0.12s ease;
   }
-  #lead-hp .name { font-size: 0.72rem; margin-bottom: 6px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-  #lead-hp .party-count { color: var(--gold); }
+  #btn-lead:active { transform: translateY(2px); border-color: var(--gold); }
+  #btn-lead .name {
+    display: flex; align-items: baseline; gap: 6px;
+    font-size: 0.936rem; margin-bottom: 6px;
+  }
+  #btn-lead .name #lead-name { flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  #btn-lead .swap-tag { flex: 0 0 auto; font-size: 0.65rem; font-weight: 700; color: var(--gold); letter-spacing: 1px; }
+  /* One ball per party member, dimmed once that member has fainted — the same read as the strip in
+     the battle info boxes. Right-aligned so it hangs under the card's own right edge. */
+  #party-balls { display: flex; gap: 4px; justify-content: flex-end; }
+  #party-balls svg { width: 19px; height: 19px; display: block; flex: 0 0 auto; }
+  #party-balls .ball.out { filter: grayscale(1) brightness(0.45); }
 
   /* HP bar: a smooth rounded meter. The 8-bit segment mask that used to be punched over it was the
      same striping the buttons had, and it read as a rendering artefact next to rounded controls. */
@@ -406,17 +432,11 @@
     pointer-events: none;
   }
 
-  /* Bottom-LEFT, in the space the joystick vacates in tap mode — centred it would sit on top of
-     the lead-HP panel. */
-  #tap-hint {
-    left: calc(var(--sal) + 16px); bottom: calc(var(--sab) + 22px);
-    color: #fff; font-size: 0.8rem;
-    background: rgba(0,0,0,0.55);
-    border-radius: 999px;
-    padding: 0.5rem 1rem; white-space: nowrap;
-  }
-  #tap-hint.hidden { display: none; }
+  /* There is deliberately NO control hint in the bottom-left corner. Tap mode used to put a
+     "Tap anywhere to move" pill there; it is the one screen the player looks at constantly, and a
+     permanent instruction on it is noise. The control scheme is stated on the Settings screen.
 
+     #toast is what the corner is reserved for now. */
   #toast {
     left: 50%; bottom: calc(var(--sab) + 100px); transform: translateX(-50%);
     max-width: min(84vw, 380px);
@@ -424,7 +444,7 @@
     border-radius: 8px;
     box-shadow: 0 4px 0 rgba(0,0,0,0.35);
     padding: 0.6rem 1.1rem;
-    font-size: 0.85rem; font-weight: 700; text-align: center;
+    font-size: 1.105rem; font-weight: 700; text-align: center;
     opacity: 0; transition: opacity 0.18s ease;
     pointer-events: none;
   }
@@ -438,25 +458,40 @@
   }
   #banner.visible { display: grid; }
   #banner .banner-inner { padding: 22px; }
+  /* Mystery Dungeon's own title card is exactly two lines — the dungeon's name, and the floor
+     under it — so the kicker collapses when it is empty rather than reserving a line for itself.
+     The floor line is deliberately NOT dimmed: in PMD it is as prominent as the name. */
   #banner .b-kicker {
     font-weight: 700; color: var(--gold); letter-spacing: 1.5px;
-    font-size: 0.7rem; text-transform: uppercase; text-shadow: 0 2px 4px rgba(0,0,0,0.6);
+    font-size: 0.91rem; text-transform: uppercase; text-shadow: 0 2px 4px rgba(0,0,0,0.6);
   }
+  #banner .b-kicker:empty { display: none; }
   #banner .b-main {
-    font-weight: 700; font-size: clamp(1.5rem, 6.4vw, 2.6rem);
-    margin: 0.6rem 0; line-height: 1.3;
+    font-weight: 700; font-size: clamp(1.95rem, 8.32vw, 3.38rem);
+    margin: 0.6rem 0 0.3rem; line-height: 1.3;
     text-shadow: 0 3px 0 rgba(0,0,0,0.55), 0 4px 10px rgba(0,0,0,0.45);
   }
-  #banner .b-sub { color: var(--ink-dim); font-size: 0.85rem; }
+  #banner .b-sub {
+    color: var(--gold); font-weight: 700;
+    font-size: clamp(1.3rem, 5.6vw, 2rem); line-height: 1.35;
+    text-shadow: 0 3px 0 rgba(0,0,0,0.55), 0 4px 10px rgba(0,0,0,0.45);
+  }
+  #banner .b-sub:empty { display: none; }
 
-  /* ---- Bag / inventory ---------------------------------------------------------------------- */
-  .team-strip { display: grid; grid-template-columns: repeat(6, 1fr); gap: 5px; margin-bottom: 12px; }
+  /* ---- Bag / inventory ----------------------------------------------------------------------
+     The team strip is a roster CARD per party member, stacked in the order the slot reads:
+        the Pokemon's MODEL at the top, its NAME, its HEALTH under the name, its TYPES under the
+        health bar.
+     THREE across, not six. Six columns is ~55px a cell on a phone, which is not enough for a
+     model, a name and two type icons at the body size this UI uses — at six the name ellipsised to
+     three characters. Three across gives ~110px and two rows for a full party. */
+  .team-strip { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; margin-bottom: 12px; }
   .team-slot {
     background: rgba(255,255,255,0.07);
     border: 2px solid transparent;
-    border-radius: 8px;
+    border-radius: 10px;
     box-shadow: 0 4px 0 var(--silver-dark);
-    padding: 5px 2px; text-align: center; min-width: 0; cursor: pointer;
+    padding: 5px 5px 7px; text-align: center; min-width: 0; cursor: pointer;
   }
   /* An empty party slot is a dashed outline over a barely-there fill, the way Rumble marks an
      unfilled dex box — a solid dark fill read as a rendering fault. */
@@ -465,18 +500,30 @@
     border: 2px dashed var(--edge); color: var(--ink-dim);
     box-shadow: 0 4px 0 rgba(255,255,255,0.10);
     cursor: default;
+    display: grid; place-items: center; min-height: 96px;
   }
   .team-slot.fainted { border-color: var(--danger); }
   .team-slot.selected {
     border-color: var(--gold); background: rgba(255,213,79,0.22);
     box-shadow: 0 4px 0 var(--gold-dark);
   }
-  .team-slot .ts-name {
-    font-size: 0.66rem; overflow: hidden; text-overflow: ellipsis;
-    white-space: nowrap; margin-bottom: 4px;
+  /* The portrait is a flat PNG rendered once per species by js/portraits.js, NOT a live canvas —
+     six WebGL contexts in one strip would evict the dungeon's own. It is transparent, so it sits
+     on a recessed well like every other model frame in the game. */
+  .team-slot .ts-art {
+    width: 100%; aspect-ratio: 1; margin-bottom: 4px;
+    background: rgba(0,0,0,0.26);
+    border-radius: 8px;
+    display: block; object-fit: contain;
+    image-rendering: auto;      /* the portrait is already downscaled; pixelating it re-aliases it */
   }
-  .team-slot .ts-hp { font-size: 0.62rem; color: var(--ink-dim); margin-top: 4px; }
-  .team-slot .ts-dex { font-size: 0.55rem; color: var(--gold); }
+  .team-slot .ts-name {
+    font-weight: 700; font-size: 0.858rem; line-height: 1.35;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-bottom: 4px;
+  }
+  .team-slot .ts-hp { font-size: 0.806rem; color: var(--ink-dim); margin-top: 3px; }
+  .team-slot .type-badges { margin-top: 5px; }
+  .team-slot .type-badges img { height: 17px; }
 
   /* Items: a scrollable grid exactly 5 columns wide (design brief §5). */
   /* The right/bottom padding is for the qty badges, which overhang their cell on purpose. An
@@ -499,20 +546,20 @@
   .item-cell svg { width: 100%; height: 100%; display: block; image-rendering: pixelated; }
   .item-cell .qty {
     position: absolute; bottom: -6px; right: -6px;
-    min-width: 20px; height: 18px; padding: 0 3px;
+    min-width: 24px; height: 22px; padding: 0 4px;
     background: var(--silver-dark); color: var(--ink);
-    font-weight: 700; font-size: 0.55rem;
+    font-weight: 700; font-size: 0.715rem;
     display: grid; place-items: center;
     border-radius: 6px;
     box-shadow: 0 2px 0 rgba(0,0,0,0.35);
   }
-  .item-detail { margin-top: 12px; min-height: 82px; font-size: 0.8rem; }
+  .item-detail { margin-top: 12px; min-height: 82px; font-size: 1.04rem; }
   .item-detail .id-name {
-    font-weight: 700; font-size: 0.95rem; color: var(--gold);
+    font-weight: 700; font-size: 1.235rem; color: var(--gold);
     line-height: 1.4; text-shadow: 0 2px 0 rgba(0,0,0,0.5);
   }
   .item-detail .id-desc { color: var(--ink-dim); margin-top: 7px; }
-  .empty-note { color: var(--ink-dim); font-size: 0.8rem; text-align: center; padding: 26px 10px; }
+  .empty-note { color: var(--ink-dim); font-size: 1.04rem; text-align: center; padding: 26px 10px; }
 
   /* ---- Glossary ----------------------------------------------------------------------------- */
   .gloss-row {
@@ -526,14 +573,14 @@
   }
   .gloss-icon svg { width: 100%; height: 100%; image-rendering: pixelated; }
   .gloss-name {
-    font-weight: 700; font-size: 0.85rem; color: var(--gold); line-height: 1.4;
+    font-weight: 700; font-size: 1.105rem; color: var(--gold); line-height: 1.4;
   }
-  .gloss-desc { font-size: 0.8rem; color: var(--ink-dim); margin-top: 5px; }
+  .gloss-desc { font-size: 1.04rem; color: var(--ink-dim); margin-top: 5px; }
 
   /* ---- Settings ----------------------------------------------------------------------------- */
   .setting { margin-bottom: 22px; }
   .setting label {
-    display: block; font-weight: 700; font-size: 0.9rem;
+    display: block; font-weight: 700; font-size: 1.17rem;
     margin-bottom: 10px;
   }
   .setting .val { color: var(--gold); float: right; font-weight: 400; }
@@ -580,7 +627,7 @@
     text-shadow: none;
     box-shadow: 0 4px 0 var(--silver-dark);
   }
-  .setting-note { font-size: 0.75rem; color: var(--ink-dim); margin-top: 10px; }
+  .setting-note { font-size: 0.975rem; color: var(--ink-dim); margin-top: 10px; }
 
   /* ---- Pokedex / Stats ---------------------------------------------------------------------- */
   #dex-preview {
@@ -597,11 +644,13 @@
     padding: 0.55rem 4px; text-align: center;
   }
   .stat-tile .sv {
-    font-weight: 700; font-size: 1.15rem; color: var(--gold);
+    font-weight: 700; font-size: 1.495rem; color: var(--gold);
     line-height: 1.3; text-shadow: 0 2px 0 rgba(0,0,0,0.5);
   }
-  .stat-tile .sl { font-size: 0.62rem; color: var(--ink-dim); text-transform: uppercase; letter-spacing: 1px; margin-top: 5px; }
-  .dex-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; padding: 2px 2px 6px; }
+  .stat-tile .sl { font-size: 0.806rem; color: var(--ink-dim); text-transform: uppercase; letter-spacing: 1px; margin-top: 5px; }
+  /* FOUR across, not five: each cell holds a species NAME, and at five columns on a phone the
+     body size this UI uses ellipsised almost every one of them. */
+  .dex-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; padding: 2px 2px 6px; }
   .dex-cell {
     aspect-ratio: 1;
     border: 2px solid transparent;
@@ -609,7 +658,7 @@
     background: rgba(255,255,255,0.07);
     box-shadow: 0 4px 0 rgba(255,255,255,0.10);
     display: grid; place-items: center;
-    font-size: 0.62rem; text-align: center; padding: 3px; cursor: pointer; min-width: 0;
+    font-size: 0.806rem; text-align: center; padding: 3px; cursor: pointer; min-width: 0;
     overflow: hidden;
   }
   /* The bar under each box reads as the "collected" cue, the way Rumble tints its dex slots. */
@@ -617,59 +666,148 @@
   .dex-cell.winner { border-color: var(--gold); background: rgba(255,213,79,0.22); box-shadow: 0 4px 0 var(--gold-dark); }
   .dex-cell.selected { border-color: var(--gold-lt); background: rgba(255,213,79,0.3); }
   .dex-cell span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; width: 100%; }
-  .legend { display: flex; gap: 10px; justify-content: center; font-size: 0.68rem; color: var(--ink-dim); margin: 10px 0; }
+  .legend { display: flex; gap: 10px; justify-content: center; font-size: 0.884rem; color: var(--ink-dim); margin: 10px 0; }
   .legend i {
     display: inline-block; width: 10px; height: 10px; margin-right: 4px; vertical-align: middle;
     border-radius: 3px;
   }
 
-  /* ---- Battle overlay ----------------------------------------------------------------------- */
-  #screen-battle { justify-content: space-between; }
-  .battle-title {
-    text-align: center; font-weight: 700; font-size: 1rem; line-height: 1.5;
-    text-shadow: 0 2px 4px rgba(0,0,0,0.6);
+  /* ---- Battle overlay -------------------------------------------------------------------------
+     The mainline Pokemon battle screen, laid out on its diagonal: the FOE is up and to the RIGHT
+     and you see its front, YOU are down and to the LEFT and you see its back. Each side's info box
+     sits on the opposite corner from its Pokemon, exactly as the games place them — foe box
+     top-LEFT, your box bottom-RIGHT — so neither box ever covers a Pokemon.
+     The two Pokemon are live 3D (a canvas each, driven by ui-screens.js), not sprites: turning the
+     model 180 degrees is what gives your side a back view for free.
+     The six-row scrolling stat readout this screen used to be is gone. Whose turn it is and how
+     the fight is going now come from the field itself plus the Poke Ball strip in each info box. */
+  #screen-battle { justify-content: flex-start; padding-top: calc(var(--sat) + 10px); }
+
+  #battle-field { position: relative; flex: 1 1 auto; min-height: 0; }
+
+  /* ---- Info boxes ---- */
+  .mon-box {
+    position: absolute;
+    /* 52% leaves clear air between your box (bottom-right) and your Pokemon (bottom-left, up to
+       40vw wide) instead of the two edges meeting. */
+    width: min(52%, 248px);
+    background: rgba(11,16,32,0.82);
+    border: 1px solid var(--edge-lt);
+    border-radius: 12px;
+    padding: 0.5rem 0.6rem 0.55rem;
+    box-shadow: 0 4px 0 rgba(0,0,0,0.35);
   }
-  .battle-title .vs { color: var(--rocket); }
-  .combat-side { display: flex; flex-direction: column; gap: 6px; }
-  .combat-row {
-    display: flex; align-items: center; gap: 9px;
-    background: rgba(255,255,255,0.07);
-    border: 2px solid transparent;
-    border-radius: 10px;
-    padding: 0.45rem 0.6rem;
+  .mon-box.foe { top: 0; left: 0; }
+  .mon-box.you { bottom: 0; right: 0; }
+  .mon-box .mb-name {
+    font-weight: 700; font-size: 1.014rem; line-height: 1.35;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
-  .combat-row.lead { border-color: var(--gold); }
-  .combat-row.fainted { filter: saturate(0.15) brightness(0.55); }
-  .combat-row.hurt { transform: translateX(-6px); border-color: var(--danger); }
-  .combat-row .cr-main { flex: 1 1 auto; min-width: 0; }
-  .combat-row .cr-name { font-size: 0.78rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-bottom: 4px; }
-  .combat-row .cr-hpnum { font-size: 0.68rem; color: var(--ink-dim); margin-top: 4px; }
-  .combat-row .cr-stage {
-    flex: 0 0 auto; font-weight: 700; font-size: 0.55rem; color: var(--gold);
-    background: rgba(0,0,0,0.35); border-radius: 5px; padding: 0.2rem 0.3rem;
+  /* The stage tag rides on the name's line the way a level does in the games. */
+  .mon-box .mb-stage { float: right; font-size: 0.78rem; color: var(--gold); font-weight: 700; }
+  .mon-box .mb-bar { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
+  .mon-box .mb-bar .hp-label { flex: 0 0 auto; font-size: 0.715rem; font-weight: 700; color: var(--gold); }
+  .mon-box .mb-bar .hpbar { flex: 1 1 auto; }
+  .mon-box .mb-hpnum { font-size: 0.845rem; color: var(--ink-dim); text-align: right; margin-top: 4px; }
+  .mon-box.hurt { border-color: var(--danger); transform: translateX(-5px); }
+
+  /* The Poke Ball strip: one ball per Pokemon on that side, dimmed once it has fainted. Trainer
+     battles only — a lone wild Pokemon has no team to count, so ui-screens.js leaves it empty. */
+  .mb-balls { display: flex; gap: 3px; margin-top: 6px; min-height: 0; }
+  .mb-balls svg { width: 15px; height: 15px; display: block; flex: 0 0 auto; }
+  .mb-balls .ball.out { filter: grayscale(1) brightness(0.45); }
+  .mb-balls:empty { display: none; }
+
+  /* ---- The two Pokemon on the field ----
+     --trainer: the height the trainer sprite plus its name label occupy in the top-right corner.
+     The foe's Pokemon is pushed below that band so the two never overlap, which they did when both
+     were pinned to top:0. */
+  #battle-field { --trainer: calc(min(21vw, 92px) + 26px); }
+  /* Nobody is standing behind a wild Pokemon, so that band is not reserved and the foe moves up
+     into the space instead of leaving a hole where a trainer would have been. */
+  #battle-field.wild { --trainer: 5%; }
+  .fighter { position: absolute; }
+  /* Up and to the right, under the trainer standing behind it. */
+  .fighter.foe { top: calc(var(--trainer) + 7%); right: 2%; width: min(36vw, 158px); }
+  /* Down and to the left, and bigger — it is nearer the camera. Both sides are pulled toward the
+     middle of the field rather than jammed into its corners: at the extremes the two Pokemon sat
+     a third of the screen apart with nothing between them. They overlap the info boxes vertically
+     and clear them horizontally, which is exactly how the games stack it. */
+  .fighter.you { bottom: 13%; left: 0; width: min(40vw, 176px); }
+  .fighter canvas { display: block; width: 100%; aspect-ratio: 1; position: relative; z-index: 1; }
+  /* The ground shadow each Pokemon stands on. Purely decorative, and behind the canvas. */
+  .fighter .platform {
+    position: absolute; left: 6%; right: 6%; bottom: 4%;
+    height: 16%;
+    background: radial-gradient(ellipse at 50% 50%, rgba(0,0,0,0.45), rgba(0,0,0,0) 72%);
+    border-radius: 50%;
+    z-index: 0;
   }
-  /* flex:0 0 auto is what keeps the log readable. #screen-battle is a space-between column, and
-     with a full party of six plus three enemies the total wants more room than the screen has —
-     without this the log is the thing that gets compressed, and its last line gets clipped. */
+  .fighter.fainted canvas { opacity: 0.25; filter: saturate(0.1); }
+  .fighter.hurt canvas { filter: brightness(2.2) saturate(0.4); }
+
+  /* The Grunt / Giovanni sprite, standing behind their Pokemon. Hidden for wild encounters. */
+  #foe-trainer {
+    position: absolute; top: 0; right: 0;
+    width: min(21vw, 92px); height: auto;
+    image-rendering: pixelated;
+    filter: drop-shadow(0 4px 6px rgba(0,0,0,0.55));
+  }
+  #foe-trainer.hidden { display: none; }
+  /* Sits in the band directly under the sprite, right-aligned with it, so it can never be drawn
+     over the foe's Pokemon (which starts below --trainer). */
+  #foe-trainer-name {
+    position: absolute; top: min(21vw, 92px); right: 0;
+    width: min(40vw, 160px); text-align: right;
+    font-weight: 700; font-size: 0.78rem; line-height: 1.5;
+    color: var(--rocket);
+    text-shadow: 0 2px 4px rgba(0,0,0,0.9);
+    white-space: nowrap;
+  }
+  #foe-trainer-name.hidden { display: none; }
+
+  /* ---- The message band along the bottom ---- */
+  #battle-bottom { flex: 0 0 auto; display: flex; gap: 10px; align-items: stretch; margin-top: 10px; }
   #battle-log {
-    flex: 0 0 auto;
+    flex: 1 1 auto; min-width: 0;
     background: rgba(11,16,32,0.85);
     border: 1px solid var(--edge);
     border-radius: 12px;
-    padding: 0.7rem 0.8rem; font-size: 0.8rem; min-height: 64px; text-align: center;
+    padding: 0.7rem 0.8rem; font-size: 1.04rem; min-height: 64px; text-align: center;
     display: grid; place-items: center;
   }
   #battle-log .se { color: var(--gold); font-weight: 700; }
+  /* The buttons carry the column's width rather than the column reserving it: both of them are
+     hidden at times (Swap only while the fight is live, Continue only once it is over), and a
+     fixed-width column left a 96px dead strip beside the log whenever neither was up. */
+  #battle-actions { flex: 0 0 auto; display: flex; flex-direction: column; gap: 6px; justify-content: center; }
+  #battle-actions .btn { width: 96px; padding: 0.5rem 0.4rem; }
+
   .float-dmg {
-    position: absolute; font-weight: 700; font-size: 1.1rem;
+    position: absolute; font-weight: 700; font-size: 1.43rem;
     color: var(--danger); pointer-events: none;
     text-shadow: 0 2px 0 rgba(0,0,0,0.6), 0 3px 6px rgba(0,0,0,0.5);
     animation: floatUp 0.75s ease-out forwards;
   }
-  .float-dmg.se { color: var(--gold); font-size: 1.35rem; }
+  .float-dmg.se { color: var(--gold); font-size: 1.755rem; }
   @keyframes floatUp {
     from { opacity: 1; transform: translateY(0); }
     to { opacity: 0; transform: translateY(-34px); }
+  }
+
+  /* Landscape on a phone has almost no vertical room, and there is not enough of it to stack the
+     trainer above their Pokemon: doing that pushed the foe down into your own info box. So in
+     landscape the trainer stands BESIDE their Pokemon instead — no vertical band is reserved
+     (--trainer drops to a few percent) and the foe moves left to clear the sprite. Everything
+     shrinks with it, and the boxes narrow so each Pokemon has clear air beside its own box. */
+  @media (orientation: landscape) and (max-height: 520px) {
+    #battle-field { --trainer: 4%; --sprite: min(11vw, 58px); }
+    .mon-box { width: min(46%, 300px); }
+    #foe-trainer { width: var(--sprite); }
+    #foe-trainer-name { top: var(--sprite); width: min(24vw, 150px); font-size: 0.7rem; }
+    .fighter.foe { top: var(--trainer); right: calc(var(--sprite) + 10px); width: min(20vw, 112px); }
+    .fighter.you { bottom: 4%; left: 0; width: min(22vw, 124px); }
+    #battle-log { min-height: 48px; }
   }
 
   /* ---- Catch overlay -------------------------------------------------------------------------
@@ -717,7 +855,7 @@
   #catch-ball-icon svg { width: 30px; height: 30px; stroke: none; image-rendering: pixelated; }
   #catch-ball-count {
     position: absolute; bottom: 3px; right: 4px;
-    font-size: 0.6rem; font-weight: 700; color: var(--gold);
+    font-size: 0.78rem; font-weight: 700; color: var(--gold);
     text-shadow: 0 1px 2px #000;
   }
 
@@ -739,7 +877,7 @@
      throw, the miss and the break-out are all visible in the 3D scene, and captioning them just
      put a banner over the thing it was describing. */
   #catch-name {
-    font-weight: 700; font-size: 1.3rem; line-height: 1.4;
+    font-weight: 700; font-size: 1.69rem; line-height: 1.4;
     text-shadow: 0 2px 0 rgba(0,0,0,0.6), 0 3px 8px rgba(0,0,0,0.4);
   }
   #catch-sub { margin-top: 7px; }
@@ -754,7 +892,7 @@
   #catch-grade {
     position: absolute; top: 30%; left: 50%;
     transform: translate(-50%, -50%);
-    font-weight: 700; font-size: clamp(1.15rem, 5.4vw, 1.7rem);
+    font-weight: 700; font-size: clamp(1.495rem, 7.02vw, 2.21rem);
     color: var(--gold); text-align: center;
     text-shadow: 0 3px 0 var(--gold-dark), 0 4px 10px rgba(0,0,0,0.5);
     pointer-events: none; opacity: 0;
@@ -784,7 +922,7 @@
     border: 1px solid var(--edge-lt);
     border-radius: 50%;
     box-shadow: 0 3px 10px rgba(0,0,0,0.45);
-    font-weight: 700; font-size: 0.6rem; cursor: pointer;
+    font-weight: 700; font-size: 0.78rem; cursor: pointer;
   }
   .ball-chip:active { transform: scale(0.92); }
   .ball-chip svg { width: 26px; height: 26px; image-rendering: pixelated; }
@@ -800,15 +938,15 @@
   #screen-end { justify-content: center; align-items: center; text-align: center; }
   #end-kicker {
     font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase;
-    font-size: 0.7rem; text-shadow: 0 2px 4px rgba(0,0,0,0.6);
+    font-size: 0.91rem; text-shadow: 0 2px 4px rgba(0,0,0,0.6);
   }
   #end-title {
-    font-weight: 700; font-size: clamp(1.8rem, 7vw, 3rem);
+    font-weight: 700; font-size: clamp(2.34rem, 9.1vw, 3.9rem);
     margin: 0.5rem 0 0.4rem; line-height: 1.25;
     color: var(--gold);
     text-shadow: 0 3px 0 var(--gold-dark), 0 4px 8px rgba(0,0,0,0.4);
   }
-  #end-sub { color: var(--ink-dim); font-size: 0.85rem; max-width: 320px; }
+  #end-sub { color: var(--ink-dim); font-size: 1.105rem; max-width: 320px; }
   #end-stats { margin: 18px 0; width: min(330px, 100%); }
   #screen-end .btn-col { width: min(300px, 100%); }
 
@@ -828,7 +966,7 @@
     animation: spin 0.8s linear infinite;
   }
   #boot .boot-label {
-    font-weight: 700; font-size: 0.8rem; color: var(--gold);
+    font-weight: 700; font-size: 1.04rem; color: var(--gold);
     text-shadow: 0 2px 4px rgba(0,0,0,0.5);
   }
   @keyframes spin { to { transform: rotate(360deg); } }
@@ -856,6 +994,15 @@
     <g id="px-pause">
       <rect x="1" y="1" width="4" height="10" fill="#100a1c"/><rect x="7" y="1" width="4" height="10" fill="#100a1c"/>
       <rect x="2" y="2" width="2" height="8" fill="#fff7e6"/><rect x="8" y="2" width="2" height="8" fill="#fff7e6"/>
+    </g>
+    <!-- Poke Ball, 12x12. Used for the team counters in the battle info boxes and the party
+         indicator on the dungeon HUD. Round rather than pixel-stepped: at the 14-15px these render
+         at, a stepped circle reads as a smudge. -->
+    <g id="px-ball">
+      <circle cx="6" cy="6" r="5.4" fill="#f2f2f4" stroke="#14161c" stroke-width="1.1"/>
+      <path d="M0.6 6 A5.4 5.4 0 0 1 11.4 6 Z" fill="#e5453b"/>
+      <rect x="0.6" y="5.25" width="10.8" height="1.5" fill="#14161c"/>
+      <circle cx="6" cy="6" r="1.85" fill="#f2f2f4" stroke="#14161c" stroke-width="0.9"/>
     </g>
   </defs>
 </svg>
@@ -903,14 +1050,19 @@
     <button class="btn secondary icon" id="btn-pause">
       <svg viewBox="0 0 12 12" shape-rendering="crispEdges"><use href="#px-pause" /></svg>
     </button>
-    <div id="floor-chip">B<span id="floor-num">1</span>F <span class="theme" id="floor-theme">-</span></div>
+    <div id="floor-chip">
+      <span class="theme" id="floor-theme">-</span>
+      <span class="fl">B<span id="floor-num">1</span>F</span>
+    </div>
     <div id="buff-strip"></div>
-    <div id="lead-hp">
-      <div class="name"><span id="lead-name">-</span> <span class="party-count" id="party-count"></span></div>
-      <div class="hpbar" id="lead-hpbar"><i style="width:100%"></i></div>
+    <div id="lead-panel">
+      <button id="btn-lead" aria-label="Swap the Pokemon you have out">
+        <div class="name"><span id="lead-name">-</span><span class="swap-tag">SWAP</span></div>
+        <div class="hpbar" id="lead-hpbar"><i style="width:100%"></i></div>
+      </button>
+      <div id="party-balls"></div>
     </div>
     <div id="joystick"><div id="joystick-knob"></div></div>
-    <div id="tap-hint" class="hidden">Tap anywhere to move</div>
     <div id="toast"></div>
   </div>
 
@@ -949,8 +1101,11 @@
   <!-- ============ BAG ============ -->
   <div class="screen sheet" id="screen-bag">
     <h2 class="screen-title">Bag</h2>
-    <div class="team-strip" id="bag-team"></div>
+    <!-- The roster cards live INSIDE the scroll pane with the items. At two rows of model-topped
+         cards the strip is ~270px tall; pinned above a separate scroller it left the item grid
+         about one row high on a phone. -->
     <div class="scroll" style="min-height:0">
+      <div class="team-strip" id="bag-team"></div>
       <div class="item-grid" id="bag-items"></div>
       <div class="empty-note" id="bag-empty" style="display:none">Your bag is empty. Items are scattered across every floor - the glowing gems.</div>
     </div>
@@ -1008,7 +1163,7 @@
   <div class="screen sheet" id="screen-dex">
     <h2 class="screen-title">Pokedex</h2>
     <canvas id="dex-preview"></canvas>
-    <div class="starter-name" id="dex-name" style="font-size:12px;margin:12px 0 4px">-</div>
+    <div class="starter-name" id="dex-name" style="font-size:16px;margin:12px 0 4px">-</div>
     <div class="stat-grid" id="dex-stats"></div>
     <div class="legend">
       <span><i style="background:var(--teal)"></i>Caught</span>
@@ -1021,20 +1176,61 @@
     <button class="btn secondary" id="btn-dex-back" style="margin-top:14px">Back</button>
   </div>
 
-  <!-- ============ BATTLE ============ -->
+  <!-- ============ BATTLE ============
+       Mainline Pokemon's layout: foe up-right seen from the front, you down-left seen from behind,
+       each side's info box on the opposite corner from its Pokemon. The trainer sprite stands
+       behind the foe's Pokemon in Grunt and Giovanni fights and is hidden for wild encounters, as
+       is the Poke Ball strip in each box.
+  -->
   <div class="screen overlay" id="screen-battle">
-    <div>
-      <div class="battle-title"><span id="battle-foe">Team Rocket Grunt</span></div>
-      <div class="screen-sub" id="battle-sub" style="margin:8px 0 10px">wants to battle!</div>
-      <div class="combat-side" id="enemy-side"></div>
-    </div>
-    <div id="battle-log">...</div>
-    <div>
-      <div class="combat-side" id="party-side"></div>
-      <div class="btn-row" style="margin-top:12px">
-        <button class="btn secondary small" id="btn-battle-continue" style="display:none">Continue</button>
+    <div id="battle-field">
+      <div class="mon-box foe" id="foe-box">
+        <div class="mb-name"><span class="mb-stage" id="foe-stage"></span><span id="foe-name">-</span></div>
+        <div class="mb-bar"><span class="hp-label">HP</span><div class="hpbar" id="foe-hpbar"><i style="width:100%"></i></div></div>
+        <div class="mb-balls" id="foe-balls"></div>
+      </div>
+
+      <img id="foe-trainer" class="hidden" alt="" />
+      <div id="foe-trainer-name" class="hidden"></div>
+
+      <div class="fighter foe" id="foe-fighter">
+        <div class="platform"></div>
+        <canvas id="foe-model"></canvas>
+      </div>
+
+      <div class="fighter you" id="you-fighter">
+        <div class="platform"></div>
+        <canvas id="you-model"></canvas>
+      </div>
+
+      <div class="mon-box you" id="you-box">
+        <div class="mb-name"><span class="mb-stage" id="you-stage"></span><span id="you-name">-</span></div>
+        <div class="mb-bar"><span class="hp-label">HP</span><div class="hpbar" id="you-hpbar"><i style="width:100%"></i></div></div>
+        <div class="mb-hpnum" id="you-hpnum">- / -</div>
+        <div class="mb-balls" id="you-balls"></div>
       </div>
     </div>
+
+    <div id="battle-bottom">
+      <div id="battle-log">...</div>
+      <div id="battle-actions">
+        <button class="btn secondary small" id="btn-battle-swap">Swap</button>
+        <button class="btn small" id="btn-battle-continue" style="display:none">Continue</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ PARTY SWITCH ============
+       Reached from the Swap button in battle and from the lead-Pokemon panel in the dungeon HUD.
+       In battle it changes who is out right now; in the dungeon it changes who you are steering.
+  -->
+  <div class="screen overlay" id="screen-switch">
+    <h2 class="screen-title">Choose a Pokemon</h2>
+    <div class="screen-sub" id="switch-sub">-</div>
+    <div class="scroll" style="min-height:0">
+      <div class="team-strip" id="switch-team"></div>
+    </div>
+    <button class="btn secondary" id="btn-switch-back" style="margin-top:14px">Back</button>
   </div>
 
   <!-- ============ CATCH ============
@@ -1063,7 +1259,7 @@
     <h2 class="screen-title">Team is full!</h2>
     <div class="screen-sub" id="swap-sub">-</div>
     <div class="team-strip" id="swap-team"></div>
-    <div class="panel" style="font-size:11px;color:var(--ink-dim);text-align:center;line-height:1.7">
+    <div class="panel" style="font-size:14px;color:var(--ink-dim);text-align:center;line-height:1.7">
       Tap a party slot to swap the newcomer in, or release it and keep your team as it is.
     </div>
     <div class="btn-col" style="margin-top:14px">

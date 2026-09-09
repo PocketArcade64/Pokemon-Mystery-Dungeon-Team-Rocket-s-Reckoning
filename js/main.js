@@ -18,7 +18,8 @@ import { startCatch, endCatch, updateCatch, setCatchBall, catchState, catchScene
 import * as inv from './inventory.js';
 import * as ui from './ui-screens.js';
 import { uiHooks } from './ui-screens.js';
-import { unlockAudio, playMusic, musicForMode, prefetchMusic, releaseMusic, sfx, applyVolumes } from './audio.js';
+import { unlockAudio, playMusic, playMusicExclusive, releaseMusicLock, musicForMode, prefetchMusic,
+         releaseMusic, sfx, applyVolumes } from './audio.js';
 
 const PLAYER_SPEED = 4.7;
 const player = { x: 0, z: 0 };
@@ -44,8 +45,18 @@ function setMode(next, { returnTo = null } = {}) {
       ui.renderStarterSelect(offerStarters());
       break;
     case 'playing':
-      ui.setControlHint(state.settings.controls);
       ui.updateHUD();
+      break;
+    // Coming BACK from the party switch: the screen is already built, it just has to be brought
+    // back in step with whatever changed while it was away.
+    case 'battle':
+      if (battle) ui.updateBattleRows(battle);
+      break;
+    case 'switch':
+      ui.renderSwitch({
+        inBattle: state.returnTo === 'battle',
+        currentIndex: state.returnTo === 'battle' ? battle?.partyIndex ?? 0 : 0,
+      });
       break;
     case 'pause':
       ui.renderPause();
@@ -133,7 +144,11 @@ function enterFloor(index) {
 
   // The floor boss stands ON the up-stairs tile, so you cannot ascend without going through them.
   const isFinal = index === FLOORS_PER_RUN - 1;
-  prefetchMusic(isFinal ? 'giovanni' : 'grunt');
+  // On the last floor, warm Giovanni's own defeat fanfare alongside his battle theme — it has to
+  // land on the frame he goes down, and it is the only track cued by the fight rather than by a
+  // screen change.
+  if (isFinal) prefetchMusic('giovanni', 'victory-boss');
+  else prefetchMusic('grunt');
   const fig = isFinal
     ? makeTrainerFigure({ suit: 0x23232b, accent: 0xf5a623, hair: 0x14141a, scale: 1.2 })
     : makeTrainerFigure({ suit: 0x1d1d24, accent: 0xd8202a, scale: 1.0 });
@@ -160,20 +175,19 @@ function enterFloor(index) {
   // Only now that the new theme is the one playing: a run walks through up to eleven of these and
   // each decoded theme is tens of megabytes, so the floor we just left gives its buffer back.
   if (leavingTheme && leavingTheme !== theme.id) releaseMusic(leavingTheme);
-  ui.banner({
-    kicker: isFinal ? 'The Bottom' : 'Descending',
-    main: theme.name,
-    sub: isFinal ? `Basement Floor ${index + 1} - Giovanni is here` : `Basement Floor ${index + 1}`,
-    ms: 1800,
-  });
+  // Mystery Dungeon's floor card, and nothing more than Mystery Dungeon puts on it: the dungeon's
+  // NAME on the first line and the FLOOR under it. No kicker — the empty element collapses.
+  ui.banner({ kicker: '', main: theme.name, sub: `B${index + 1}F`, ms: 1800 });
 }
 
 function advanceFloor() {
   const run = state.run;
   if (run.floorIndex + 1 >= FLOORS_PER_RUN) { winRun(); return; }
+  // The descending-stairs sound, then straight into the next floor's card — PMD shows ONE title
+  // card per floor, so the old "Floor Clear / Up the stairs" banner that used to play first is
+  // gone. enterFloor puts the card up itself.
   sfx('stairs');
-  ui.banner({ kicker: 'Floor Clear', main: 'Up the stairs', sub: 'The way down opens', ms: 1200 })
-    .then(() => { if (state.run) enterFloor(run.floorIndex + 1); });
+  enterFloor(run.floorIndex + 1);
 }
 
 // The lead Pokemon is what you actually steer, so the model has to follow party changes
@@ -196,8 +210,8 @@ function winRun() {
   state.stats.giovanniDefeats++;
   for (const m of inv.partyAlive()) recordDex('winnerDex', m.dex);
   saveStats();
-  // No sting here: the victory fanfare has been playing since Giovanni went down, and the win
-  // screen carries it over.
+  // No sting here, and no playMusic call either: Victory! (Team Galactic) has been playing since
+  // Giovanni went down and holds the music lock, so the win screen simply carries it over.
   ui.renderEnd({
     won: true,
     floorReached: run.floorIndex + 1,
@@ -299,7 +313,10 @@ function finishBattle(result) {
     ui.battleLog('The Grunt scrambles off the stairs!');
     ui.showBattleContinue('Take the stairs');
   } else {
-    playMusic('victory');
+    // Giovanni gets his own, bigger fanfare, and it OWNS the speakers from here: playMusicExclusive
+    // locks every later playMusic out, so the win screen and anything the player opens on the way
+    // through it stay on this track. releaseMusicLock() runs when they leave the win screen.
+    playMusicExclusive('victory-boss');
     ui.battleLog('Giovanni is beaten. The dungeon is yours.');
     ui.showBattleContinue('Finish the run');
   }
@@ -344,9 +361,24 @@ function knockOutBoss() {
 function beginCatch(wild) {
   const ballId = inv.activeBall();
   if (!ballId) {
+    // An empty bag means the catch minigame cannot open at all, so the encounter has to be
+    // resolved right here or the wild is left standing inside the player.
+    //
+    // A wild you have already BEATEN IN BATTLE is gone for good. It has nothing left to give and,
+    // being one of the aggressive ones, it would otherwise chase you forever: updateWilds re-homes
+    // an aggressive wild onto the player every single frame, so the cooldown below suppresses the
+    // encounter while the body keeps walking straight through you. That was the bug. Knocking a
+    // wild out and having it leave is also what the mainline games do.
+    if (wild.defeated) {
+      removeWild(wild);
+      ui.toast(`No Poke Balls left - ${CATALOG_BY_DEX.get(wild.dex)?.name || 'it'} got away!`);
+      setMode('playing');
+      return;
+    }
+    // One you merely bumped into is left on the floor: you might still find a ball down here. It
+    // goes on a cooldown, which updateWilds also reads as "do not chase", and walks away rather
+    // than standing in your footprint.
     ui.toast('You have no Poke Balls left!');
-    // Leave the wild alone for a while so you are not stuck bumping into it with an empty bag,
-    // and send it walking off rather than leaving it standing in your footprint.
     wild.cooldownUntil = performance.now() + 10000;
     sendWildAway(wild);
     setMode('playing');
@@ -389,6 +421,16 @@ function beginCatch(wild) {
   });
   setMode('catch');
   ui.renderCatchUI({ dex: wild.dex, activeBall: ballId });
+}
+
+// Take a wild off the floor for good — body and all. There is no wild-vs-player collision, so a
+// wild that stays in the world after its encounter has ended walks straight through the player;
+// anything that ends an encounter permanently has to come through here.
+function removeWild(wild) {
+  if (!wild || wild.gone) return;
+  wild.gone = true;
+  disposeObject(wild.obj);
+  wild.obj = null;
 }
 
 // Point a wild away from the player and let it walk off. Used when an encounter cannot start — a
@@ -442,9 +484,7 @@ function onCatchFlee() {
   const wild = catchCtx?.wild;
   endCatch();
   if (wild && !wild.gone) {
-    wild.gone = true;
-    disposeObject(wild.obj);
-    wild.obj = null;
+    removeWild(wild);
     ui.toast(`${CATALOG_BY_DEX.get(wild.dex)?.name || 'It'} slipped away.`);
   }
   catchCtx = null;
@@ -593,7 +633,9 @@ window.addEventListener('keydown', unlock, { once: true });
 Object.assign(uiHooks, {
   startRun: () => setMode('starter'),
   chooseStarter: (dex) => beginRun(dex),
-  goTitle: () => setMode('title', { returnTo: 'title' }),
+  // Leaving the win screen is what ends Giovanni's fanfare's hold on the mixer, by either door:
+  // the title screen has its own theme and a new run needs a floor theme.
+  goTitle: () => { releaseMusicLock(); setMode('title', { returnTo: 'title' }); },
   resume: () => setMode('playing'),
   quitRun: () => { if (state.run) loseRun({ abandoned: true }); else setMode('title'); },
   openPause: () => setMode('pause'),
@@ -621,7 +663,6 @@ Object.assign(uiHooks, {
     state.settings.controls = m;
     saveSettings();
     input.setMode(m);
-    ui.setControlHint(m);
   },
   battleContinue: onBattleContinue,
   catchFlee: onCatchFlee,
@@ -629,6 +670,36 @@ Object.assign(uiHooks, {
     inv.itemApi.setActiveBall(id);
     setCatchBall(id, inv.countOf(id));
     if (catchCtx) ui.renderCatchUI({ dex: catchCtx.wild.dex, activeBall: id });
+  },
+  // The Swap button in battle and the lead-Pokemon card in the dungeon both land here. Which one
+  // it was is remembered in state.returnTo, and that is what decides what "swap" means.
+  openSwitch: () => {
+    if (inv.partyAlive().length < 2) { ui.toast('You have nobody else to swap to.'); return; }
+    setMode('switch', { returnTo: state.mode === 'battle' ? 'battle' : 'playing' });
+  },
+  chooseSwitch: (index) => {
+    const target = inv.party()[index];
+    if (!target || target.hp <= 0) return;
+    sfx('confirm');
+    if (state.returnTo === 'battle' && battle) {
+      // In battle it changes who is out RIGHT NOW. Deliberately free: combat is automatic, so
+      // there is no turn to give up, and charging one would just be a hidden penalty.
+      if (index !== battle.partyIndex) {
+        battle.partyIndex = index;
+        ui.battleLog(`${target.name} was sent out!`);
+      }
+      setMode('battle');
+      ui.updateBattleRows(battle);
+      return;
+    }
+    // In the dungeon it changes who you steer, which is party slot 0 — so move them there and
+    // keep everyone else in order behind them.
+    const p = inv.party();
+    p.splice(index, 1);
+    p.unshift(target);
+    syncPlayerModel();
+    setMode('playing');
+    ui.toast(`${target.name} takes the lead.`);
   },
   resolveSwap: (index) => {
     const res = inv.resolvePendingCatch(index);
@@ -641,7 +712,7 @@ Object.assign(uiHooks, {
     syncPlayerModel();
     setMode('playing');
   },
-  newRun: () => setMode('starter'),
+  newRun: () => { releaseMusicLock(); setMode('starter'); },
 });
 
 // ---- Boot -------------------------------------------------------------------------------------
