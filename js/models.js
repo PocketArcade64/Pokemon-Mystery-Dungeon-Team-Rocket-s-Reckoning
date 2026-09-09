@@ -203,7 +203,11 @@ export const BALL_MODEL_PATHS = {
   'premier-ball': QB + 'Premier Ball Model/bdPremierBallModel.obj',
 };
 
-export function createBallObject(itemId, { size = 0.42 } = {}) {
+// `onReady` fires once the real model has replaced the placeholder. Anything a caller sets on the
+// group's meshes — renderOrder, castShadow — is set on the PLACEHOLDER only if it is applied at
+// call time, because the swap happens a load later; the catch minigame needs both re-applied or
+// the thrown ball renders behind the depthTest-off capture rings.
+export function createBallObject(itemId, { size = 0.42, onReady = null } = {}) {
   const group = new THREE.Group();
   const ph = new THREE.Mesh(
     new THREE.SphereGeometry(size / 2, 12, 10),
@@ -217,6 +221,8 @@ export function createBallObject(itemId, { size = 0.42 } = {}) {
     group.remove(ph);
     ph.geometry.dispose(); ph.material.dispose();
     group.add(fitModel(model, size, { strip: /_Base$/i }));
+    group.userData.ready = true;
+    onReady?.(group);
   });
   return group;
 }

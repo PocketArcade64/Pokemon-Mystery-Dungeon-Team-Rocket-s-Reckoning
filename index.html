@@ -663,14 +663,68 @@
     to { opacity: 0; transform: translateY(-34px); }
   }
 
-  /* ---- Catch overlay ------------------------------------------------------------------------ */
-  #screen-catch { justify-content: space-between; pointer-events: none; background: transparent; }
-  /* ONLY the real controls take touches here. #catch-bottom is a full-width block sitting over the
-     bottom fifth of the screen — which is exactly where the ball is and where a GO swipe starts —
-     so if it opts into pointer events, a grab that begins below the ball never reaches the canvas
-     and the throw is silently dead. Everything but the chips and buttons falls through. */
-  #screen-catch .ball-chip, #screen-catch .btn { pointer-events: auto; }
-  #catch-top { text-align: center; }
+  /* ---- Catch overlay -------------------------------------------------------------------------
+     Pokemon GO's encounter HUD. Three controls and nothing else:
+        RUN            top-left    (#btn-catch-flee)
+        the POKE BALL  bottom-mid  — NOT here: it is the 3D ball, drawn on the canvas by catch.js
+        CHANGE BALL    bottom-right(#btn-catch-ball, with #catch-ballmenu popping up above it)
+     Everything is absolutely positioned rather than laid out in the flex column, because the ball
+     the player throws lives on the canvas underneath and the HUD has to leave the middle and the
+     whole bottom-centre of the screen alone. */
+  /* No `display` override here on purpose: `.screen` hides with display:none and `.screen.visible`
+     shows it, and an id-level `display` would outrank both and pin the overlay on screen forever.
+     Every child is absolutely positioned, so the inherited flex column has nothing to lay out. */
+  #screen-catch { pointer-events: none; background: transparent; padding: 0; }
+  /* ONLY the two round buttons and the ball menu take touches. Any full-width block that opts into
+     pointer events here silently kills the throw: a GO swipe starts at the bottom-centre of the
+     screen, and if a HUD element is sitting over that band the grab never reaches the canvas.
+     This bit is a re-fix of a real bug — do not widen the selector to `#screen-catch > *`. */
+  #screen-catch .go-round, #screen-catch .ball-chip { pointer-events: auto; }
+
+  /* GO's round HUD buttons: a dark translucent disc with a hairline edge. */
+  .go-round {
+    position: absolute;
+    width: 52px; height: 52px; padding: 0;
+    display: grid; place-items: center;
+    appearance: none; border: 1px solid var(--edge-lt);
+    border-radius: 50%;
+    background: rgba(11,16,32,0.72);
+    box-shadow: 0 3px 10px rgba(0,0,0,0.45);
+    color: #fff; font: inherit; cursor: pointer;
+    transition: transform 0.06s ease, background 0.12s ease;
+  }
+  .go-round:active { transform: scale(0.92); background: rgba(11,16,32,0.9); }
+  .go-round svg { width: 26px; height: 26px; fill: none; stroke: #fff; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+
+  #btn-catch-flee { top: calc(var(--sat) + 14px); left: calc(var(--sal) + 14px); }
+
+  /* The ball swap. Bigger than the Run button and carrying its count, because it is the only
+     control on this screen you make a decision with. */
+  #btn-catch-ball {
+    bottom: calc(var(--sab) + 26px); right: calc(var(--sar) + 16px);
+    width: 62px; height: 62px;
+  }
+  #catch-ball-icon { display: block; width: 30px; height: 30px; line-height: 0; }
+  #catch-ball-icon svg { width: 30px; height: 30px; stroke: none; image-rendering: pixelated; }
+  #catch-ball-count {
+    position: absolute; bottom: 3px; right: 4px;
+    font-size: 0.6rem; font-weight: 700; color: var(--gold);
+    text-shadow: 0 1px 2px #000;
+  }
+
+  /* The picker, stacked upward from the swap button exactly as GO stacks it. */
+  #catch-ballmenu {
+    position: absolute;
+    bottom: calc(var(--sab) + 96px); right: calc(var(--sar) + 16px);
+    display: flex; flex-direction: column-reverse; gap: 8px; align-items: flex-end;
+  }
+  #catch-ballmenu.hidden { display: none; }
+
+  #catch-top {
+    position: absolute; top: calc(var(--sat) + 18px); left: 50%;
+    transform: translateX(-50%);
+    text-align: center; width: min(66%, 340px);
+  }
   #catch-name {
     font-weight: 700; font-size: 1.3rem; line-height: 1.4;
     text-shadow: 0 2px 0 rgba(0,0,0,0.6), 0 3px 8px rgba(0,0,0,0.4);
@@ -701,30 +755,44 @@
     100% { opacity: 0; transform: translate(-50%, -80%) scale(1); }
   }
 
-  #catch-bottom { display: flex; flex-direction: column; gap: 10px; align-items: center; }
+  /* Both of these float clear of the throw band: the ball sits at 15% up from the bottom and a
+     swipe starts under it, so nothing that could swallow a touch goes below ~30%. */
   #catch-msg {
+    position: absolute; left: 50%; bottom: 40%;
+    transform: translateX(-50%);
     background: rgba(11,16,32,0.9); color: var(--gold);
     border-radius: 8px;
     box-shadow: 0 4px 0 rgba(0,0,0,0.35);
     padding: 0.6rem 1.1rem; font-size: 0.85rem; font-weight: 700; text-align: center;
+    white-space: nowrap; max-width: 92vw;
   }
   #catch-msg.hidden { display: none; }
-  #catch-balls { display: flex; gap: 8px; align-items: center; }
-  .ball-chip {
-    display: flex; align-items: center; gap: 5px;
-    background: rgba(255,255,255,0.08);
-    border: 2px solid transparent;
-    border-radius: 10px;
-    box-shadow: 0 3px 0 rgba(0,0,0,0.4);
-    padding: 0.3rem 0.5rem; font-weight: 700; font-size: 0.68rem; cursor: pointer;
-  }
-  .ball-chip.active { border-color: var(--gold); background: rgba(255,213,79,0.22); }
-  .ball-chip svg { width: 22px; height: 22px; image-rendering: pixelated; }
   #catch-hint {
-    font-size: 0.75rem; color: #fff; text-align: center;
-    background: rgba(0,0,0,0.55); border-radius: 999px; padding: 0.35rem 0.8rem;
+    position: absolute; left: 50%; bottom: 31%;
+    transform: translateX(-50%);
+    font-size: 0.72rem; color: #fff; text-align: center; white-space: nowrap;
+    background: rgba(0,0,0,0.5); border-radius: 999px; padding: 0.3rem 0.75rem;
   }
-  #catch-actions { display: flex; gap: 0.7rem; width: min(330px, 100%); }
+  #catch-hint.hidden { display: none; }
+  /* Icon-only discs, deliberately. A chip wide enough to spell "Great Ball ×4" reaches back over
+     the thrown ball at the bottom middle — and chips take pointer events, so it would eat the
+     start of a swipe while the picker is open. Round and hard right, they clear the ball. */
+  .ball-chip {
+    position: relative;
+    width: 52px; height: 52px;
+    display: grid; place-items: center;
+    background: rgba(11,16,32,0.82);
+    border: 1px solid var(--edge-lt);
+    border-radius: 50%;
+    box-shadow: 0 3px 10px rgba(0,0,0,0.45);
+    font-weight: 700; font-size: 0.6rem; cursor: pointer;
+  }
+  .ball-chip:active { transform: scale(0.92); }
+  .ball-chip svg { width: 26px; height: 26px; image-rendering: pixelated; }
+  .ball-chip span {
+    position: absolute; bottom: 2px; right: 4px;
+    color: var(--gold); text-shadow: 0 1px 2px #000;
+  }
 
   /* ---- Swap-or-release ---------------------------------------------------------------------- */
   #screen-swap { justify-content: center; gap: 12px; }
@@ -965,22 +1033,27 @@
     </div>
   </div>
 
-  <!-- ============ CATCH ============ -->
+  <!-- ============ CATCH ============
+       Pokemon GO's encounter screen, laid out exactly as GO lays it out: RUN top-left, the big
+       Poke Ball itself bottom-middle (that one is 3D, drawn on the canvas by js/catch.js, not
+       DOM), and the ball-swap bottom-right. Nothing else may take a pointer event — see the CSS.
+  -->
   <div class="screen" id="screen-catch">
+    <button id="btn-catch-flee" class="go-round" aria-label="Run away">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5 L8 12 L15 19" /></svg>
+    </button>
     <div id="catch-top">
       <div id="catch-name">Wild Pokémon</div>
-      <div id="catch-sub">Drag the ball to aim · flick up to throw</div>
+      <div id="catch-sub"></div>
     </div>
     <div id="catch-grade"></div>
-    <div id="catch-bottom">
-      <div id="catch-msg" class="hidden"></div>
-      <div id="catch-balls"></div>
-      <div id="catch-hint">Swirl the ball first for a curveball</div>
-      <div id="catch-actions">
-        <button class="btn small" id="btn-catch-again" style="display:none">Throw Again</button>
-        <button class="btn secondary small" id="btn-catch-flee">Leave It</button>
-      </div>
-    </div>
+    <div id="catch-msg" class="hidden"></div>
+    <div id="catch-hint">Flick the ball at it · swirl first to curve</div>
+    <div id="catch-ballmenu" class="hidden"></div>
+    <button id="btn-catch-ball" class="go-round" aria-label="Change Poké Ball">
+      <span id="catch-ball-icon"></span>
+      <span id="catch-ball-count">×0</span>
+    </button>
   </div>
 
   <!-- ============ SWAP OR RELEASE ============ -->

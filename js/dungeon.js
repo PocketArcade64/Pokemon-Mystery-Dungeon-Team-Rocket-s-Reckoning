@@ -314,7 +314,9 @@ export function findPath(floor, from, to) {
 }
 
 // ---- 3D build-out -----------------------------------------------------------------------------
-function makeProp(kind, theme) {
+// Exported because the catch minigame dresses its own stage with the same props as the floor you
+// are standing on — that is what makes each area's catch background read as that area.
+export function makeProp(kind, theme) {
   const g = new THREE.Group();
   const mat = (color, opts = {}) => new THREE.MeshStandardMaterial({ color, ...opts });
   const add = (geo, m, x, y, z) => {
