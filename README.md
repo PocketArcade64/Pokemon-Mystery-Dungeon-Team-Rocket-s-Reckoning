@@ -48,6 +48,6 @@ Please update the bag menu so it shows the Pokemon models at the top and their h
 
 On the main screen when exploring the dungeon, remove the tap to move or other tooltip on the bottom left. Redo the bottom right of the screen to show the name of the pokemon you currently have out with its health bar below it - if you click on this you can swap to another team member. Below that on the bottom right is any number of pokeballs depending on how many pokemon are on your team. 
 
-Move the floor and dungeon name to below the map. Also when transitioning between floors, show exactly the same format as Pokemon Mystery Dungeon - Dungeon name on first line then below that is the floor number. I will also add the descending stairs sound effect  (this track was added on GitHub. Please look there.)
+Move the floor and dungeon name to below the map. Also when transitioning between floors, show exactly the same format as Pokemon Mystery Dungeon - Dungeon name on first line then below that is the floor number. I will also add the descending stairs sound effect (SE_ACT_STAIRS_DOWN.wav) (this track was added on GitHub. Please look there.)
 
-I also added sound effects for when you Evolve (213. Evolution.mp3) and a pokemon joins your team (208. Pokemon Joins.mp3) (this track was added on GitHub. Please look there.)
+I also added sound effects for when you Evolve (213. Evolution.mp3) and a pokemon joins your team (208. Pokemon Joins.mp3), when you pick up coins (SE_ACT_MONEY.wav) (this track was added on GitHub. Please look there.)
