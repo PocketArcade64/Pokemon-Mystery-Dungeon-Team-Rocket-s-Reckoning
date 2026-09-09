@@ -345,7 +345,9 @@ function selectDex(dex) {
   if (s.winnerDex.includes(dex)) tags.push('won a run');
   else if (s.caughtDex.includes(dex)) tags.push('caught');
   else tags.push('seen');
-  $('dex-name').innerHTML = `${c.name} <span style="font-size:12px;color:var(--ink-dim)">· ${c.types.join('/')} · ${tags.join(', ')}</span>`;
+  // The trailing detail drops out of the display face: in Press Start 2P it is wide enough to
+  // wrap onto a second line and shove the stat grid down.
+  $('dex-name').innerHTML = `${c.name}<span class="meta-inline">${c.types.join('/')} · ${tags.join(', ')}</span>`;
   $('dex-grid').querySelectorAll('.dex-cell').forEach(el => {
     el.classList.toggle('selected', Number(el.dataset.dex) === dex);
   });
@@ -418,7 +420,7 @@ export function renderCatchUI({ dex, activeBall, msg = null, showAgain = false, 
   const msgEl = $('catch-msg');
   msgEl.classList.toggle('hidden', !msg);
   if (msg) msgEl.textContent = msg;
-  $('catch-hint').textContent = hint || 'Flick up to throw — harder for distance, and lead the target';
+  $('catch-hint').textContent = hint || 'Land it in the shrinking ring · swirl first to curve';
   $('btn-catch-again').style.display = showAgain ? 'block' : 'none';
 
   const chips = BALL_IDS.filter(id => inv.countOf(id) > 0).map(id => {
@@ -433,6 +435,21 @@ export function renderCatchUI({ dex, activeBall, msg = null, showAgain = false, 
 }
 
 export function setCatchFleeLabel(label) { $('btn-catch-flee').textContent = label; }
+
+// "NICE!" / "GREAT!" / "EXCELLENT!" / "CURVEBALL!" on contact. The class has to come off and go
+// back on for the animation to restart on a second throw, and reading offsetWidth in between is
+// what forces the style flush that makes the removal take effect.
+export function flashCatchGrade(label) {
+  const el = $('catch-grade');
+  // One <span> per award so a curveball and a throw grade stack instead of running off the edges.
+  el.innerHTML = label.split(' ')
+    .filter(Boolean)
+    .map(part => `<span>${part}</span>`)
+    .join('');
+  el.classList.remove('pop');
+  void el.offsetWidth;
+  el.classList.add('pop');
+}
 
 // ---- Swap or release --------------------------------------------------------------------------
 let swapSelected = null;

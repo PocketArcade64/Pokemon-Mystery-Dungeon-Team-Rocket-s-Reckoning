@@ -17,7 +17,7 @@ import { hemiLight, dirLight, scene } from './three-setup.js';
 export const WALL = 0, FLOOR = 1, PROP = 2;   // collision grid values
 const PLAYER_RADIUS = 0.34;
 
-// ---- The ten floor themes (design brief §10) ---------------------------------------------------
+// ---- The eleven floor themes (design brief §10, plus a beach) -----------------------------------
 // `types` drives which species can spawn as wild Pokemon on that floor. Colors are all we have to
 // build atmosphere with: there are no themed environment assets, so every floor is Three.js
 // primitives tinted per theme with light prop dressing.
@@ -52,6 +52,9 @@ export const THEMES = [
   { id: 'crystal',  name: 'Crystal Caverns', types: ['Fairy', 'Rock'],
     floorA: 0x5c4f6b, floorB: 0x53475f, wall: 0x392f47, wallTop: 0x8f6fb0,
     fog: 0x1a1322, sky: 0xd9b8ef, ground: 0x33283f, light: 0xf6e6ff, prop: 'crystal' },
+  { id: 'beach',    name: 'Sunlit Shore',    types: ['Water', 'Ground'],
+    floorA: 0xe0cb95, floorB: 0xd3bd85, wall: 0x9c7f4f, wallTop: 0x3f9fbf,
+    fog: 0x2a4a55, sky: 0xbfe9ff, ground: 0x6b5a34, light: 0xfff4d8, prop: 'palm' },
 ];
 
 // Pick 5 distinct themes for a run (no repeats), in a random order.
@@ -381,6 +384,19 @@ function makeProp(kind, theme) {
       }), 0, 0.6, 0);
       add(new THREE.OctahedronGeometry(0.3, 0), mat(0xe6c8ff, { flatShading: true }), 0.36, 0.3, 0.2);
       break;
+    case 'palm': {
+      // A shore palm: leaning trunk, a fanned crown of frond cones, one coconut.
+      add(new THREE.CylinderGeometry(0.1, 0.16, 1.5, 6), mat(0x8a6a43), 0, 0.75, 0)
+        .rotation.set(0, 0, 0.12);
+      for (let i = 0; i < 5; i++) {
+        const a = (i / 5) * Math.PI * 2;
+        add(new THREE.ConeGeometry(0.14, 0.8, 4), mat(0x4f9a45, { flatShading: true }),
+          Math.sin(a) * 0.3, 1.52, Math.cos(a) * 0.3)
+          .rotation.set(Math.cos(a) * 0.9, 0, -Math.sin(a) * 0.9);
+      }
+      add(new THREE.SphereGeometry(0.1, 6, 5), mat(0x6b4a2a), 0.14, 1.42, 0.1);
+      break;
+    }
     default:
       add(new THREE.BoxGeometry(0.7, 0.7, 0.7), mat(theme.wallTop), 0, 0.35, 0);
   }

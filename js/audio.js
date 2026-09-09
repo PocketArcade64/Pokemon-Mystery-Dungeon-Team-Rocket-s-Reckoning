@@ -1,24 +1,37 @@
 // Two independent audio systems with independent volume sliders in Settings:
 //
 //   SFX   — fully synthesized with WebAudio. No files needed, so sound effects always work.
-//   MUSIC — the user-supplied Explorers of Sky mp3s named in assets/music/README.txt.
+//   MUSIC — the user-supplied Explorers of Sky mp3s named in TRACKS below.
 //
 // A MISSING MUSIC FILE IS SILENCE, NOT AN ERROR. The mp3s are dropped in later; every track is
 // probed once, a failure marks it unavailable, and the game carries on. Never gate anything on a
 // track existing.
 import { state } from './state.js';
+import { MUSIC_LOOPS } from './data/music-loops.js';
 
 const MUSIC_DIR = 'assets/music/';
+
+// Every track keyed by the slot that asks for it. The eleven floor slots ARE the theme ids in
+// dungeon.js THEMES, so musicForMode() can hand a theme straight through and a new theme only
+// ever needs one line added here.
 const TRACKS = {
-  title: 'title.mp3',
-  starter: 'starter-select.mp3',
-  dungeon: 'dungeon.mp3',
-  dungeonAlt: 'dungeon-alt.mp3',
-  battle: 'battle.mp3',
-  boss: 'boss.mp3',
-  catch: 'catch.mp3',
-  victory: 'victory.mp3',
-  gameOver: 'game-over.mp3',
+  // Screens and battles
+  menu:      'Pokémon Exploration Team Theme.mp3',           // title + starter select
+  wild:      'Pokémon Platinum - Wild Battle Theme.mp3',     // wild Pokemon encounter
+  grunt:     'Dark Wasteland.mp3',                           // Team Rocket grunt, end of floor
+  giovanni:  "Dialga's Fight to the Finish.mp3",             // Giovanni, final floor
+  // Floor themes, by theme id
+  verdant:   'Apple Woods.mp3',                              // Verdant Forest
+  rocky:     'Aegis Cave.mp3',                               // Rocky Cavern
+  molten:    'Steam Cave.mp3',                               // Molten Caldera
+  frozen:    'Vast Ice Mountain Peak.mp3',                   // Frozen Grotto
+  tidepool:  'Drenched Bluff.mp3',                           // Tidepool Grotto
+  haunted:   'Hidden Land.mp3',                              // Haunted Ruins
+  warehouse: 'Temporal Tower.mp3',                           // Rocket Warehouse
+  desert:    'Quicksand Cave.mp3',                           // Scorched Desert
+  swamp:     'Barren Valley.mp3',                            // Toxic Swamp
+  crystal:   'Crystal Cave.mp3',                             // Crystal Caverns
+  beach:     'Beach Cave.mp3',                               // Sunlit Shore
 };
 
 const elements = new Map();       // key -> HTMLAudioElement
@@ -32,10 +45,27 @@ function element(key) {
   if (elements.has(key)) return elements.get(key);
   const file = TRACKS[key];
   if (!file) return null;
-  const el = new Audio(MUSIC_DIR + file);
+  // Filenames carry spaces and an "é", so percent-encode them rather than trusting the browser.
+  const el = new Audio(MUSIC_DIR + encodeURIComponent(file));
   el.preload = 'auto';
-  el.loop = true;
   el.volume = 0;
+
+  // Four of the tracks open with audio that never comes back round (see js/data/music-loops.js):
+  // play those to the end, then drop into the loop instead of replaying the intro. The rest loop
+  // whole, and native looping is smoother than seeking by hand, so let the browser do it.
+  const loop = MUSIC_LOOPS[file];
+  if (loop && loop.loopStart > 0) {
+    el.loop = false;
+    el.addEventListener('ended', () => {
+      if (currentKey !== key) return;
+      el.currentTime = loop.loopStart;
+      const p = el.play();
+      if (p && p.catch) p.catch(() => {});
+    });
+  } else {
+    el.loop = true;
+  }
+
   // The only signal that a file was never dropped in. Mark it and stop trying.
   el.addEventListener('error', () => {
     unavailable.add(key);
@@ -75,7 +105,6 @@ export function playMusic(key, force = false) {
   const el = element(key);
   if (!el || !unlocked) return;         // no file, or no gesture yet: silence, and that is fine
   el.volume = state.settings.music;
-  el.loop = true;
   const p = el.play();
   if (p && p.catch) p.catch(() => { /* autoplay refused; the next gesture retries */ });
 }
@@ -99,20 +128,26 @@ export function playJingle(key = 'victory') {
   if (p && p.catch) p.catch(() => {});
 }
 
-// Which loop belongs to which screen. Floor themes alternate between the two exploration loops so
-// a five-floor run does not sit on one track the whole way down.
-export function musicForMode(mode, { floorIndex = 0, boss = false } = {}) {
+// Which track belongs to which screen. Floors play their own theme's track, so the music changes
+// with the scenery; anything not listed here (glossary, settings, dex, the end screen) keeps
+// whatever was already playing.
+export function musicForMode(mode, { themeId = null, battleKind = null } = {}) {
   switch (mode) {
-    case 'title': return 'title';
-    case 'starter': return 'starter';
+    case 'title':
+    case 'starter':
+      return 'menu';
     case 'playing':
     case 'paused':
     case 'bag':
-      return floorIndex % 2 === 0 ? 'dungeon' : 'dungeonAlt';
-    case 'battle': return boss ? 'boss' : 'battle';
-    case 'catch': return 'catch';
-    case 'gameover': return 'gameOver';
-    default: return currentKey;
+      return themeId && TRACKS[themeId] ? themeId : currentKey;
+    case 'battle':
+      if (battleKind === 'giovanni') return 'giovanni';
+      if (battleKind === 'grunt') return 'grunt';
+      return 'wild';
+    case 'catch':
+      return 'wild';                    // the minigame follows straight on from a wild encounter
+    default:
+      return currentKey;
   }
 }
 
@@ -169,6 +204,18 @@ export function sfx(name) {
     case 'faint':    tone({ freq: 440, endFreq: 90, dur: 0.5, type: 'sawtooth', gain: 0.22 }); break;
     case 'encounter':tone({ freq: 200, endFreq: 620, dur: 0.28, type: 'sawtooth', gain: 0.24 }); break;
     case 'throw':    noise({ dur: 0.12, gain: 0.16, filterHz: 2400 }); break;
+    // A curveball gets its own whoosh — a rising filtered hiss over the plain throw noise, so
+    // you hear that the spin took before you see the ball bend.
+    case 'curve':    noise({ dur: 0.22, gain: 0.18, filterHz: 1400 });
+                     tone({ freq: 300, endFreq: 900, dur: 0.22, type: 'sine', gain: 0.12 }); break;
+    case 'deflect':  noise({ dur: 0.16, gain: 0.26, filterHz: 700 });
+                     tone({ freq: 180, endFreq: 70, dur: 0.22, type: 'square', gain: 0.18 }); break;
+    // The three throw grades, each one note higher and brighter than the last.
+    case 'nice':     tone({ freq: 784, dur: 0.1, type: 'triangle', gain: 0.2 }); break;
+    case 'great':    [784, 988].forEach((f, i) =>
+                       tone({ freq: f, dur: 0.11, type: 'triangle', gain: 0.22, delay: i * 0.08 })); break;
+    case 'excellent':[784, 988, 1319].forEach((f, i) =>
+                       tone({ freq: f, dur: 0.13, type: 'triangle', gain: 0.24, delay: i * 0.08 })); break;
     case 'wobble':   tone({ freq: 300, dur: 0.06, gain: 0.16, type: 'sine' }); break;
     case 'caught':   [523, 659, 784, 1047].forEach((f, i) =>
                        tone({ freq: f, dur: 0.13, type: 'triangle', gain: 0.22, delay: i * 0.1 })); break;

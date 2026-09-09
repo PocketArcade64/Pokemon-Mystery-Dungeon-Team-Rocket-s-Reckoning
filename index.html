@@ -10,11 +10,23 @@
 <meta name="apple-mobile-web-app-title" content="Team Rocket's Reckoning" />
 <!-- black-translucent keeps the Dynamic Island area one consistent color instead of flipping. -->
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-<meta name="theme-color" content="#0a0d18" />
+<meta name="theme-color" content="#100a1c" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;800&family=Nunito:wght@400;700;900&display=swap" rel="stylesheet" />
+<!-- Press Start 2P is the display face (titles, buttons, numbers); Silkscreen carries body copy,
+     because Press Start 2P is unreadable in a paragraph at any size that fits a phone. -->
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Silkscreen:wght@400;700&display=swap" rel="stylesheet" />
 <style>
+  /* =============================================================================================
+     PIXEL-ART UI, Pokémon Rumble Rush flavoured: chunky toy-bright colour over a dark plum, every
+     surface fenced in a hard black outline, no curve anywhere. Three rules make the whole thing
+     hold together, and breaking any one of them is what makes pixel UI look like web UI:
+       1. NO border-radius, NO blurred shadows. Bevels are solid offset shadows at whole pixels.
+       2. Colour fills are FLAT BANDS (a two-stop gradient with both stops at the same %), never
+          smooth ramps — a smooth gradient cannot be drawn with a limited palette, so it reads
+          instantly as "not pixel art".
+       3. Everything is a multiple of --px, so nothing lands on a half pixel.
+     ============================================================================================= */
   :root {
     /* Safe-area shorthands. Every HUD element and every screen's padding is built from these —
        nothing may sit under the Dynamic Island or the home indicator. */
@@ -23,17 +35,26 @@
     --sal: env(safe-area-inset-left, 0px);
     --sar: env(safe-area-inset-right, 0px);
 
-    --ink: #eef1fb;
-    --ink-dim: #a7b0cd;
-    --panel: #161c33;
-    --panel-2: #1e2647;
-    --edge: #2f3a63;
-    --gold: #f5c74a;
-    --gold-dark: #b98a12;
-    --rocket: #d8202a;
-    --teal: #46d7b0;
-    --violet: #8b5cf6;
-    --danger: #e5453b;
+    --px: 3px;                /* the nominal pixel: every border and bevel is a multiple of it */
+
+    --void: #100a1c;          /* the outline colour — every panel and button is fenced in it */
+    --void-2: #1b1030;
+    --ink: #fff7e6;
+    --ink-dim: #ab9ccf;
+    --panel: #2a1c46;
+    --panel-2: #3b2864;
+    --edge: #6b4fa8;
+    --edge-lt: #9a7ede;
+    --gold: #ffc63c;
+    --gold-lt: #ffe486;
+    --gold-dark: #a86407;
+    --rocket: #ef3b45;
+    --rocket-dark: #8b0f18;
+    --teal: #3ee6ae;
+    --teal-dark: #0d8f68;
+    --violet: #a76bff;
+    --danger: #ff4d5a;
+    --danger-dark: #8d1220;
   }
 
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -41,13 +62,17 @@
   html, body {
     margin: 0; padding: 0; width: 100%; height: 100%;
     overflow: hidden;
-    background: #0a0d18;
+    background: var(--void);
     touch-action: none;
     overscroll-behavior: none;
     -webkit-user-select: none; user-select: none;
     color: var(--ink);
-    font-family: 'Nunito', -apple-system, system-ui, 'Segoe UI', sans-serif;
-    font-weight: 700;
+    font-family: 'Silkscreen', 'Courier New', monospace;
+    font-weight: 400;
+    letter-spacing: 0.2px;
+    /* Pixel art must never be smoothed on the way to the screen. */
+    image-rendering: pixelated;
+    -webkit-font-smoothing: none;
   }
 
   /* lvh = LARGE viewport unit: the full screen INCLUDING the iOS home-indicator zone. dvh and
@@ -57,7 +82,11 @@
     html, body, #game-canvas, #ui-root { height: 100lvh; }
   }
 
-  h1, h2, h3, .display { font-family: 'Baloo 2', 'Nunito', sans-serif; font-weight: 800; }
+  h1, h2, h3, .display {
+    font-family: 'Press Start 2P', 'Silkscreen', monospace;
+    font-weight: 400;
+    letter-spacing: 0;
+  }
 
   #game-canvas {
     position: fixed; inset: 0;
@@ -80,110 +109,220 @@
     position: absolute; inset: 0;
     display: none;
     flex-direction: column;
-    padding: calc(var(--sat) + 14px) calc(var(--sar) + 16px) calc(var(--sab) + 16px) calc(var(--sal) + 16px);
+    /* The extra bottom padding is clearance for a pixel button's drop shadow: it hangs 5px below
+       the button box plus a 3px outline, and .screen clips, so 14px cut the last button's shadow
+       clean off on every screen that ends in a button. */
+    padding: calc(var(--sat) + 14px) calc(var(--sar) + 14px) calc(var(--sab) + 20px) calc(var(--sal) + 14px);
     overflow: hidden;
   }
   .screen.visible { display: flex; }
+
+  /* The sheet background is a dither, not a gradient: a 4px checker of two plums plus a wide
+     vignette. At phone density it reads as the stippled shading of a GBA menu. */
   .screen.sheet {
     background:
-      radial-gradient(120% 80% at 50% 0%, rgba(139,92,246,0.18), transparent 60%),
-      linear-gradient(180deg, #0d1122 0%, #0a0d18 100%);
+      radial-gradient(120% 70% at 50% 0%, rgba(167,107,255,0.30), transparent 62%),
+      repeating-conic-gradient(from 0deg at 50% 50%, #1b1030 0% 25%, #170d29 25% 50%) 0 0 / 4px 4px;
   }
-  .screen.overlay { background: rgba(6,8,16,0.82); backdrop-filter: blur(3px); }
+  .screen.overlay {
+    background:
+      repeating-linear-gradient(0deg, rgba(16,10,28,0.90) 0 2px, rgba(16,10,28,0.80) 2px 4px);
+  }
+
+  /* Scanlines. Only on the cinematic screens (title, banner, end of run) — over a dense list they
+     would fight the text they sit on. */
+  .crt::after {
+    content: ''; position: absolute; inset: 0; pointer-events: none; z-index: 6;
+    /* Kept light on purpose: at the first attempt's 0.20 the lines banded the gold buttons into
+       corduroy instead of reading as a CRT. */
+    background: repeating-linear-gradient(0deg, rgba(0,0,0,0.09) 0 1px, transparent 1px 4px);
+  }
 
   .screen-title {
-    font-size: 22px; letter-spacing: 0.3px;
-    margin: 0 0 10px; text-align: center; flex: 0 0 auto;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 13px; line-height: 1.6; text-transform: uppercase;
+    color: var(--gold-lt);
+    text-shadow: var(--px) var(--px) 0 var(--void);
+    margin: 4px 0 12px; text-align: center; flex: 0 0 auto;
   }
-  .screen-sub { color: var(--ink-dim); font-size: 13px; text-align: center; margin: -4px 0 14px; }
+  .screen-sub { color: var(--ink-dim); font-size: 12px; text-align: center; margin: -4px 0 12px; line-height: 1.5; }
 
   .scroll { flex: 1 1 auto; overflow-y: auto; -webkit-overflow-scrolling: touch; touch-action: pan-y; }
 
-  /* ---- Chunky toy buttons ---- */
-  .btn {
-    appearance: none; border: 0;
-    font-family: 'Baloo 2', 'Nunito', sans-serif;
-    font-size: 17px; font-weight: 800;
-    color: #1a1207;
-    background: linear-gradient(180deg, #ffd977 0%, var(--gold) 60%, var(--gold-dark) 100%);
-    border-radius: 16px;
-    padding: 13px 18px;
-    box-shadow: 0 4px 0 #8a6408, 0 8px 18px rgba(0,0,0,0.45);
-    transition: transform 0.05s ease, box-shadow 0.05s ease;
-    cursor: pointer;
-    width: 100%;
+  /* iOS hides overlay scrollbars anyway; this is for desktop testing, where the default rounded
+     grey bar is the one un-pixel thing left on screen. */
+  .scroll::-webkit-scrollbar { width: 8px; }
+  .scroll::-webkit-scrollbar-track { background: var(--void-2); }
+  .scroll::-webkit-scrollbar-thumb { background: var(--edge); border: 2px solid var(--void); }
+
+  /* ---- Pixel frame ---------------------------------------------------------------------------
+     The classic three-ring menu box, from the inside out: a lit inner bevel, a coloured border,
+     then the black outline drawn as a hard spread shadow. Reused by every panel-like surface. */
+  .panel {
+    background:
+      repeating-linear-gradient(0deg, rgba(255,255,255,0.030) 0 2px, transparent 2px 4px),
+      linear-gradient(180deg, var(--panel-2) 0 46%, var(--panel) 46% 100%);
+    border: var(--px) solid var(--edge);
+    border-radius: 0;
+    padding: 10px;
+    box-shadow:
+      inset 0 var(--px) 0 rgba(255,255,255,0.16),
+      inset 0 calc(var(--px) * -1) 0 rgba(0,0,0,0.45),
+      0 0 0 var(--px) var(--void);
   }
-  .btn:active { transform: translateY(3px); box-shadow: 0 1px 0 #8a6408, 0 4px 10px rgba(0,0,0,0.4); }
+
+  /* ---- Buttons -------------------------------------------------------------------------------
+     A pixel button is four solid layers: flat two-band fill, an inset highlight on the top-left
+     and shade on the bottom-right, a hard drop in the darker shade of its own colour, and a black
+     outline drawn around BOTH the face and the drop so the whole stack stays fenced. */
+  .btn {
+    appearance: none; border: 0; border-radius: 0;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 11px; line-height: 1.5; letter-spacing: 0.5px;
+    text-transform: uppercase;
+    color: #2b1600;
+    background: linear-gradient(180deg, var(--gold-lt) 0 42%, var(--gold) 42% 100%);
+    padding: 13px 12px;
+    width: 100%;
+    cursor: pointer;
+    box-shadow:
+      inset var(--px) var(--px) 0 rgba(255,255,255,0.55),
+      inset calc(var(--px) * -1) calc(var(--px) * -1) 0 rgba(0,0,0,0.22),
+      0 5px 0 0 var(--gold-dark),
+      0 0 0 var(--px) var(--void),
+      0 5px 0 var(--px) var(--void);
+    /* No transition: a pixel button snaps. Easing it makes it feel like a web page again. */
+  }
+  .btn:active {
+    transform: translateY(5px);
+    box-shadow:
+      inset var(--px) var(--px) 0 rgba(255,255,255,0.35),
+      inset calc(var(--px) * -1) calc(var(--px) * -1) 0 rgba(0,0,0,0.3),
+      0 0 0 0 var(--gold-dark),
+      0 0 0 var(--px) var(--void);
+  }
   .btn.secondary {
     color: var(--ink);
-    background: linear-gradient(180deg, #3a4676 0%, #2b3560 60%, #1e2648 100%);
-    box-shadow: 0 4px 0 #141a33, 0 8px 18px rgba(0,0,0,0.4);
+    background: linear-gradient(180deg, var(--edge) 0 42%, #4a3479 42% 100%);
+    text-shadow: 0 2px 0 rgba(0,0,0,0.5);
+    box-shadow:
+      inset var(--px) var(--px) 0 rgba(255,255,255,0.22),
+      inset calc(var(--px) * -1) calc(var(--px) * -1) 0 rgba(0,0,0,0.35),
+      0 5px 0 0 #2b1c4c,
+      0 0 0 var(--px) var(--void),
+      0 5px 0 var(--px) var(--void);
   }
-  .btn.secondary:active { box-shadow: 0 1px 0 #141a33, 0 4px 10px rgba(0,0,0,0.35); }
+  .btn.secondary:active {
+    box-shadow:
+      inset var(--px) var(--px) 0 rgba(255,255,255,0.14),
+      inset calc(var(--px) * -1) calc(var(--px) * -1) 0 rgba(0,0,0,0.4),
+      0 0 0 var(--px) var(--void);
+  }
   .btn.danger {
-    color: #fff;
-    background: linear-gradient(180deg, #f0645c 0%, var(--danger) 60%, #9c2a22 100%);
-    box-shadow: 0 4px 0 #7d1c16, 0 8px 18px rgba(0,0,0,0.4);
+    color: #fff2f2;
+    background: linear-gradient(180deg, #ff7a7a 0 42%, var(--danger) 42% 100%);
+    text-shadow: 0 2px 0 rgba(0,0,0,0.45);
+    box-shadow:
+      inset var(--px) var(--px) 0 rgba(255,255,255,0.4),
+      inset calc(var(--px) * -1) calc(var(--px) * -1) 0 rgba(0,0,0,0.28),
+      0 5px 0 0 var(--danger-dark),
+      0 0 0 var(--px) var(--void),
+      0 5px 0 var(--px) var(--void);
   }
-  .btn.small { font-size: 14px; padding: 10px 12px; border-radius: 13px; }
-  .btn:disabled { opacity: 0.45; }
-  .btn-row { display: flex; gap: 10px; }
-  .btn-col { display: flex; flex-direction: column; gap: 10px; }
-
-  .panel {
-    background: linear-gradient(180deg, var(--panel-2), var(--panel));
-    border: 2px solid var(--edge);
-    border-radius: 18px;
-    padding: 12px;
+  .btn.danger:active {
+    box-shadow:
+      inset var(--px) var(--px) 0 rgba(255,255,255,0.25),
+      inset calc(var(--px) * -1) calc(var(--px) * -1) 0 rgba(0,0,0,0.34),
+      0 0 0 var(--px) var(--void);
   }
+  .btn.small { font-size: 9px; padding: 11px 8px; letter-spacing: 0; }
+  /* Grey a disabled button, do not tint it — desaturating gold lands on olive, which reads as a
+     different button rather than a dead one. */
+  .btn:disabled { filter: grayscale(1) brightness(0.62); }
+  .btn-row { display: flex; gap: 12px; }
+  .btn-col { display: flex; flex-direction: column; gap: 8px; }
+  /* The drop shadow lives outside the box, so stacked buttons need room for it: 5px of drop plus
+     the 3px outline around it. */
+  .btn-col > .btn, .btn-row > .btn, .seg > .btn, .btn-col > .btn-row { margin-bottom: 8px; }
 
-  /* ---- Title screen ---- */
-  #screen-title { justify-content: center; align-items: center; gap: 8px; }
-  .logo-wrap { text-align: center; margin-bottom: 6px; }
+  /* Square icon buttons (bag, pause). Same stack, no label. */
+  .btn.icon { width: 54px; height: 54px; padding: 0; display: grid; place-items: center; }
+  .btn.icon svg { width: 26px; height: 26px; display: block; }
+
+  /* ---- Title screen ------------------------------------------------------------------------- */
+  #screen-title { justify-content: center; align-items: center; }
+  .logo-wrap { text-align: center; margin-bottom: 18px; }
+  .logo-badge {
+    width: 64px; height: 64px; margin: 0 auto 14px;
+    display: grid; place-items: center;
+    background: linear-gradient(180deg, #ff5a63 0 40%, var(--rocket) 40% 100%);
+    border: var(--px) solid var(--void);
+    box-shadow:
+      inset var(--px) var(--px) 0 rgba(255,255,255,0.35),
+      inset calc(var(--px) * -1) calc(var(--px) * -1) 0 rgba(0,0,0,0.3),
+      0 0 0 var(--px) #fff7e6,
+      0 0 0 calc(var(--px) * 2) var(--void);
+  }
+  .logo-badge svg { width: 30px; height: 42px; display: block; }
   .logo-kicker {
-    font-family: 'Baloo 2', sans-serif; font-size: 15px; letter-spacing: 3px;
-    color: var(--gold); text-transform: uppercase;
+    font-family: 'Press Start 2P', monospace; font-size: 9px; letter-spacing: 1px;
+    color: var(--gold); text-transform: uppercase; line-height: 1.8;
+    text-shadow: 2px 2px 0 var(--void);
   }
   .logo-main {
-    font-family: 'Baloo 2', sans-serif; font-size: clamp(28px, 9vw, 40px); line-height: 1.05;
-    margin: 2px 0 0; text-shadow: 0 3px 0 #2a1b4d, 0 6px 16px rgba(0,0,0,0.6);
+    font-family: 'Press Start 2P', monospace;
+    font-size: clamp(17px, 5.6vw, 24px); line-height: 1.5;
+    margin: 10px 0 0; text-transform: uppercase;
+    color: var(--ink);
+    text-shadow: var(--px) var(--px) 0 var(--void-2), 0 calc(var(--px) * 2) 0 var(--void);
   }
-  .logo-rocket { color: var(--rocket); text-shadow: 0 3px 0 #4a0b0e, 0 6px 16px rgba(0,0,0,0.6); }
-  .logo-r {
-    display: inline-flex; align-items: center; justify-content: center;
-    width: 62px; height: 62px; margin: 10px auto 2px;
-    border-radius: 50%;
-    background: var(--rocket);
-    color: #fff; font-family: 'Baloo 2', sans-serif; font-size: 40px; font-weight: 800;
-    box-shadow: 0 0 0 4px #fff, 0 6px 20px rgba(216,32,42,0.5);
+  .logo-rocket { color: var(--rocket); text-shadow: var(--px) var(--px) 0 #4a0b0e, 0 calc(var(--px) * 2) 0 var(--void); }
+  #screen-title .btn-col { width: min(300px, 100%); }
+  .title-foot {
+    color: var(--ink-dim); font-size: 10px; margin-top: 18px; text-align: center; line-height: 1.7;
   }
-  #screen-title .btn-col { width: min(320px, 100%); margin-top: 14px; }
-  .title-foot { color: var(--ink-dim); font-size: 11px; margin-top: 14px; text-align: center; }
 
-  /* ---- Starter select ---- */
+  /* ---- Starter select ----------------------------------------------------------------------- */
   #starter-preview {
-    width: 100%; height: 34vh; min-height: 170px;
-    display: block; border-radius: 18px;
-    background: radial-gradient(60% 60% at 50% 45%, #2b3a6f 0%, #141a30 100%);
-    border: 2px solid var(--edge);
+    width: 100%; height: 32vh; min-height: 165px;
+    display: block;
+    background:
+      repeating-conic-gradient(from 0deg at 50% 50%, #3a2a63 0% 25%, #33255a 25% 50%) 0 0 / 6px 6px;
+    border: var(--px) solid var(--edge);
+    box-shadow: 0 0 0 var(--px) var(--void), inset 0 0 0 var(--px) rgba(0,0,0,0.35);
   }
-  .starter-name { text-align: center; font-family: 'Baloo 2', sans-serif; font-size: 22px; margin: 10px 0 2px; }
-  .starter-meta { text-align: center; color: var(--ink-dim); font-size: 12px; margin-bottom: 10px; }
+  .starter-name {
+    text-align: center; font-family: 'Press Start 2P', monospace; font-size: 14px;
+    margin: 16px 0 4px; color: var(--gold-lt); text-shadow: 2px 2px 0 var(--void);
+  }
+  .starter-meta { text-align: center; color: var(--ink-dim); font-size: 11px; margin-bottom: 12px; }
+  /* Detail appended after a name set in the display face. Its own line, body font, no shadow. */
+  .meta-inline {
+    display: block; font-family: 'Silkscreen', monospace; font-size: 11px;
+    color: var(--ink-dim); margin-top: 6px; text-shadow: none; letter-spacing: 0.2px;
+  }
   .starter-row { display: flex; gap: 10px; }
   .starter-card {
     flex: 1 1 0; min-width: 0;
-    background: linear-gradient(180deg, var(--panel-2), var(--panel));
-    border: 2px solid var(--edge); border-radius: 16px;
-    padding: 10px 6px; text-align: center;
-    font-size: 13px; cursor: pointer;
-    transition: transform 0.08s ease, border-color 0.08s ease;
+    background: linear-gradient(180deg, var(--panel-2) 0 46%, var(--panel) 46% 100%);
+    border: var(--px) solid var(--edge);
+    box-shadow: 0 0 0 var(--px) var(--void), inset 0 var(--px) 0 rgba(255,255,255,0.14);
+    padding: 9px 4px 8px; text-align: center;
+    font-size: 11px; cursor: pointer;
   }
-  .starter-card.selected { border-color: var(--gold); transform: translateY(-3px); box-shadow: 0 6px 16px rgba(245,199,74,0.25); }
-  .starter-card .sc-name { font-weight: 900; display: block; margin-bottom: 5px; font-size: 13px; }
+  .starter-card.selected {
+    border-color: var(--gold);
+    background: linear-gradient(180deg, #6b4f1a 0 46%, #4a3510 46% 100%);
+    transform: translateY(-3px);
+  }
+  .starter-card .sc-name {
+    font-family: 'Press Start 2P', monospace; font-size: 8px; line-height: 1.5;
+    display: block; margin-bottom: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
   .type-badges { display: flex; gap: 3px; justify-content: center; }
-  .type-badges img { height: 16px; width: auto; image-rendering: auto; }
+  .type-badges img { height: 15px; width: auto; image-rendering: pixelated; }
 
-  /* ---- In-run HUD ---- */
+  /* ---- In-run HUD --------------------------------------------------------------------------- */
   #hud { position: absolute; inset: 0; display: none; }
   #hud.visible { display: block; }
   #hud > * { position: absolute; }
@@ -191,305 +330,460 @@
   #minimap-wrap {
     top: calc(var(--sat) + 10px); left: calc(var(--sal) + 10px);
     width: 108px; height: 108px;
-    border: 2px solid var(--edge); border-radius: 14px;
-    overflow: hidden; background: rgba(8,10,16,0.7);
-    box-shadow: 0 4px 14px rgba(0,0,0,0.5);
+    border: var(--px) solid var(--edge);
+    overflow: hidden;
+    background: rgba(16,10,28,0.8);
+    box-shadow: 0 0 0 var(--px) var(--void);
   }
-  #minimap { width: 100%; height: 100%; display: block; }
+  #minimap { width: 100%; height: 100%; display: block; image-rendering: pixelated; }
 
   /* The bag icon sits DIRECTLY BENEATH the minimap (design brief §5). */
-  #btn-bag {
-    top: calc(var(--sat) + 126px); left: calc(var(--sal) + 10px);
-    width: 54px; height: 54px; padding: 0;
-    border-radius: 15px; display: grid; place-items: center;
-    font-size: 26px;
-  }
+  #btn-bag { top: calc(var(--sat) + 128px); left: calc(var(--sal) + 10px); }
   #bag-count {
-    position: absolute; top: -6px; right: -6px;
-    min-width: 20px; height: 20px; padding: 0 5px;
-    border-radius: 10px; background: var(--rocket); color: #fff;
-    font-size: 11px; font-weight: 900; display: grid; place-items: center;
-    box-shadow: 0 0 0 2px #0a0d18;
+    position: absolute; top: -8px; right: -8px;
+    min-width: 22px; height: 20px; padding: 0 4px;
+    background: var(--rocket); color: #fff;
+    font-family: 'Press Start 2P', monospace; font-size: 9px;
+    display: grid; place-items: center;
+    border: var(--px) solid var(--void);
   }
-
-  #btn-pause {
-    top: calc(var(--sat) + 10px); right: calc(var(--sar) + 10px);
-    width: 54px; height: 54px; padding: 0;
-    border-radius: 15px; display: grid; place-items: center; font-size: 22px;
-  }
+  #btn-pause { top: calc(var(--sat) + 10px); right: calc(var(--sar) + 10px); }
 
   #floor-chip {
-    top: calc(var(--sat) + 14px); left: 50%; transform: translateX(-50%);
-    background: rgba(10,13,24,0.78); border: 2px solid var(--edge);
-    border-radius: 999px; padding: 6px 14px;
-    font-size: 13px; font-weight: 900; white-space: nowrap;
-    box-shadow: 0 4px 14px rgba(0,0,0,0.45);
+    top: calc(var(--sat) + 16px); left: 50%; transform: translateX(-50%);
+    background: linear-gradient(180deg, var(--panel-2) 0 46%, var(--panel) 46% 100%);
+    border: var(--px) solid var(--edge);
+    box-shadow: 0 0 0 var(--px) var(--void);
+    padding: 7px 12px;
+    font-family: 'Press Start 2P', monospace; font-size: 9px; white-space: nowrap;
   }
   #floor-chip .theme { color: var(--gold); }
 
   #buff-strip {
-    top: calc(var(--sat) + 54px); left: 50%; transform: translateX(-50%);
-    display: flex; gap: 6px; font-size: 11px;
+    top: calc(var(--sat) + 58px); left: 50%; transform: translateX(-50%);
+    display: flex; gap: 6px; font-size: 10px;
   }
   .buff-pill {
-    background: rgba(70,215,176,0.16); border: 1px solid var(--teal);
-    color: var(--teal); border-radius: 999px; padding: 3px 9px; font-weight: 900;
+    background: var(--teal-dark); border: var(--px) solid var(--void);
+    color: #d8fff2; padding: 3px 7px; font-weight: 700;
+    box-shadow: inset 0 2px 0 rgba(255,255,255,0.2);
   }
-  .buff-pill.repel { background: rgba(139,92,246,0.16); border-color: var(--violet); color: #c4b0ff; }
+  .buff-pill.repel { background: #4b2a91; color: #e2d4ff; }
 
   /* Lead Pokemon HP, bottom-right so it never fights the joystick for space. */
   #lead-hp {
-    right: calc(var(--sar) + 14px); bottom: calc(var(--sab) + 20px);
-    width: 150px; padding: 8px 10px;
-    background: rgba(10,13,24,0.78); border: 2px solid var(--edge); border-radius: 14px;
+    right: calc(var(--sar) + 12px); bottom: calc(var(--sab) + 20px);
+    width: 152px; padding: 8px 9px;
+    background: linear-gradient(180deg, var(--panel-2) 0 46%, var(--panel) 46% 100%);
+    border: var(--px) solid var(--edge);
+    box-shadow: 0 0 0 var(--px) var(--void);
   }
-  #lead-hp .name { font-size: 12px; margin-bottom: 5px; }
-  #lead-hp .party-count { color: var(--ink-dim); font-weight: 700; }
+  #lead-hp .name { font-size: 11px; margin-bottom: 6px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  #lead-hp .party-count { color: var(--gold); }
 
-  .hpbar { height: 8px; border-radius: 5px; background: #2a3352; overflow: hidden; }
-  .hpbar > i { display: block; height: 100%; background: var(--teal); transition: width 0.25s ease; }
-  .hpbar.mid > i { background: var(--gold); }
-  .hpbar.low > i { background: var(--danger); }
+  /* Segmented HP bar: a flat fill with a repeating mask punched over it, so it drains in blocks
+     rather than sliding smoothly. Same trick as every 8-bit health meter. */
+  .hpbar {
+    position: relative; height: 12px;
+    background: var(--void-2);
+    border: var(--px) solid var(--void);
+    overflow: hidden;
+  }
+  .hpbar > i {
+    display: block; height: 100%;
+    background: linear-gradient(180deg, #8bffdc 0 40%, var(--teal) 40% 100%);
+  }
+  .hpbar.mid > i { background: linear-gradient(180deg, var(--gold-lt) 0 40%, var(--gold) 40% 100%); }
+  .hpbar.low > i { background: linear-gradient(180deg, #ff8f96 0 40%, var(--danger) 40% 100%); }
+  .hpbar::after {
+    content: ''; position: absolute; inset: 0; pointer-events: none;
+    background: repeating-linear-gradient(90deg, transparent 0 4px, rgba(16,10,28,0.85) 4px 6px);
+  }
 
-  /* Virtual joystick, bottom-left. Hand-rolled — no external dependency. */
+  /* Virtual joystick, bottom-left. Hand-rolled — no external dependency. Square, because a round
+     stick in a square-cornered UI is the one thing that would give the game away. */
   #joystick {
-    left: calc(var(--sal) + 18px); bottom: calc(var(--sab) + 18px);
-    width: 122px; height: 122px; border-radius: 50%;
-    background: rgba(20,26,48,0.42);
-    border: 2px solid rgba(140,160,220,0.35);
+    left: calc(var(--sal) + 16px); bottom: calc(var(--sab) + 16px);
+    width: 122px; height: 122px;
+    background: rgba(43,28,76,0.5);
+    border: var(--px) solid rgba(154,126,222,0.55);
+    box-shadow: 0 0 0 var(--px) rgba(16,10,28,0.7);
     touch-action: none;
   }
   #joystick.hidden { display: none; }
-  #joystick.active { background: rgba(30,38,70,0.6); }
+  #joystick.active { background: rgba(59,40,100,0.7); }
   #joystick-knob {
     position: absolute; left: 50%; top: 50%;
-    width: 54px; height: 54px; border-radius: 50%;
+    width: 50px; height: 50px;
     transform: translate(-50%, -50%);
-    background: radial-gradient(circle at 35% 30%, #8fa4e0, #3d4a80);
-    border: 2px solid rgba(220,230,255,0.65);
-    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+    background: linear-gradient(180deg, var(--edge-lt) 0 42%, var(--edge) 42% 100%);
+    border: var(--px) solid var(--void);
+    box-shadow: inset var(--px) var(--px) 0 rgba(255,255,255,0.4),
+                inset calc(var(--px) * -1) calc(var(--px) * -1) 0 rgba(0,0,0,0.35);
     pointer-events: none;
   }
 
   /* Bottom-LEFT, in the space the joystick vacates in tap mode — centred it would sit on top of
      the lead-HP panel. */
   #tap-hint {
-    left: calc(var(--sal) + 18px); bottom: calc(var(--sab) + 22px);
-    color: var(--ink-dim); font-size: 12px; background: rgba(10,13,24,0.7);
-    padding: 6px 12px; border-radius: 999px; white-space: nowrap;
+    left: calc(var(--sal) + 16px); bottom: calc(var(--sab) + 22px);
+    color: var(--ink-dim); font-size: 10px;
+    background: rgba(16,10,28,0.85); border: var(--px) solid var(--edge);
+    padding: 6px 10px; white-space: nowrap;
   }
   #tap-hint.hidden { display: none; }
 
   #toast {
-    left: 50%; bottom: calc(var(--sab) + 96px); transform: translateX(-50%);
+    left: 50%; bottom: calc(var(--sab) + 100px); transform: translateX(-50%);
     max-width: min(84vw, 380px);
-    background: rgba(10,13,24,0.92); border: 2px solid var(--gold);
-    border-radius: 14px; padding: 10px 14px;
-    font-size: 13px; text-align: center;
-    opacity: 0; transition: opacity 0.2s ease;
+    background: var(--void); border: var(--px) solid var(--gold);
+    box-shadow: 0 0 0 var(--px) var(--void);
+    padding: 10px 12px;
+    font-size: 11px; text-align: center; line-height: 1.6;
+    opacity: 0; transition: opacity 0.12s steps(3);
     pointer-events: none;
   }
   #toast.show { opacity: 1; }
 
-  /* ---- Banner used for floor intro / floor clear ---- */
+  /* ---- Banner used for floor intro / floor clear -------------------------------------------- */
   #banner {
     position: absolute; inset: 0; display: none;
     place-items: center; text-align: center;
-    background: rgba(6,8,16,0.72);
+    background: repeating-linear-gradient(0deg, rgba(16,10,28,0.86) 0 2px, rgba(16,10,28,0.74) 2px 4px);
   }
   #banner.visible { display: grid; }
-  #banner .banner-inner { padding: 24px; }
-  #banner .b-kicker { color: var(--gold); letter-spacing: 3px; font-size: 13px; text-transform: uppercase; }
-  #banner .b-main { font-family: 'Baloo 2', sans-serif; font-size: clamp(26px, 8vw, 38px); margin: 6px 0; }
-  #banner .b-sub { color: var(--ink-dim); font-size: 13px; }
+  #banner .banner-inner { padding: 22px; }
+  #banner .b-kicker {
+    font-family: 'Press Start 2P', monospace; color: var(--gold); letter-spacing: 1px;
+    font-size: 9px; text-transform: uppercase; text-shadow: 2px 2px 0 var(--void);
+  }
+  #banner .b-main {
+    font-family: 'Press Start 2P', monospace; font-size: clamp(16px, 5.4vw, 22px);
+    margin: 14px 0; line-height: 1.5;
+    text-shadow: var(--px) var(--px) 0 var(--void-2), 0 calc(var(--px) * 2) 0 var(--void);
+  }
+  #banner .b-sub { color: var(--ink-dim); font-size: 11px; }
 
-  /* ---- Bag / inventory ---- */
+  /* ---- Bag / inventory ---------------------------------------------------------------------- */
   .team-strip { display: grid; grid-template-columns: repeat(6, 1fr); gap: 5px; margin-bottom: 12px; }
   .team-slot {
-    background: linear-gradient(180deg, var(--panel-2), var(--panel));
-    border: 2px solid var(--edge); border-radius: 12px;
-    padding: 5px 3px; text-align: center; min-width: 0; cursor: pointer;
+    background: linear-gradient(180deg, var(--panel-2) 0 46%, var(--panel) 46% 100%);
+    border: var(--px) solid var(--edge);
+    box-shadow: 0 0 0 2px var(--void);
+    padding: 5px 2px; text-align: center; min-width: 0; cursor: pointer;
   }
-  .team-slot.empty { opacity: 0.4; }
+  /* An empty party slot is a recessed hole, not a black box: dropping the saturation on the
+     panel fill just turned it near-black and it read as a rendering fault. */
+  .team-slot.empty {
+    background: var(--void-2); border-color: #4a3479; color: var(--ink-dim);
+    box-shadow: 0 0 0 2px var(--void), inset 0 var(--px) 0 rgba(0,0,0,0.5);
+    cursor: default;
+  }
   .team-slot.fainted { border-color: var(--danger); }
-  .team-slot.selected { border-color: var(--gold); }
+  .team-slot.selected { border-color: var(--gold); background: linear-gradient(180deg, #6b4f1a 0 46%, #4a3510 46% 100%); }
   .team-slot .ts-name {
-    font-size: 9px; font-weight: 900; overflow: hidden; text-overflow: ellipsis;
-    white-space: nowrap; margin-bottom: 3px;
+    font-size: 10px; overflow: hidden; text-overflow: ellipsis;
+    white-space: nowrap; margin-bottom: 4px;
   }
-  .team-slot .ts-hp { font-size: 9px; color: var(--ink-dim); margin-top: 3px; }
-  .team-slot .ts-dex { font-size: 8px; color: var(--ink-dim); }
+  .team-slot .ts-hp { font-size: 10px; color: var(--ink-dim); margin-top: 4px; }
+  .team-slot .ts-dex { font-size: 8px; color: var(--gold); }
 
   /* Items: a scrollable grid exactly 5 columns wide (design brief §5). */
-  .item-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+  /* The right/bottom padding is for the qty badges, which overhang their cell on purpose. An
+     absolutely-positioned child DOES count toward scrollable overflow, and without the padding
+     that overhang put a horizontal scrollbar across the bottom of the bag. */
+  .item-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 9px; padding: 4px 8px 8px 4px; }
   .item-cell {
     position: relative; aspect-ratio: 1;
-    background: linear-gradient(180deg, var(--panel-2), var(--panel));
-    border: 2px solid var(--edge); border-radius: 14px;
-    display: grid; place-items: center; padding: 6px; cursor: pointer;
+    background: linear-gradient(180deg, var(--panel-2) 0 46%, var(--panel) 46% 100%);
+    border: var(--px) solid var(--edge);
+    box-shadow: 0 0 0 2px var(--void), inset 0 var(--px) 0 rgba(255,255,255,0.12);
+    display: grid; place-items: center; padding: 5px; cursor: pointer;
   }
-  .item-cell.selected { border-color: var(--gold); }
-  .item-cell svg { width: 100%; height: 100%; display: block; }
+  .item-cell.selected {
+    border-color: var(--gold);
+    background: linear-gradient(180deg, #6b4f1a 0 46%, #4a3510 46% 100%);
+  }
+  .item-cell svg { width: 100%; height: 100%; display: block; image-rendering: pixelated; }
   .item-cell .qty {
-    position: absolute; bottom: -4px; right: -4px;
-    min-width: 19px; height: 19px; padding: 0 4px;
-    border-radius: 10px; background: var(--edge); color: var(--ink);
-    font-size: 10px; font-weight: 900; display: grid; place-items: center;
-    box-shadow: 0 0 0 2px #0d1122;
+    position: absolute; bottom: -6px; right: -6px;
+    min-width: 20px; height: 18px; padding: 0 3px;
+    background: var(--edge); color: var(--ink);
+    font-family: 'Press Start 2P', monospace; font-size: 8px;
+    display: grid; place-items: center;
+    border: 2px solid var(--void);
   }
-  .item-detail { margin-top: 12px; min-height: 76px; font-size: 12px; }
-  .item-detail .id-name { font-family: 'Baloo 2', sans-serif; font-size: 17px; color: var(--gold); }
-  .item-detail .id-desc { color: var(--ink-dim); margin-top: 4px; line-height: 1.45; }
-  .empty-note { color: var(--ink-dim); font-size: 13px; text-align: center; padding: 26px 10px; }
+  .item-detail { margin-top: 12px; min-height: 82px; font-size: 11px; }
+  .item-detail .id-name {
+    font-family: 'Press Start 2P', monospace; font-size: 11px; color: var(--gold-lt);
+    line-height: 1.5; text-shadow: 2px 2px 0 var(--void);
+  }
+  .item-detail .id-desc { color: var(--ink-dim); margin-top: 7px; line-height: 1.6; }
+  .empty-note { color: var(--ink-dim); font-size: 11px; text-align: center; padding: 26px 10px; line-height: 1.7; }
 
-  /* ---- Glossary ---- */
-  .gloss-row { display: flex; gap: 12px; align-items: flex-start; padding: 11px 0; border-bottom: 1px solid var(--edge); }
+  /* ---- Glossary ----------------------------------------------------------------------------- */
+  .gloss-row {
+    display: flex; gap: 11px; align-items: flex-start; padding: 11px 2px;
+    border-bottom: 2px solid var(--edge);
+  }
   .gloss-row:last-child { border-bottom: 0; }
-  .gloss-icon { flex: 0 0 42px; width: 42px; height: 42px; }
-  .gloss-icon svg { width: 100%; height: 100%; }
-  .gloss-name { font-family: 'Baloo 2', sans-serif; font-size: 16px; color: var(--gold); }
-  .gloss-desc { font-size: 12px; color: var(--ink-dim); line-height: 1.45; margin-top: 2px; }
+  .gloss-icon {
+    flex: 0 0 40px; width: 40px; height: 40px; padding: 3px;
+    background: var(--void-2); border: 2px solid var(--void);
+  }
+  .gloss-icon svg { width: 100%; height: 100%; image-rendering: pixelated; }
+  .gloss-name {
+    font-family: 'Press Start 2P', monospace; font-size: 10px; color: var(--gold-lt); line-height: 1.5;
+  }
+  .gloss-desc { font-size: 11px; color: var(--ink-dim); line-height: 1.6; margin-top: 5px; }
 
-  /* ---- Settings ---- */
-  .setting { margin-bottom: 20px; }
-  .setting label { display: block; font-size: 14px; margin-bottom: 8px; }
+  /* ---- Settings ----------------------------------------------------------------------------- */
+  .setting { margin-bottom: 22px; }
+  .setting label {
+    display: block; font-family: 'Press Start 2P', monospace; font-size: 9px;
+    line-height: 1.6; margin-bottom: 10px; text-transform: uppercase;
+  }
   .setting .val { color: var(--gold); float: right; }
   input[type=range] {
     -webkit-appearance: none; appearance: none;
-    width: 100%; height: 26px; background: transparent;
+    width: 100%; height: 28px; background: transparent;
+    /* The UA's default 2px margin on top of width:100% is what put a horizontal scrollbar in the
+       Settings scroll pane. */
+    margin: 0;
   }
   input[type=range]::-webkit-slider-runnable-track {
-    height: 10px; border-radius: 5px; background: #2a3352; border: 1px solid var(--edge);
+    height: 12px; border-radius: 0;
+    background: var(--void-2);
+    border: var(--px) solid var(--void);
+    box-shadow: 0 0 0 2px var(--edge);
   }
   input[type=range]::-webkit-slider-thumb {
     -webkit-appearance: none; appearance: none;
-    width: 28px; height: 28px; margin-top: -10px; border-radius: 50%;
-    background: radial-gradient(circle at 35% 30%, #ffe49a, var(--gold));
-    border: 2px solid #7a5a08; box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+    width: 22px; height: 26px; margin-top: -10px; border-radius: 0;
+    background: linear-gradient(180deg, var(--gold-lt) 0 42%, var(--gold) 42% 100%);
+    border: var(--px) solid var(--void);
+    box-shadow: inset 2px 2px 0 rgba(255,255,255,0.5), inset -2px -2px 0 rgba(0,0,0,0.3);
   }
-  input[type=range]::-moz-range-track { height: 10px; border-radius: 5px; background: #2a3352; }
+  input[type=range]::-moz-range-track {
+    height: 12px; border-radius: 0; background: var(--void-2); border: var(--px) solid var(--void);
+  }
   input[type=range]::-moz-range-thumb {
-    width: 26px; height: 26px; border-radius: 50%; border: 2px solid #7a5a08; background: var(--gold);
+    width: 20px; height: 24px; border-radius: 0; border: var(--px) solid var(--void); background: var(--gold);
   }
-  .seg { display: flex; gap: 8px; }
+  .seg { display: flex; gap: 10px; }
   .seg .btn { flex: 1 1 0; }
+  /* The pressed half of a segmented control is the gold face; the other half is the purple one.
+     Written as explicit aria-pressed rules so the DOM state is the single source of truth. */
   .seg .btn[aria-pressed=true] {
-    background: linear-gradient(180deg, #ffd977 0%, var(--gold) 60%, var(--gold-dark) 100%);
-    color: #1a1207;
+    color: #2b1600;
+    background: linear-gradient(180deg, var(--gold-lt) 0 42%, var(--gold) 42% 100%);
+    text-shadow: none;
+    box-shadow:
+      inset var(--px) var(--px) 0 rgba(255,255,255,0.55),
+      inset calc(var(--px) * -1) calc(var(--px) * -1) 0 rgba(0,0,0,0.22),
+      0 5px 0 0 var(--gold-dark),
+      0 0 0 var(--px) var(--void),
+      0 5px 0 var(--px) var(--void);
   }
   .seg .btn[aria-pressed=false] {
-    background: linear-gradient(180deg, #3a4676 0%, #2b3560 60%, #1e2648 100%);
     color: var(--ink);
-    box-shadow: 0 4px 0 #141a33, 0 8px 18px rgba(0,0,0,0.4);
+    background: linear-gradient(180deg, var(--edge) 0 42%, #4a3479 42% 100%);
+    text-shadow: 0 2px 0 rgba(0,0,0,0.5);
+    box-shadow:
+      inset var(--px) var(--px) 0 rgba(255,255,255,0.22),
+      inset calc(var(--px) * -1) calc(var(--px) * -1) 0 rgba(0,0,0,0.35),
+      0 5px 0 0 #2b1c4c,
+      0 0 0 var(--px) var(--void),
+      0 5px 0 var(--px) var(--void);
   }
-  .setting-note { font-size: 11px; color: var(--ink-dim); margin-top: 6px; line-height: 1.45; }
+  .setting-note { font-size: 10px; color: var(--ink-dim); margin-top: 10px; line-height: 1.7; }
 
-  /* ---- Pokedex / Stats ---- */
+  /* ---- Pokedex / Stats ---------------------------------------------------------------------- */
   #dex-preview {
-    width: 100%; height: 26vh; min-height: 140px; display: block;
-    border-radius: 16px; border: 2px solid var(--edge);
-    background: radial-gradient(60% 60% at 50% 45%, #2b3a6f 0%, #141a30 100%);
+    width: 100%; height: 24vh; min-height: 132px; display: block;
+    background:
+      repeating-conic-gradient(from 0deg at 50% 50%, #3a2a63 0% 25%, #33255a 25% 50%) 0 0 / 6px 6px;
+    border: var(--px) solid var(--edge);
+    box-shadow: 0 0 0 var(--px) var(--void);
   }
   .stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 12px 0; }
-  .stat-tile { background: linear-gradient(180deg, var(--panel-2), var(--panel)); border: 2px solid var(--edge); border-radius: 13px; padding: 9px 6px; text-align: center; }
-  .stat-tile .sv { font-family: 'Baloo 2', sans-serif; font-size: 21px; color: var(--gold); line-height: 1.1; }
-  .stat-tile .sl { font-size: 9.5px; color: var(--ink-dim); text-transform: uppercase; letter-spacing: 0.5px; }
-  .dex-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+  .stat-tile {
+    background: linear-gradient(180deg, var(--panel-2) 0 46%, var(--panel) 46% 100%);
+    border: var(--px) solid var(--edge);
+    box-shadow: 0 0 0 2px var(--void);
+    padding: 9px 4px; text-align: center;
+  }
+  .stat-tile .sv {
+    font-family: 'Press Start 2P', monospace; font-size: 14px; color: var(--gold-lt);
+    line-height: 1.4; text-shadow: 2px 2px 0 var(--void);
+  }
+  .stat-tile .sl { font-size: 10px; color: var(--ink-dim); text-transform: uppercase; margin-top: 5px; }
+  .dex-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; padding: 2px; }
   .dex-cell {
-    aspect-ratio: 1; border-radius: 11px; border: 2px solid var(--edge);
+    aspect-ratio: 1;
+    border: var(--px) solid var(--edge);
+    box-shadow: 0 0 0 2px var(--void);
     background: var(--panel); display: grid; place-items: center;
-    font-size: 9px; text-align: center; padding: 3px; cursor: pointer; min-width: 0;
+    font-size: 10px; text-align: center; padding: 3px; cursor: pointer; min-width: 0;
     overflow: hidden;
   }
   .dex-cell.caught { border-color: var(--teal); }
-  .dex-cell.winner { border-color: var(--gold); background: rgba(245,199,74,0.12); }
-  .dex-cell.selected { outline: 2px solid var(--gold); }
+  .dex-cell.winner { border-color: var(--gold); background: #4a3510; }
+  .dex-cell.selected { box-shadow: 0 0 0 2px var(--void), 0 0 0 5px var(--gold-lt); }
   .dex-cell span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; width: 100%; }
-  .legend { display: flex; gap: 12px; justify-content: center; font-size: 10px; color: var(--ink-dim); margin: 8px 0 10px; }
-  .legend i { display: inline-block; width: 9px; height: 9px; border-radius: 3px; margin-right: 4px; vertical-align: middle; }
+  .legend { display: flex; gap: 10px; justify-content: center; font-size: 10px; color: var(--ink-dim); margin: 10px 0; }
+  .legend i {
+    display: inline-block; width: 9px; height: 9px; margin-right: 4px; vertical-align: middle;
+    border: 2px solid var(--void);
+  }
 
-  /* ---- Battle overlay ---- */
+  /* ---- Battle overlay ----------------------------------------------------------------------- */
   #screen-battle { justify-content: space-between; }
-  .battle-title { text-align: center; font-family: 'Baloo 2', sans-serif; font-size: 19px; }
+  .battle-title {
+    text-align: center; font-family: 'Press Start 2P', monospace; font-size: 12px; line-height: 1.6;
+    text-shadow: 2px 2px 0 var(--void);
+  }
   .battle-title .vs { color: var(--rocket); }
   .combat-side { display: flex; flex-direction: column; gap: 6px; }
   .combat-row {
     display: flex; align-items: center; gap: 9px;
-    background: rgba(20,26,48,0.72); border: 2px solid var(--edge);
-    border-radius: 13px; padding: 7px 10px;
-    transition: transform 0.12s ease, border-color 0.12s ease, opacity 0.3s ease;
+    background: linear-gradient(180deg, var(--panel-2) 0 46%, var(--panel) 46% 100%);
+    border: var(--px) solid var(--edge);
+    box-shadow: 0 0 0 2px var(--void);
+    padding: 7px 9px;
   }
   .combat-row.lead { border-color: var(--gold); }
-  .combat-row.fainted { opacity: 0.32; }
+  .combat-row.fainted { filter: saturate(0.15) brightness(0.55); }
   .combat-row.hurt { transform: translateX(-6px); border-color: var(--danger); }
   .combat-row .cr-main { flex: 1 1 auto; min-width: 0; }
-  .combat-row .cr-name { font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .combat-row .cr-hpnum { font-size: 10px; color: var(--ink-dim); margin-top: 2px; }
+  .combat-row .cr-name { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-bottom: 4px; }
+  .combat-row .cr-hpnum { font-size: 10px; color: var(--ink-dim); margin-top: 4px; }
   .combat-row .cr-stage {
-    flex: 0 0 auto; font-size: 9px; color: var(--ink-dim);
-    border: 1px solid var(--edge); border-radius: 6px; padding: 1px 5px;
+    flex: 0 0 auto; font-family: 'Press Start 2P', monospace; font-size: 7px; color: var(--gold);
+    border: 2px solid var(--void); background: var(--void-2); padding: 3px 4px;
   }
+  /* flex:0 0 auto is what keeps the log readable. #screen-battle is a space-between column, and
+     with a full party of six plus three enemies the total wants more room than the screen has —
+     without this the log is the thing that gets compressed, and its last line gets clipped. */
   #battle-log {
-    background: rgba(10,13,24,0.85); border: 2px solid var(--edge); border-radius: 13px;
-    padding: 10px 12px; font-size: 12.5px; min-height: 62px; text-align: center;
-    display: grid; place-items: center; line-height: 1.45;
+    flex: 0 0 auto;
+    background: var(--void); border: var(--px) solid var(--edge);
+    box-shadow: 0 0 0 2px var(--void);
+    padding: 11px 12px; font-size: 11px; min-height: 64px; text-align: center;
+    display: grid; place-items: center; line-height: 1.7;
   }
-  #battle-log .se { color: var(--gold); font-weight: 900; }
+  #battle-log .se { color: var(--gold); font-weight: 700; }
   .float-dmg {
-    position: absolute; font-family: 'Baloo 2', sans-serif; font-size: 20px; font-weight: 800;
-    color: var(--danger); pointer-events: none; text-shadow: 0 2px 6px rgba(0,0,0,0.8);
-    animation: floatUp 0.75s ease-out forwards;
+    position: absolute; font-family: 'Press Start 2P', monospace; font-size: 13px;
+    color: var(--danger); pointer-events: none;
+    text-shadow: 2px 2px 0 var(--void);
+    animation: floatUp 0.75s steps(8) forwards;
   }
-  .float-dmg.se { color: var(--gold); font-size: 24px; }
+  .float-dmg.se { color: var(--gold); font-size: 16px; }
   @keyframes floatUp {
     from { opacity: 1; transform: translateY(0); }
     to { opacity: 0; transform: translateY(-34px); }
   }
 
-  /* ---- Catch overlay ---- */
+  /* ---- Catch overlay ------------------------------------------------------------------------ */
   #screen-catch { justify-content: space-between; pointer-events: none; background: transparent; }
-  #screen-catch > * { pointer-events: auto; }
+  /* ONLY the real controls take touches here. #catch-bottom is a full-width block sitting over the
+     bottom fifth of the screen — which is exactly where the ball is and where a GO swipe starts —
+     so if it opts into pointer events, a grab that begins below the ball never reaches the canvas
+     and the throw is silently dead. Everything but the chips and buttons falls through. */
+  #screen-catch .ball-chip, #screen-catch .btn { pointer-events: auto; }
   #catch-top { text-align: center; }
-  #catch-name { font-family: 'Baloo 2', sans-serif; font-size: 21px; }
-  #catch-sub { font-size: 12px; color: var(--ink-dim); }
+  #catch-name {
+    font-family: 'Press Start 2P', monospace; font-size: 13px; line-height: 1.6;
+    text-shadow: var(--px) var(--px) 0 var(--void);
+  }
+  #catch-sub { font-size: 11px; color: var(--gold); margin-top: 6px; text-shadow: 2px 2px 0 var(--void); }
+
+  /* The throw grade. Pops for three quarters of a second on contact, well before the wobbles
+     resolve, which is the read-ahead that makes a good throw feel good in GO. */
+  #catch-grade {
+    position: absolute; top: 30%; left: 50%;
+    transform: translate(-50%, -50%);
+    font-family: 'Press Start 2P', monospace; font-size: clamp(15px, 5.4vw, 22px);
+    color: var(--gold-lt); text-align: center;
+    text-shadow: var(--px) var(--px) 0 var(--void), 0 calc(var(--px) * 2) 0 var(--rocket-dark);
+    pointer-events: none; opacity: 0;
+    /* "CURVEBALL! EXCELLENT!" is two awards, and on one line at this font size it runs off both
+       edges of a phone. Each award is its own <span>, stacked. */
+    width: 100%; padding: 0 8px;
+  }
+  #catch-grade span { display: block; line-height: 1.6; }
+  #catch-grade span + span { color: var(--gold); font-size: 0.82em; }
+  #catch-grade.pop { animation: gradePop 0.9s steps(10) forwards; }
+  @keyframes gradePop {
+    0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.4); }
+    18%  { opacity: 1; transform: translate(-50%, -50%) scale(1.15); }
+    32%  { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+    75%  { opacity: 1; transform: translate(-50%, -60%) scale(1); }
+    100% { opacity: 0; transform: translate(-50%, -80%) scale(1); }
+  }
+
   #catch-bottom { display: flex; flex-direction: column; gap: 10px; align-items: center; }
   #catch-msg {
-    background: rgba(10,13,24,0.9); border: 2px solid var(--gold); border-radius: 14px;
-    padding: 9px 14px; font-size: 13px; text-align: center; min-height: 0;
+    background: var(--void); border: var(--px) solid var(--gold);
+    box-shadow: 0 0 0 2px var(--void);
+    padding: 9px 12px; font-size: 11px; text-align: center; line-height: 1.6;
   }
   #catch-msg.hidden { display: none; }
   #catch-balls { display: flex; gap: 8px; align-items: center; }
   .ball-chip {
     display: flex; align-items: center; gap: 5px;
-    background: rgba(20,26,48,0.8); border: 2px solid var(--edge);
-    border-radius: 12px; padding: 5px 9px; font-size: 12px; cursor: pointer;
+    background: linear-gradient(180deg, var(--panel-2) 0 46%, var(--panel) 46% 100%);
+    border: var(--px) solid var(--edge);
+    box-shadow: 0 0 0 2px var(--void);
+    padding: 5px 8px; font-family: 'Press Start 2P', monospace; font-size: 9px; cursor: pointer;
   }
-  .ball-chip.active { border-color: var(--gold); }
-  .ball-chip svg { width: 22px; height: 22px; }
-  #catch-hint { font-size: 12px; color: var(--ink-dim); text-align: center; }
-  #catch-actions { display: flex; gap: 10px; width: min(340px, 100%); }
+  .ball-chip.active { border-color: var(--gold); background: linear-gradient(180deg, #6b4f1a 0 46%, #4a3510 46% 100%); }
+  .ball-chip svg { width: 22px; height: 22px; image-rendering: pixelated; }
+  #catch-hint {
+    font-size: 10px; color: var(--ink-dim); text-align: center; line-height: 1.7;
+    background: rgba(16,10,28,0.8); padding: 5px 9px; border: 2px solid var(--edge);
+  }
+  #catch-actions { display: flex; gap: 10px; width: min(330px, 100%); }
 
-  /* ---- Swap-or-release ---- */
+  /* ---- Swap-or-release ---------------------------------------------------------------------- */
   #screen-swap { justify-content: center; gap: 12px; }
 
-  /* ---- Game over / victory ---- */
-  #screen-end { justify-content: center; align-items: center; text-align: center; gap: 6px; }
-  #end-kicker { letter-spacing: 3px; text-transform: uppercase; font-size: 13px; }
-  #end-title { font-family: 'Baloo 2', sans-serif; font-size: clamp(30px, 10vw, 44px); margin: 2px 0 6px; }
-  #end-sub { color: var(--ink-dim); font-size: 13px; max-width: 320px; line-height: 1.5; }
-  #end-stats { margin: 14px 0; width: min(330px, 100%); }
-  #screen-end .btn-col { width: min(320px, 100%); margin-top: 8px; }
+  /* ---- Game over / victory ------------------------------------------------------------------ */
+  #screen-end { justify-content: center; align-items: center; text-align: center; }
+  #end-kicker {
+    font-family: 'Press Start 2P', monospace; letter-spacing: 1px; text-transform: uppercase;
+    font-size: 9px; text-shadow: 2px 2px 0 var(--void);
+  }
+  #end-title {
+    font-family: 'Press Start 2P', monospace; font-size: clamp(18px, 6.4vw, 28px);
+    margin: 14px 0 12px; line-height: 1.5; text-transform: uppercase;
+    text-shadow: var(--px) var(--px) 0 var(--void-2), 0 calc(var(--px) * 2) 0 var(--void);
+  }
+  #end-sub { color: var(--ink-dim); font-size: 11px; max-width: 320px; line-height: 1.8; }
+  #end-stats { margin: 18px 0; width: min(330px, 100%); }
+  #screen-end .btn-col { width: min(300px, 100%); }
 
-  /* ---- Loading ---- */
+  /* ---- Loading ------------------------------------------------------------------------------ */
   #boot {
     position: fixed; inset: 0; z-index: 10; display: grid; place-items: center;
-    background: #0a0d18; text-align: center;
+    background:
+      repeating-conic-gradient(from 0deg at 50% 50%, #1b1030 0% 25%, #170d29 25% 50%) 0 0 / 4px 4px;
+    text-align: center;
   }
   #boot.hidden { display: none; }
+  /* A stepped square spinner: steps(8) makes it tick round in eighths like a sprite animation
+     instead of sweeping like a CSS loader. */
   #boot .spin {
-    width: 46px; height: 46px; margin: 0 auto 14px;
-    border: 4px solid #2a3352; border-top-color: var(--gold);
-    border-radius: 50%; animation: spin 0.9s linear infinite;
+    width: 30px; height: 30px; margin: 0 auto 18px;
+    border: var(--px) solid var(--edge);
+    border-top-color: var(--gold);
+    border-right-color: var(--gold);
+    animation: spin 0.8s steps(8) infinite;
+  }
+  #boot .boot-label {
+    font-family: 'Press Start 2P', monospace; font-size: 10px; line-height: 1.7; color: var(--gold-lt);
+    text-shadow: 2px 2px 0 var(--void);
   }
   @keyframes spin { to { transform: rotate(360deg); } }
 </style>
@@ -498,24 +792,55 @@
 
 <canvas id="game-canvas"></canvas>
 
+<!-- Pixel icon sprites, defined once and instanced with <use>. Authored on integer grids with
+     shape-rendering=crispEdges so they stay hard-edged at any size. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <!-- The Team Rocket R, 5x7 pixels. -->
+    <g id="px-rocket-r">
+      <rect x="0" y="0" width="4" height="1"/><rect x="0" y="1" width="1" height="2"/>
+      <rect x="4" y="1" width="1" height="2"/><rect x="0" y="3" width="4" height="1"/>
+      <rect x="0" y="4" width="1" height="3"/><rect x="2" y="4" width="1" height="1"/>
+      <rect x="3" y="5" width="1" height="1"/><rect x="4" y="6" width="1" height="1"/>
+    </g>
+    <!-- Satchel, 12x12. -->
+    <g id="px-bag">
+      <rect x="4" y="1" width="1" height="2" fill="#3c2a12"/><rect x="5" y="0" width="2" height="1" fill="#3c2a12"/>
+      <rect x="7" y="1" width="1" height="2" fill="#3c2a12"/>
+      <rect x="0" y="2" width="12" height="10" fill="#100a1c"/>
+      <rect x="1" y="3" width="10" height="8" fill="#b4682a"/>
+      <rect x="1" y="3" width="10" height="3" fill="#8a4a17"/>
+      <rect x="1" y="3" width="10" height="1" fill="#d18a4c"/>
+      <rect x="5" y="5" width="2" height="3" fill="#ffc63c"/>
+    </g>
+    <!-- Pause bars, 12x12. -->
+    <g id="px-pause">
+      <rect x="1" y="1" width="4" height="10" fill="#100a1c"/><rect x="7" y="1" width="4" height="10" fill="#100a1c"/>
+      <rect x="2" y="2" width="2" height="8" fill="#fff7e6"/><rect x="8" y="2" width="2" height="8" fill="#fff7e6"/>
+    </g>
+  </defs>
+</svg>
+
 <div id="ui-root">
 
   <!-- ============ TITLE ============ -->
-  <div class="screen sheet" id="screen-title">
+  <div class="screen sheet crt" id="screen-title">
     <div class="logo-wrap">
-      <div class="logo-r">R</div>
+      <div class="logo-badge">
+        <svg viewBox="0 0 5 7" shape-rendering="crispEdges" fill="#fff7e6"><use href="#px-rocket-r" /></svg>
+      </div>
       <div class="logo-kicker">Pokémon Mystery Dungeon</div>
       <h1 class="logo-main">Team <span class="logo-rocket">Rocket's</span><br />Reckoning</h1>
     </div>
     <div class="btn-col">
       <button class="btn" id="btn-start">Start Run</button>
-      <button class="btn secondary" id="btn-dex">Pokédex &amp; Stats</button>
+      <button class="btn secondary" id="btn-dex">Pokédex</button>
       <div class="btn-row">
-        <button class="btn secondary small" id="btn-glossary-title">Glossary</button>
+        <button class="btn secondary small" id="btn-glossary-title">Items</button>
         <button class="btn secondary small" id="btn-settings-title">Settings</button>
       </div>
     </div>
-    <div class="title-foot">5 floors. Permadeath. Giovanni waits at the bottom.</div>
+    <div class="title-foot">5 Floors · Permadeath<br />Giovanni waits at the bottom</div>
   </div>
 
   <!-- ============ STARTER SELECT ============ -->
@@ -525,8 +850,10 @@
     <div class="starter-name" id="starter-name">—</div>
     <div class="starter-meta" id="starter-meta"></div>
     <div class="starter-row" id="starter-row"></div>
-    <div class="btn-col" style="margin-top:14px">
-      <button class="btn" id="btn-starter-go">Enter the Dungeon</button>
+    <!-- margin-top:auto pins the actions to the bottom of the sheet: the cards above are only as
+         tall as they need to be, and without this the buttons float in the middle of the screen. -->
+    <div class="btn-col" style="margin-top:auto;padding-top:16px">
+      <button class="btn" id="btn-starter-go">Enter Dungeon</button>
       <button class="btn secondary small" id="btn-starter-back">Back</button>
     </div>
   </div>
@@ -534,9 +861,14 @@
   <!-- ============ IN-RUN HUD ============ -->
   <div id="hud">
     <div id="minimap-wrap"><canvas id="minimap" width="216" height="216"></canvas></div>
-    <button class="btn secondary" id="btn-bag">🎒<span id="bag-count">0</span></button>
-    <button class="btn secondary" id="btn-pause">❚❚</button>
-    <div id="floor-chip">B<span id="floor-num">1</span>F · <span class="theme" id="floor-theme">—</span></div>
+    <button class="btn secondary icon" id="btn-bag">
+      <svg viewBox="0 0 12 12" shape-rendering="crispEdges"><use href="#px-bag" /></svg>
+      <span id="bag-count">0</span>
+    </button>
+    <button class="btn secondary icon" id="btn-pause">
+      <svg viewBox="0 0 12 12" shape-rendering="crispEdges"><use href="#px-pause" /></svg>
+    </button>
+    <div id="floor-chip">B<span id="floor-num">1</span>F <span class="theme" id="floor-theme">—</span></div>
     <div id="buff-strip"></div>
     <div id="lead-hp">
       <div class="name"><span id="lead-name">—</span> <span class="party-count" id="party-count"></span></div>
@@ -548,7 +880,7 @@
   </div>
 
   <!-- ============ FLOOR BANNER ============ -->
-  <div id="banner">
+  <div id="banner" class="crt">
     <div class="banner-inner">
       <div class="b-kicker" id="banner-kicker">Descending</div>
       <div class="b-main" id="banner-main">Verdant Forest</div>
@@ -561,14 +893,14 @@
     <h2 class="screen-title">Paused</h2>
     <div class="screen-sub" id="pause-sub">—</div>
     <div class="panel" style="flex:1 1 auto; display:grid; place-items:center; min-height:0">
-      <canvas id="floormap" width="620" height="620" style="width:100%;height:100%;object-fit:contain"></canvas>
+      <canvas id="floormap" width="620" height="620" style="width:100%;height:100%;object-fit:contain;image-rendering:pixelated"></canvas>
     </div>
-    <div class="btn-col" style="margin-top:12px">
+    <div class="btn-col" style="margin-top:14px">
       <button class="btn" id="btn-resume">Resume</button>
       <div class="btn-row">
         <button class="btn secondary small" id="btn-pause-bag">Bag</button>
-        <button class="btn secondary small" id="btn-pause-glossary">Glossary</button>
-        <button class="btn secondary small" id="btn-pause-settings">Settings</button>
+        <button class="btn secondary small" id="btn-pause-glossary">Items</button>
+        <button class="btn secondary small" id="btn-pause-settings">Config</button>
       </div>
       <button class="btn danger small" id="btn-quit">Abandon Run</button>
     </div>
@@ -586,7 +918,7 @@
       <div class="id-name">—</div>
       <div class="id-desc">Tap an item to see what it does.</div>
     </div>
-    <div class="btn-row" style="margin-top:10px">
+    <div class="btn-row" style="margin-top:12px">
       <button class="btn" id="btn-bag-use" disabled>Use</button>
       <button class="btn secondary" id="btn-bag-close" style="flex:0 0 40%">Close</button>
     </div>
@@ -594,10 +926,10 @@
 
   <!-- ============ GLOSSARY ============ -->
   <div class="screen sheet" id="screen-glossary">
-    <h2 class="screen-title">Glossary</h2>
+    <h2 class="screen-title">Item Guide</h2>
     <div class="screen-sub">Every item and power-up you can find in the dungeon.</div>
     <div class="scroll panel" id="glossary-list" style="min-height:0"></div>
-    <button class="btn secondary" id="btn-glossary-back" style="margin-top:12px">Back</button>
+    <button class="btn secondary" id="btn-glossary-back" style="margin-top:14px">Back</button>
   </div>
 
   <!-- ============ SETTINGS ============ -->
@@ -609,57 +941,57 @@
         <input type="range" id="vol-music" min="0" max="100" value="55" />
       </div>
       <div class="setting">
-        <label for="vol-sfx">Sound Effects <span class="val" id="vol-sfx-val">80%</span></label>
+        <label for="vol-sfx">Sound FX <span class="val" id="vol-sfx-val">80%</span></label>
         <input type="range" id="vol-sfx" min="0" max="100" value="80" />
       </div>
       <div class="setting">
         <label>Controls</label>
         <div class="seg">
-          <button class="btn small" id="ctrl-joystick" aria-pressed="true">Joystick</button>
-          <button class="btn small" id="ctrl-tap" aria-pressed="false">Tap to Move</button>
+          <button class="btn small" id="ctrl-joystick" aria-pressed="true">Stick</button>
+          <button class="btn small" id="ctrl-tap" aria-pressed="false">Tap Move</button>
         </div>
         <div class="setting-note">
-          Joystick: a virtual stick in the bottom-left corner. Tap to Move: tap any walkable spot and
+          Stick: a virtual stick in the bottom-left corner. Tap Move: tap any walkable spot and
           your Pokémon paths toward it. Keyboard arrows / WASD always work as well.
         </div>
       </div>
       <div class="setting">
         <label>Lifetime record</label>
-        <button class="btn danger small" id="btn-reset-stats">Erase Pokédex &amp; Stats</button>
+        <button class="btn danger small" id="btn-reset-stats">Erase Records</button>
         <div class="setting-note">Clears your lifetime record only. It never affected gameplay.</div>
       </div>
     </div>
-    <button class="btn secondary" id="btn-settings-back" style="margin-top:12px">Back</button>
+    <button class="btn secondary" id="btn-settings-back" style="margin-top:14px">Back</button>
   </div>
 
   <!-- ============ POKEDEX / STATS ============ -->
   <div class="screen sheet" id="screen-dex">
-    <h2 class="screen-title">Pokédex &amp; Stats</h2>
+    <h2 class="screen-title">Pokédex</h2>
     <canvas id="dex-preview"></canvas>
-    <div class="starter-name" id="dex-name" style="font-size:18px">—</div>
+    <div class="starter-name" id="dex-name" style="font-size:12px;margin:12px 0 4px">—</div>
     <div class="stat-grid" id="dex-stats"></div>
     <div class="legend">
       <span><i style="background:var(--teal)"></i>Caught</span>
-      <span><i style="background:var(--gold)"></i>Won a run with</span>
-      <span><i style="background:var(--edge)"></i>Seen only</span>
+      <span><i style="background:var(--gold)"></i>Won With</span>
+      <span><i style="background:var(--edge)"></i>Seen</span>
     </div>
     <div class="scroll" style="min-height:0"><div class="dex-grid" id="dex-grid"></div>
       <div class="empty-note" id="dex-empty" style="display:none">Nothing recorded yet. Finish a run — win or lose — and it shows up here.</div>
     </div>
-    <button class="btn secondary" id="btn-dex-back" style="margin-top:12px">Back</button>
+    <button class="btn secondary" id="btn-dex-back" style="margin-top:14px">Back</button>
   </div>
 
   <!-- ============ BATTLE ============ -->
   <div class="screen overlay" id="screen-battle">
     <div>
       <div class="battle-title"><span id="battle-foe">Team Rocket Grunt</span></div>
-      <div class="screen-sub" id="battle-sub" style="margin-bottom:8px">wants to battle!</div>
+      <div class="screen-sub" id="battle-sub" style="margin:8px 0 10px">wants to battle!</div>
       <div class="combat-side" id="enemy-side"></div>
     </div>
     <div id="battle-log">…</div>
     <div>
       <div class="combat-side" id="party-side"></div>
-      <div class="btn-row" style="margin-top:10px">
+      <div class="btn-row" style="margin-top:12px">
         <button class="btn secondary small" id="btn-battle-continue" style="display:none">Continue</button>
       </div>
     </div>
@@ -669,12 +1001,13 @@
   <div class="screen" id="screen-catch">
     <div id="catch-top">
       <div id="catch-name">Wild Pokémon</div>
-      <div id="catch-sub">Flick upward to throw. Lead the target.</div>
+      <div id="catch-sub">Drag the ball to aim · flick up to throw</div>
     </div>
+    <div id="catch-grade"></div>
     <div id="catch-bottom">
       <div id="catch-msg" class="hidden"></div>
       <div id="catch-balls"></div>
-      <div id="catch-hint">Drag up from the bottom of the screen</div>
+      <div id="catch-hint">Swirl the ball first for a curveball</div>
       <div id="catch-actions">
         <button class="btn small" id="btn-catch-again" style="display:none">Throw Again</button>
         <button class="btn secondary small" id="btn-catch-flee">Leave It</button>
@@ -684,33 +1017,33 @@
 
   <!-- ============ SWAP OR RELEASE ============ -->
   <div class="screen overlay" id="screen-swap">
-    <h2 class="screen-title">Your team is full!</h2>
+    <h2 class="screen-title">Team is full!</h2>
     <div class="screen-sub" id="swap-sub">—</div>
     <div class="team-strip" id="swap-team"></div>
-    <div class="panel" style="font-size:12px;color:var(--ink-dim);text-align:center">
+    <div class="panel" style="font-size:11px;color:var(--ink-dim);text-align:center;line-height:1.7">
       Tap a party slot to swap the newcomer in, or release it and keep your team as it is.
     </div>
-    <div class="btn-col" style="margin-top:12px">
-      <button class="btn" id="btn-swap-confirm" disabled>Swap Selected Slot</button>
-      <button class="btn secondary" id="btn-swap-release">Release the New Pokémon</button>
+    <div class="btn-col" style="margin-top:14px">
+      <button class="btn" id="btn-swap-confirm" disabled>Swap Slot</button>
+      <button class="btn secondary" id="btn-swap-release">Release New</button>
     </div>
   </div>
 
   <!-- ============ END OF RUN ============ -->
-  <div class="screen sheet" id="screen-end">
+  <div class="screen sheet crt" id="screen-end">
     <div id="end-kicker">Run Over</div>
     <div id="end-title">Wiped Out</div>
     <div id="end-sub">—</div>
     <div class="stat-grid" id="end-stats"></div>
     <div class="btn-col">
-      <button class="btn" id="btn-end-again">Start a New Run</button>
+      <button class="btn" id="btn-end-again">New Run</button>
       <button class="btn secondary" id="btn-end-title">Main Menu</button>
     </div>
   </div>
 
 </div>
 
-<div id="boot"><div><div class="spin"></div><div style="font-size:13px;color:#a7b0cd">Loading the dungeon…</div></div></div>
+<div id="boot"><div><div class="spin"></div><div class="boot-label">Loading the dungeon…</div></div></div>
 
 <script type="importmap">
 {
