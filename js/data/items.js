@@ -68,28 +68,28 @@ const ballArt = (top, hi, mark = top, rows2 = '.kTtTTTTk.', rows3 = 'kTtTTTTTTk'
 
 export const ITEMS = [
   {
-    id: 'poke-ball', name: 'Poké Ball', kind: 'ball', ballTier: 0, catchBase: 0.42, spawnWeight: 22,
-    desc: 'The standard capture device. Used in the catch minigame — a steady base catch rate that your throw accuracy builds on.',
+    id: 'poke-ball', name: 'Poke Ball', kind: 'ball', ballTier: 0, catchBase: 0.42, spawnWeight: 22,
+    desc: 'The standard capture device. Used in the catch minigame - a steady base catch rate that your throw accuracy builds on.',
     svg: ballArt('#e5453b', '#ff8f86'),
-    use: (api) => (api.setActiveBall('poke-ball'), { ok: false, msg: 'Poké Ball set for your next throw.' }),
+    use: (api) => (api.setActiveBall('poke-ball'), { ok: false, msg: 'Poke Ball set for your next throw.' }),
   },
   {
     id: 'great-ball', name: 'Great Ball', kind: 'ball', ballTier: 1, catchBase: 0.58, spawnWeight: 13,
-    desc: 'A better ball than the Poké Ball. Raises the base catch chance before your throw accuracy is added on top.',
+    desc: 'A better ball than the Poke Ball. Raises the base catch chance before your throw accuracy is added on top.',
     // The two red stripes down the blue shell.
     svg: ballArt('#3b6fd4', '#7ea6ef', '#e5453b', '.kTaTTaTk.', 'kTaTTTTaTk'),
     use: (api) => (api.setActiveBall('great-ball'), { ok: false, msg: 'Great Ball set for your next throw.' }),
   },
   {
     id: 'ultra-ball', name: 'Ultra Ball', kind: 'ball', ballTier: 2, catchBase: 0.74, spawnWeight: 7,
-    desc: 'The best ball you will find down here. The highest base catch chance — a clean throw with one is close to a sure thing.',
+    desc: 'The best ball you will find down here. The highest base catch chance - a clean throw with one is close to a sure thing.',
     // The two yellow blocks on the black shell.
     svg: ballArt('#2a2a33', '#565662', '#f2c12e', '.kaaTTaak.', 'kTaaTTaaTk'),
     use: (api) => (api.setActiveBall('ultra-ball'), { ok: false, msg: 'Ultra Ball set for your next throw.' }),
   },
   {
     id: 'oran-berry', name: 'Oran Berry', kind: 'heal', needsTarget: true, spawnWeight: 20,
-    desc: 'A tart blue berry. Restores 20 HP to one party Pokémon.',
+    desc: 'A tart blue berry. Restores 20 HP to one party Pokemon.',
     svg: pixelIcon({ k: OUTLINE, B: '#4f8ee0', h: '#bcd9ff', g: '#5fbf52' }, [
       '....gg....',
       '...gg.....',
@@ -111,7 +111,7 @@ export const ITEMS = [
   },
   {
     id: 'full-heal', name: 'Full Heal', kind: 'heal', needsTarget: true, spawnWeight: 9,
-    desc: 'A potent medicine. Restores one party Pokémon to full HP — and it will revive a fainted one.',
+    desc: 'A potent medicine. Restores one party Pokemon to full HP - and it will revive a fainted one.',
     svg: pixelIcon({ k: OUTLINE, W: '#eef2f8', R: '#e5453b', S: '#8f97a8' }, [
       '...kkk....',
       '..kSSSk...',
@@ -133,7 +133,7 @@ export const ITEMS = [
   },
   {
     id: 'rare-candy', name: 'Rare Candy', kind: 'boost', needsTarget: true, spawnWeight: 8,
-    desc: 'Evolves one eligible party Pokémon on the spot. Has no effect on a Pokémon with nowhere left to evolve.',
+    desc: 'Evolves one eligible party Pokemon on the spot. Has no effect on a Pokemon with nowhere left to evolve.',
     svg: pixelIcon({ k: OUTLINE, P: '#f0648c', p: '#ffc0d4', C: '#7ec8f0' }, [
       '..........',
       '..........',
@@ -155,7 +155,7 @@ export const ITEMS = [
   },
   {
     id: 'town-map', name: 'Town Map', kind: 'field', spawnWeight: 10,
-    desc: 'Reveals the current floor’s full layout on the minimap and the pause map. Does not show items or Pokémon.',
+    desc: 'Reveals the current floor’s full layout on the minimap and the pause map. Does not show items or Pokemon.',
     svg: pixelIcon({ k: OUTLINE, M: '#f2e3bd', G: '#5fbf52', R: '#e5453b' }, [
       '..........',
       'kkkkkkkkkk',
@@ -172,7 +172,7 @@ export const ITEMS = [
   },
   {
     id: 'dowsing-machine', name: 'Dowsing Machine', kind: 'field', spawnWeight: 9,
-    desc: 'Pings the floor and marks every item and every wild Pokémon on your map, wherever they are.',
+    desc: 'Pings the floor and marks every item and every wild Pokemon on your map, wherever they are.',
     svg: pixelIcon({ k: OUTLINE, R: '#d8452f', S: '#9be8c8' }, [
       '..k...k...',
       '...k.k....',
@@ -185,11 +185,11 @@ export const ITEMS = [
       'kkkkkkkkkk',
       '..........',
     ]),
-    use: (api) => (api.revealEntities(), { ok: true, msg: 'Every item and Pokémon on this floor was marked!' }),
+    use: (api) => (api.revealEntities(), { ok: true, msg: 'Every item and Pokemon on this floor was marked!' }),
   },
   {
     id: 'x-attack', name: 'X Attack', kind: 'boost', spawnWeight: 11,
-    desc: 'A combat stimulant. Every party Pokémon deals +5 damage per hit for the next 60 seconds.',
+    desc: 'A combat stimulant. Every party Pokemon deals +5 damage per hit for the next 60 seconds.',
     svg: pixelIcon({ k: OUTLINE, O: '#f2933a', W: '#ffffff', S: '#8f97a8' }, [
       '...kkk....',
       '..kSSSk...',
@@ -206,7 +206,7 @@ export const ITEMS = [
   },
   {
     id: 'max-repel', name: 'Max Repel', kind: 'field', spawnWeight: 9,
-    desc: 'Wild Pokémon keep their distance for 45 seconds — they will not close in or trigger an encounter.',
+    desc: 'Wild Pokemon keep their distance for 45 seconds - they will not close in or trigger an encounter.',
     svg: pixelIcon({ k: OUTLINE, N: '#5fbf52', W: '#d8f5cf', S: '#8f97a8' }, [
       '...kkk....',
       '..kSSSk...',
@@ -219,7 +219,7 @@ export const ITEMS = [
       '.kkkkkkk..',
       '..........',
     ]),
-    use: (api) => (api.setRepel(45000), { ok: true, msg: 'Wild Pokémon will keep away for 45 seconds.' }),
+    use: (api) => (api.setRepel(45000), { ok: true, msg: 'Wild Pokemon will keep away for 45 seconds.' }),
   },
   {
     id: 'escape-rope', name: 'Escape Rope', kind: 'field', spawnWeight: 8,
@@ -240,7 +240,7 @@ export const ITEMS = [
   },
   {
     id: 'revive', name: 'Revive', kind: 'boost', spawnWeight: 7,
-    desc: 'Held in reserve. The next time a party Pokémon faints in battle it is automatically brought back at half HP.',
+    desc: 'Held in reserve. The next time a party Pokemon faints in battle it is automatically brought back at half HP.',
     svg: pixelIcon({ k: OUTLINE, Y: '#f2d54e' }, [
       '....kk....',
       '...kYYk...',
@@ -253,7 +253,7 @@ export const ITEMS = [
       '.k......k.',
       '..........',
     ]),
-    use: (api) => (api.grantRevive(), { ok: true, msg: 'A Revive is standing by for your next fainted Pokémon.' }),
+    use: (api) => (api.grantRevive(), { ok: true, msg: 'A Revive is standing by for your next fainted Pokemon.' }),
   },
 ];
 

@@ -158,7 +158,7 @@ export function useItem(itemId, mon = null) {
   const item = ITEM_BY_ID.get(itemId);
   if (!item) return { ok: false, msg: 'Nothing happened.' };
   if (countOf(itemId) <= 0) return { ok: false, msg: `You have no ${item.name}.` };
-  if (item.needsTarget && !mon) return { ok: false, msg: `Choose a Pokémon to use the ${item.name} on.` };
+  if (item.needsTarget && !mon) return { ok: false, msg: `Choose a Pokemon to use the ${item.name} on.` };
   const res = item.use(itemApi, mon) || { ok: false, msg: 'Nothing happened.' };
   if (res.ok) removeItem(itemId, 1);
   return res;

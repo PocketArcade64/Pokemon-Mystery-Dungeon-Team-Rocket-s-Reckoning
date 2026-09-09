@@ -12,7 +12,7 @@ import { QUEST_DEX } from './data/questdex.js';
 
 export const QB = 'Pokemon Quest 3D Models/';
 
-// Folder/file names contain spaces, '#' and 'é' — every segment has to be URL-encoded or the
+// Folder/file names contain spaces, '#' and 'e' — every segment has to be URL-encoded or the
 // fetch 404s (a bare '#' would be read as a fragment).
 export function encodePath(p) {
   return p.split('/').map(seg => encodeURIComponent(seg)).join('/');

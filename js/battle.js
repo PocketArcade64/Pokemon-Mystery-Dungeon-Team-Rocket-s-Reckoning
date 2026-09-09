@@ -142,7 +142,7 @@ export function createBattle({ party, enemies, kind = 'grunt', title = 'Team Roc
     const { dmg, superEff } = computeDamage(attacker, defender, playerTurn ? b.attackBonus : 0);
     defender.hp = Math.max(0, defender.hp - dmg);
     events.push({ type: 'hit', side: playerTurn ? 'party' : 'enemy', attacker, defender, dmg, superEff });
-    b.log.push(`${attacker.name} hit ${defender.name} for ${dmg}${superEff ? ' — super effective!' : ''}`);
+    b.log.push(`${attacker.name} hit ${defender.name} for ${dmg}${superEff ? ' - super effective!' : ''}`);
 
     if (defender.hp === 0) {
       // A held Revive brings the fainted party member straight back at half HP, so the player

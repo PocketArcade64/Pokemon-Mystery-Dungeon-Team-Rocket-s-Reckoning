@@ -146,7 +146,7 @@ function selectStarter(i) {
   sfx('select');
   const c = CATALOG_BY_DEX.get(starterPick);
   $('starter-name').textContent = c.name;
-  $('starter-meta').innerHTML = `${c.types.join(' / ')} · ${c.stage} · No. ${String(c.dex).padStart(3, '0')}`;
+  $('starter-meta').innerHTML = `${c.types.join(' / ')} - ${c.stage} - No. ${String(c.dex).padStart(3, '0')}`;
   $('starter-row').querySelectorAll('.starter-card').forEach((el, idx) => {
     el.classList.toggle('selected', idx === i);
   });
@@ -159,7 +159,7 @@ export function updateHUD() {
   const run = state.run;
   if (!run) return;
   $('floor-num').textContent = String(run.floorIndex + 1);
-  $('floor-theme').textContent = run.floor?.theme?.name || '—';
+  $('floor-theme').textContent = run.floor?.theme?.name || '-';
 
   const total = Object.values(run.bag).reduce((s, n) => s + n, 0);
   $('bag-count').textContent = String(total);
@@ -167,7 +167,7 @@ export function updateHUD() {
   const lead = inv.partyAlive()[0] || inv.party()[0];
   if (lead) {
     $('lead-name').textContent = lead.name;
-    $('party-count').textContent = `· ${inv.partyAlive().length}/${inv.party().length}`;
+    $('party-count').textContent = `- ${inv.partyAlive().length}/${inv.party().length}`;
     setHpBar($('lead-hpbar'), lead.hp, lead.maxHp);
   }
 
@@ -175,13 +175,13 @@ export function updateHUD() {
   const bonus = inv.currentAttackBonus();
   if (bonus > 0) {
     const left = Math.max(0, Math.ceil((run.attackBonusUntil - performance.now()) / 1000));
-    pills.push(`<span class="buff-pill">X Attack +${bonus} · ${left}s</span>`);
+    pills.push(`<span class="buff-pill">X Attack +${bonus} - ${left}s</span>`);
   }
   if (inv.isRepelActive()) {
     const left = Math.max(0, Math.ceil((run.repelUntil - performance.now()) / 1000));
-    pills.push(`<span class="buff-pill repel">Repel · ${left}s</span>`);
+    pills.push(`<span class="buff-pill repel">Repel - ${left}s</span>`);
   }
-  if (run.revives > 0) pills.push(`<span class="buff-pill">Revive ×${run.revives}</span>`);
+  if (run.revives > 0) pills.push(`<span class="buff-pill">Revive x${run.revives}</span>`);
   $('buff-strip').innerHTML = pills.join('');
 }
 
@@ -224,7 +224,7 @@ function renderTeamStrip(container, { selected = null, onPick = null, includeEmp
   for (let i = 0; i < MAX_PARTY; i++) {
     const m = p[i];
     if (!m) {
-      if (includeEmpty) cells.push(`<div class="team-slot empty"><div class="ts-name">—</div></div>`);
+      if (includeEmpty) cells.push(`<div class="team-slot empty"><div class="ts-name">-</div></div>`);
       continue;
     }
     const pct = Math.max(0, Math.min(100, (m.hp / m.maxHp) * 100));
@@ -265,7 +265,7 @@ function renderBagDetail() {
   const detail = $('bag-detail');
   const useBtn = $('btn-bag-use');
   if (!bagSelectedItem) {
-    detail.innerHTML = `<div class="id-name">—</div><div class="id-desc">Tap an item to see what it does.</div>`;
+    detail.innerHTML = `<div class="id-name">-</div><div class="id-desc">Tap an item to see what it does.</div>`;
     useBtn.disabled = true;
     useBtn.textContent = 'Use';
     return;
@@ -279,7 +279,7 @@ function renderBagDetail() {
   } else if (needsTarget) {
     note = target
       ? `<div class="id-desc" style="color:var(--gold)">Target: ${target.name}</div>`
-      : `<div class="id-desc" style="color:var(--gold)">Pick a Pokémon above first.</div>`;
+      : `<div class="id-desc" style="color:var(--gold)">Pick a Pokemon above first.</div>`;
   }
   detail.innerHTML = `<div class="id-name">${item.name}</div><div class="id-desc">${item.desc}</div>${note}`;
   useBtn.disabled = needsTarget && !target;
@@ -315,7 +315,7 @@ export function renderDex() {
   ensurePreviews();
   const s = state.stats;
   $('dex-stats').innerHTML = [
-    ['Runs', s.runsPlayed], ['Wins', s.runsWon], ['Best Floor', s.bestFloor ? 'B' + s.bestFloor + 'F' : '—'],
+    ['Runs', s.runsPlayed], ['Wins', s.runsWon], ['Best Floor', s.bestFloor ? 'B' + s.bestFloor + 'F' : '-'],
     ['Giovanni KOs', s.giovanniDefeats], ['Grunts KOd', s.gruntsDefeated], ['Caught', s.pokemonCaught],
   ].map(([label, val]) => `<div class="stat-tile"><div class="sv">${val}</div><div class="sl">${label}</div></div>`).join('');
 
@@ -335,7 +335,7 @@ export function renderDex() {
   });
 
   if (seen.length) selectDex(dexSelected && seen.includes(dexSelected) ? dexSelected : seen[0]);
-  else { $('dex-name').textContent = '—'; setPreviewModel(dexPreview.holder, -1); }
+  else { $('dex-name').textContent = '-'; setPreviewModel(dexPreview.holder, -1); }
 }
 
 function selectDex(dex) {
@@ -348,7 +348,7 @@ function selectDex(dex) {
   else tags.push('seen');
   // The trailing detail drops out of the display face: in Press Start 2P it is wide enough to
   // wrap onto a second line and shove the stat grid down.
-  $('dex-name').innerHTML = `${c.name}<span class="meta-inline">${c.types.join('/')} · ${tags.join(', ')}</span>`;
+  $('dex-name').innerHTML = `${c.name}<span class="meta-inline">${c.types.join('/')} - ${tags.join(', ')}</span>`;
   $('dex-grid').querySelectorAll('.dex-cell').forEach(el => {
     el.classList.toggle('selected', Number(el.dataset.dex) === dex);
   });
@@ -376,7 +376,7 @@ function renderCombatSide(container, team, leadIndex) {
       <div class="cr-main">
         <div class="cr-name">${m.name}</div>
         <div class="hpbar ${barClass}"><i style="width:${pct}%"></i></div>
-        <div class="cr-hpnum">${m.hp} / ${m.maxHp} HP · ${m.types.join('/')}</div>
+        <div class="cr-hpnum">${m.hp} / ${m.maxHp} HP - ${m.types.join('/')}</div>
       </div>
       <div class="cr-stage">${m.stage === 'Legendary' ? 'LGND' : m.stage.toUpperCase()}</div>
     </div>`;
@@ -423,14 +423,14 @@ let ballMenuOpen = false;
 // prompt line and no result line — what the throw did is visible in the 3D scene.
 export function renderCatchUI({ dex, activeBall }) {
   const c = CATALOG_BY_DEX.get(dex);
-  $('catch-name').textContent = c ? `Wild ${c.name}` : 'Wild Pokémon';
+  $('catch-name').textContent = c ? c.name : 'Pokemon';
   $('catch-sub').innerHTML = c ? typeBadges(c.types) : '';
 
   const held = BALL_IDS.filter(id => inv.countOf(id) > 0);
   const current = activeBall && inv.countOf(activeBall) > 0 ? activeBall : held[0] || null;
   const item = current ? ITEM_BY_ID.get(current) : null;
   $('catch-ball-icon').innerHTML = item ? item.svg : '';
-  $('catch-ball-count').textContent = current ? `×${inv.countOf(current)}` : '×0';
+  $('catch-ball-count').textContent = current ? `x${inv.countOf(current)}` : 'x0';
   $('btn-catch-ball').style.opacity = held.length ? '1' : '0.45';
 
   // Only the tiers you are NOT holding right now — a picker whose top entry is the ball already in
@@ -439,7 +439,7 @@ export function renderCatchUI({ dex, activeBall }) {
   const menu = $('catch-ballmenu');
   menu.innerHTML = others.map(id => {
     const it = ITEM_BY_ID.get(id);
-    return `<div class="ball-chip" data-id="${id}" title="${it.name}">${it.svg}<span>×${inv.countOf(id)}</span></div>`;
+    return `<div class="ball-chip" data-id="${id}" title="${it.name}">${it.svg}<span>x${inv.countOf(id)}</span></div>`;
   }).join('');
   menu.querySelectorAll('.ball-chip[data-id]').forEach(el => {
     el.addEventListener('click', () => {
@@ -478,7 +478,7 @@ let swapSelected = null;
 
 export function renderSwap(newMon) {
   swapSelected = null;
-  $('swap-sub').textContent = `You caught ${newMon.name} (${newMon.types.join('/')}, ${newMon.stage}) — but you are already carrying ${MAX_PARTY}.`;
+  $('swap-sub').textContent = `You caught ${newMon.name} (${newMon.types.join('/')}, ${newMon.stage}) - but you are already carrying ${MAX_PARTY}.`;
   const draw = () => renderTeamStrip($('swap-team'), {
     selected: swapSelected,
     includeEmpty: false,
@@ -498,12 +498,12 @@ export function renderEnd({ won, floorReached, caught, partyNames, abandoned = f
   $('end-sub').textContent = won
     ? `Team Rocket's hold on the dungeon is broken. ${partyNames.length ? partyNames.join(', ') + ' made it out.' : ''}`
     : abandoned
-      ? `You walked away on B${floorReached}F. Your team and everything you were carrying stay down there — that is the deal.`
-      : `Your team fell on B${floorReached}F. Everything you were carrying is gone — that is the deal down here.`;
+      ? `You walked away on B${floorReached}F. Your team and everything you were carrying stay down there - that is the deal.`
+      : `Your team fell on B${floorReached}F. Everything you were carrying is gone - that is the deal down here.`;
   $('end-stats').innerHTML = [
     ['Floor', 'B' + floorReached + 'F'],
     ['Caught', caught],
-    ['Best Ever', state.stats.bestFloor ? 'B' + state.stats.bestFloor + 'F' : '—'],
+    ['Best Ever', state.stats.bestFloor ? 'B' + state.stats.bestFloor + 'F' : '-'],
   ].map(([l, v]) => `<div class="stat-tile"><div class="sv">${v}</div><div class="sl">${l}</div></div>`).join('');
 }
 
@@ -511,7 +511,7 @@ export function renderEnd({ won, floorReached, caught, partyNames, abandoned = f
 export function renderPause() {
   const run = state.run;
   $('pause-sub').textContent = run
-    ? `B${run.floorIndex + 1}F · ${run.floor.theme.name} · ${inv.partyAlive().length}/${inv.party().length} standing`
+    ? `B${run.floorIndex + 1}F - ${run.floor.theme.name} - ${inv.partyAlive().length}/${inv.party().length} standing`
     : '';
 }
 

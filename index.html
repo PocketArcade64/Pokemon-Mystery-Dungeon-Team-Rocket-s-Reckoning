@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <!-- viewport-fit=cover is what makes env(safe-area-inset-*) report real values on iPhone. -->
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
-<title>Pokémon Mystery Dungeon: Team Rocket's Reckoning</title>
+<title>Pokemon Mystery Dungeon: Team Rocket's Reckoning</title>
 <!-- Home-screen and browser-tab icon. A JPG is fine for both; iOS uses the apple-touch-icon for
      "Add to Home Screen", so it must be square and at least 180px (this one is 1024px). -->
 <link rel="icon" href="apple-touch-icon.jpg" />
@@ -17,12 +17,21 @@
 <meta name="theme-color" content="#0b1020" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<!-- Silkscreen is the only face, the way Rumble Run uses a single pixel font throughout: weight,
-     size and colour carry the hierarchy instead of a second display face. -->
+<!-- ONE face for the whole game, exactly as Pokemon Rumble Run does it: the bundled
+     pokemon_pixel_font.ttf ('PokemonPixel'), with Silkscreen behind it only as the fallback for the
+     moment before the local file decodes. Weight, size and colour carry the hierarchy — there is no
+     second display face anywhere, and nothing may opt out of this stack. -->
 <link href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&display=swap" rel="stylesheet" />
 <style>
+  @font-face {
+    font-family: 'PokemonPixel';
+    src: url('pokemon_pixel_font.ttf') format('truetype');
+    font-display: swap;
+  }
+</style>
+<style>
   /* =============================================================================================
-     UI in Pokémon Rumble Run's design language: toy-bright gold and silver controls on a deep
+     UI in Pokemon Rumble Run's design language: toy-bright gold and silver controls on a deep
      navy-plum ground. Three rules carry that look, and they are the opposite of the hard-edged
      pixel UI this screen used to wear:
        1. Controls are ROUNDED (12-14px) and lit by a smooth top-to-bottom gradient.
@@ -77,10 +86,10 @@
     overscroll-behavior: none;
     -webkit-user-select: none; user-select: none;
     color: var(--ink);
-    font-family: 'Silkscreen', 'Trebuchet MS', system-ui, sans-serif;
+    font-family: 'PokemonPixel', 'Silkscreen', 'Trebuchet MS', system-ui, sans-serif;
     font-weight: 400;
-    /* Silkscreen has a small x-height; the looser tracking and line-height are what make it
-       readable at button and body sizes. Straight from Rumble Run. */
+    /* These pixel faces have a small x-height; the looser tracking and line-height are what make
+       them readable at button and body sizes. Straight from Rumble Run. */
     letter-spacing: 0.5px;
     line-height: 1.6;
     /* Pixel sprites (type badges, item icons, minimap, the voxel canvas) must never be smoothed
@@ -764,7 +773,7 @@
     100% { opacity: 0; transform: translate(-50%, -80%) scale(1); }
   }
 
-  /* Icon-only discs, deliberately. A chip wide enough to spell "Great Ball ×4" reaches back over
+  /* Icon-only discs, deliberately. A chip wide enough to spell "Great Ball x4" reaches back over
      the thrown ball at the bottom middle — and chips take pointer events, so it would eat the
      start of a swipe while the picker is open. Round and hard right, they clear the ball. */
   .ball-chip {
@@ -857,11 +866,11 @@
   <div class="screen sheet" id="screen-title">
     <div class="logo-wrap">
       <img id="title-logo" src="Title%20logo.png"
-           alt="Pokémon Mystery Dungeon: Team Rocket's Reckoning" />
+           alt="Pokemon Mystery Dungeon: Team Rocket's Reckoning" />
     </div>
     <div class="btn-col">
       <button class="btn" id="btn-start">Start Run</button>
-      <button class="btn secondary" id="btn-dex">Pokédex</button>
+      <button class="btn secondary" id="btn-dex">Pokedex</button>
       <div class="btn-row">
         <button class="btn secondary small" id="btn-glossary-title">Items</button>
         <button class="btn secondary small" id="btn-settings-title">Settings</button>
@@ -873,7 +882,7 @@
   <div class="screen sheet" id="screen-starter">
     <h2 class="screen-title">Choose your partner</h2>
     <canvas id="starter-preview"></canvas>
-    <div class="starter-name" id="starter-name">—</div>
+    <div class="starter-name" id="starter-name">-</div>
     <div class="starter-meta" id="starter-meta"></div>
     <div class="starter-row" id="starter-row"></div>
     <!-- margin-top:auto pins the actions to the bottom of the sheet: the cards above are only as
@@ -894,10 +903,10 @@
     <button class="btn secondary icon" id="btn-pause">
       <svg viewBox="0 0 12 12" shape-rendering="crispEdges"><use href="#px-pause" /></svg>
     </button>
-    <div id="floor-chip">B<span id="floor-num">1</span>F <span class="theme" id="floor-theme">—</span></div>
+    <div id="floor-chip">B<span id="floor-num">1</span>F <span class="theme" id="floor-theme">-</span></div>
     <div id="buff-strip"></div>
     <div id="lead-hp">
-      <div class="name"><span id="lead-name">—</span> <span class="party-count" id="party-count"></span></div>
+      <div class="name"><span id="lead-name">-</span> <span class="party-count" id="party-count"></span></div>
       <div class="hpbar" id="lead-hpbar"><i style="width:100%"></i></div>
     </div>
     <div id="joystick"><div id="joystick-knob"></div></div>
@@ -917,7 +926,7 @@
   <!-- ============ PAUSE / FLOOR MAP ============ -->
   <div class="screen overlay" id="screen-pause">
     <h2 class="screen-title">Paused</h2>
-    <div class="screen-sub" id="pause-sub">—</div>
+    <div class="screen-sub" id="pause-sub">-</div>
     <!-- The canvas is absolutely positioned inside the panel on purpose. As a normal grid item
          with height:100% it resolved its height against the panel's PRE-shrink size, so on a
          short screen it overflowed the panel and the button column below painted straight over
@@ -943,10 +952,10 @@
     <div class="team-strip" id="bag-team"></div>
     <div class="scroll" style="min-height:0">
       <div class="item-grid" id="bag-items"></div>
-      <div class="empty-note" id="bag-empty" style="display:none">Your bag is empty. Items are scattered across every floor — the glowing gems.</div>
+      <div class="empty-note" id="bag-empty" style="display:none">Your bag is empty. Items are scattered across every floor - the glowing gems.</div>
     </div>
     <div class="item-detail panel" id="bag-detail">
-      <div class="id-name">—</div>
+      <div class="id-name">-</div>
       <div class="id-desc">Tap an item to see what it does.</div>
     </div>
     <div class="btn-row" style="margin-top:12px">
@@ -983,7 +992,7 @@
         </div>
         <div class="setting-note">
           Stick: a virtual stick in the bottom-left corner. Tap Move: tap any walkable spot and
-          your Pokémon paths toward it. Keyboard arrows / WASD always work as well.
+          your Pokemon paths toward it. Keyboard arrows / WASD always work as well.
         </div>
       </div>
       <div class="setting">
@@ -997,9 +1006,9 @@
 
   <!-- ============ POKEDEX / STATS ============ -->
   <div class="screen sheet" id="screen-dex">
-    <h2 class="screen-title">Pokédex</h2>
+    <h2 class="screen-title">Pokedex</h2>
     <canvas id="dex-preview"></canvas>
-    <div class="starter-name" id="dex-name" style="font-size:12px;margin:12px 0 4px">—</div>
+    <div class="starter-name" id="dex-name" style="font-size:12px;margin:12px 0 4px">-</div>
     <div class="stat-grid" id="dex-stats"></div>
     <div class="legend">
       <span><i style="background:var(--teal)"></i>Caught</span>
@@ -1007,7 +1016,7 @@
       <span><i style="background:var(--edge)"></i>Seen</span>
     </div>
     <div class="scroll" style="min-height:0"><div class="dex-grid" id="dex-grid"></div>
-      <div class="empty-note" id="dex-empty" style="display:none">Nothing recorded yet. Finish a run — win or lose — and it shows up here.</div>
+      <div class="empty-note" id="dex-empty" style="display:none">Nothing recorded yet. Finish a run - win or lose - and it shows up here.</div>
     </div>
     <button class="btn secondary" id="btn-dex-back" style="margin-top:14px">Back</button>
   </div>
@@ -1019,7 +1028,7 @@
       <div class="screen-sub" id="battle-sub" style="margin:8px 0 10px">wants to battle!</div>
       <div class="combat-side" id="enemy-side"></div>
     </div>
-    <div id="battle-log">…</div>
+    <div id="battle-log">...</div>
     <div>
       <div class="combat-side" id="party-side"></div>
       <div class="btn-row" style="margin-top:12px">
@@ -1038,21 +1047,21 @@
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5 L8 12 L15 19" /></svg>
     </button>
     <div id="catch-top">
-      <div id="catch-name">Wild Pokémon</div>
+      <div id="catch-name">Pokemon</div>
       <div id="catch-sub"></div>
     </div>
     <div id="catch-grade"></div>
     <div id="catch-ballmenu" class="hidden"></div>
-    <button id="btn-catch-ball" class="go-round" aria-label="Change Poké Ball">
+    <button id="btn-catch-ball" class="go-round" aria-label="Change Poke Ball">
       <span id="catch-ball-icon"></span>
-      <span id="catch-ball-count">×0</span>
+      <span id="catch-ball-count">x0</span>
     </button>
   </div>
 
   <!-- ============ SWAP OR RELEASE ============ -->
   <div class="screen overlay" id="screen-swap">
     <h2 class="screen-title">Team is full!</h2>
-    <div class="screen-sub" id="swap-sub">—</div>
+    <div class="screen-sub" id="swap-sub">-</div>
     <div class="team-strip" id="swap-team"></div>
     <div class="panel" style="font-size:11px;color:var(--ink-dim);text-align:center;line-height:1.7">
       Tap a party slot to swap the newcomer in, or release it and keep your team as it is.
@@ -1067,7 +1076,7 @@
   <div class="screen sheet" id="screen-end">
     <div id="end-kicker">Run Over</div>
     <div id="end-title">Wiped Out</div>
-    <div id="end-sub">—</div>
+    <div id="end-sub">-</div>
     <div class="stat-grid" id="end-stats"></div>
     <div class="btn-col">
       <button class="btn" id="btn-end-again">New Run</button>
@@ -1077,7 +1086,7 @@
 
 </div>
 
-<div id="boot"><div><div class="spin"></div><div class="boot-label">Loading the dungeon…</div></div></div>
+<div id="boot"><div><div class="spin"></div><div class="boot-label">Loading the dungeon...</div></div></div>
 
 <script type="importmap">
 {

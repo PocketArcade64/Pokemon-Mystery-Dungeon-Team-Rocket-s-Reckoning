@@ -163,7 +163,7 @@ function enterFloor(index) {
   ui.banner({
     kicker: isFinal ? 'The Bottom' : 'Descending',
     main: theme.name,
-    sub: isFinal ? `Basement Floor ${index + 1} — Giovanni is here` : `Basement Floor ${index + 1}`,
+    sub: isFinal ? `Basement Floor ${index + 1} - Giovanni is here` : `Basement Floor ${index + 1}`,
     ms: 1800,
   });
 }
@@ -258,7 +258,7 @@ function updateBattleFrame(dtMs) {
       ui.floatDamage(side, idx, ev.dmg, ev.superEff);
       ui.updateBattleRows(battle);
       ui.battleLog(`${ev.attacker.name} struck ${ev.defender.name} for ${ev.dmg}` +
-        (ev.superEff ? ` <span class="se">— super effective!</span>` : '.'));
+        (ev.superEff ? ` <span class="se">- super effective!</span>` : '.'));
       sfx(ev.superEff ? 'superhit' : 'hit');
     } else if (ev.type === 'faint') {
       ui.updateBattleRows(battle);
@@ -282,7 +282,7 @@ function finishBattle(result) {
   state.run.revives = battle.revives;
   const ctx = battleCtx;
   if (result === 'lose') {
-    ui.battleLog('Your whole team has fainted…');
+    ui.battleLog('Your whole team has fainted...');
     ui.showBattleContinue('See how far you got');
     return;
   }
@@ -290,7 +290,7 @@ function finishBattle(result) {
   // the result text until you tap Continue. A worn-down wild is not a Rocket win, and its theme
   // has to carry straight on into the catch minigame, so that branch leaves the music alone.
   if (ctx.kind === 'wild') {
-    ui.battleLog(`${ctx.wild ? CATALOG_BY_DEX.get(ctx.wild.dex).name : 'It'} is worn down — now is your chance!`);
+    ui.battleLog(`${ctx.wild ? CATALOG_BY_DEX.get(ctx.wild.dex).name : 'It'} is worn down - now is your chance!`);
     ui.showBattleContinue('Throw a Ball');
   } else if (ctx.kind === 'grunt') {
     playMusic('victory');
@@ -344,7 +344,7 @@ function knockOutBoss() {
 function beginCatch(wild) {
   const ballId = inv.activeBall();
   if (!ballId) {
-    ui.toast('You have no Poké Balls left!');
+    ui.toast('You have no Poke Balls left!');
     // Leave the wild alone for a while so you are not stuck bumping into it with an empty bag,
     // and send it walking off rather than leaving it standing in your footprint.
     wild.cooldownUntil = performance.now() + 10000;
@@ -410,7 +410,7 @@ function onCatchResult(res) {
     wild.gone = true;
     disposeObject(wild.obj);
     const outcome = inv.addCaught(res.dex);
-    // Give the wobble/success animation a beat to land before changing screens.
+    // Let the lock click, its shimmer and the fanfare all land before the screen changes.
     setTimeout(() => {
       endCatch();
       if (outcome.needsSwap) {
@@ -423,7 +423,7 @@ function onCatchResult(res) {
           .filter(Boolean).join(' + ');
         ui.toast(bonus ? `${res.msg} (${bonus})` : `${res.msg} Added to your team.`);
       }
-    }, 1100);
+    }, 1500);
     return;
   }
 

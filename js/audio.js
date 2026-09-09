@@ -98,7 +98,7 @@ function loadBuffer(key) {
   if (cached) return Promise.resolve(cached);
   const track = TRACKS[key];
   if (!track || !ctx) return Promise.resolve(null);
-  // The folder name has a space and the filenames carry an "é", so encode rather than trusting
+  // The folder name has a space and the filenames carry an "e", so encode rather than trusting
   // the browser: encodeURI keeps the slashes, encodeURIComponent handles the leaf.
   const p = fetch(encodeURI(MUSIC_DIR) + encodeURIComponent(track.file))
     .then(r => { if (!r.ok) throw new Error('missing'); return r.arrayBuffer(); })
@@ -318,11 +318,22 @@ export function sfx(name) {
     // click is the moment of the catch and it lands before the fanfare does.
     case 'absorb':   tone({ freq: 900, endFreq: 220, dur: 0.34, type: 'sine', gain: 0.2 });
                      noise({ dur: 0.3, gain: 0.12, filterHz: 1200 }); break;
-    case 'shake':    tone({ freq: 260, endFreq: 200, dur: 0.09, type: 'square', gain: 0.15 }); break;
-    case 'lock':     tone({ freq: 1750, dur: 0.05, type: 'square', gain: 0.26 });
-                     tone({ freq: 2400, dur: 0.05, type: 'square', gain: 0.18, delay: 0.045 }); break;
+    // A shake is a dull muffled knock — something moving around INSIDE a closed shell. It has to
+    // sit clearly below the lock, because the whole point of the wobble is waiting to find out
+    // which of the two sounds you are going to get.
+    case 'shake':    tone({ freq: 205, endFreq: 148, dur: 0.12, type: 'square', gain: 0.16 });
+                     noise({ dur: 0.09, gain: 0.1, filterHz: 480 }); break;
+    // The lock is the catch. Hard mechanical CLICK, then a bright three-note shimmer ringing off
+    // it — deliberately nothing like the knocks that came before.
+    case 'lock':     noise({ dur: 0.05, gain: 0.3, filterHz: 6000 });
+                     tone({ freq: 2100, dur: 0.04, type: 'square', gain: 0.28 });
+                     tone({ freq: 1500, endFreq: 1950, dur: 0.08, type: 'square', gain: 0.2, delay: 0.045 });
+                     [1319, 1760, 2637].forEach((f, i) =>
+                       tone({ freq: f, dur: 0.3, type: 'sine', gain: 0.17, delay: 0.1 + i * 0.035 })); break;
+    // Held back 0.42 s so the lock's click lands ALONE first and the fanfare answers it. Played on
+    // top of each other they smear into one noise and the moment of the catch is lost.
     case 'caught':   [523, 659, 784, 1047].forEach((f, i) =>
-                       tone({ freq: f, dur: 0.13, type: 'triangle', gain: 0.22, delay: i * 0.1 })); break;
+                       tone({ freq: f, dur: 0.13, type: 'triangle', gain: 0.22, delay: 0.42 + i * 0.1 })); break;
     case 'broke':    tone({ freq: 500, endFreq: 180, dur: 0.3, type: 'square', gain: 0.2 }); break;
     case 'evolve':   [392, 523, 659, 784, 1047].forEach((f, i) =>
                        tone({ freq: f, dur: 0.16, type: 'sine', gain: 0.2, delay: i * 0.12 })); break;

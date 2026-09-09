@@ -67,6 +67,12 @@ const BALL_DEPTH = 2.6;
 const BALL_HOME_NDC = { x: 0, y: -0.70 };
 const BALL_SCREEN_W = 0.22;       // of screen width
 const BALL_SCREEN_H = 0.115;      // of screen height
+// The Quest ball models are voxel spheres with the release BUTTON on one side, and the side they
+// happen to face when loaded is not the camera. This is the yaw that turns the button toward the
+// player, and the ball holds it for its whole life — held, in flight, on the floor, shaking.
+// A ball that tumbles hides the one detail that says "Poke Ball" at a glance. The only exception
+// is the deliberate spin of a charged curveball.
+const BALL_FACE_Y = Math.PI;
 const HOLD_NDC_X = 0.80;          // how far the held ball may be dragged, in NDC
 const HOLD_NDC_Y_LO = -0.90;
 const HOLD_NDC_Y_HI = 0.05;
@@ -136,8 +142,12 @@ const ABSORB_TOTAL = ABSORB_IMPACT + ABSORB_PULL + ABSORB_SETTLE;
 // GO's shake count says the answer before the answer: three shakes and a click is a catch, and
 // anything short of three is a break-out.
 const WOBBLES_CAUGHT = 3;
-const DROP_TIME = 0.34;           // ball falling from the contact point to the ground
-const WOBBLE_PER = 0.62;          // one shake
+const BOUNCE_TIME = 0.22;         // the little hop after the ball lands
+const SETTLE_PAUSE = 0.34;        // dead still on the floor before the first shake
+// One shake per period, but the rock itself only occupies the first WOBBLE_ROCK of it. The rest is
+// silence, and the silence IS the suspense — a ball that sways continuously has no beats to count.
+const WOBBLE_PER = 0.95;
+const WOBBLE_ROCK = 0.42;
 
 // The camera pushes in on the ball for the shake, so the wobble is the whole screen.
 //
@@ -410,6 +420,7 @@ catchScene.add(ballHolder);
 let camZoom = 0;
 const _zoomPos = new THREE.Vector3();
 const _zoomLook = new THREE.Vector3();
+const _restPoint = new THREE.Vector3();
 
 function resetCamera() {
   camZoom = 0;
@@ -424,7 +435,12 @@ function updateCamera(dt) {
   camZoom = THREE.MathUtils.damp(camZoom, want, ZOOM_LAMBDA, dt);
   if (want === 0 && camZoom < 0.004) { if (camZoom !== 0) resetCamera(); return; }
 
-  const b = s.ballObj ? s.ballObj.position : CAM_LOOK;
+  // Framed on where the ball is GOING TO REST, not on the ball. Tracking the ball means the camera
+  // rides down with it during the fall and the drop reads as the world moving up instead of the
+  // ball moving down. Aiming at the floor spot lets the ball fall into a held frame.
+  const b = s.phase === 'wobble' || s.phase === 'success'
+    ? _restPoint.set(s.hitPoint.x, s.ballRadius, s.hitPoint.z)
+    : (s.ballObj ? s.ballObj.position : CAM_LOOK);
   const focusY = b.y + s.ballRadius * 0.6;
   _zoomPos.set(b.x * 0.45, focusY + ZOOM_UP, b.z + ZOOM_BACK);
   _zoomLook.set(b.x, focusY, b.z);
@@ -460,6 +476,7 @@ export const catchState = {
   ringColor: 0x4ade80,
   held: null,         // the finger currently holding the ball
   spin: 0,            // -1 / 0 / +1 — curveball direction, set while holding
+  spinAngle: 0,       // accumulated yaw of a spinning ball, on top of BALL_FACE_Y
   curve: false,       // whether the throw in flight is a curveball
   grade: null,        // 'excellent' | 'great' | 'nice' | 'hit'
   wobbles: 0,
@@ -543,7 +560,7 @@ export function startCatch({ dex, ballId, ballsLeft, onResult, onThrow, onGrade,
     // small end of the ring, so Excellent throws get genuinely harder as the run goes on.
     ringPeriod: 1.45 - Math.min(0.45, floorNumber * 0.09),
     ringPhase: 0, ringRatio: 1,
-    ball: null, held: null, spin: 0, curve: false, grade: null, monFit: 1,
+    ball: null, held: null, spin: 0, spinAngle: 0, curve: false, grade: null, monFit: 1,
     wobbles: 0, shakesDone: 0, willCatch: false, resultMsg: '', accuracyPct: 0,
     onResult, onThrow, onGrade, onRearm, onSfx, ballsLeft, t: 0, phaseT: 0,
   });
@@ -606,6 +623,12 @@ function dressBall(pivot) {
   pivot.traverse(o => { o.renderOrder = BALL_ORDER; if (o.isMesh) o.castShadow = false; });
 }
 
+// Square the ball back up so its button faces the camera. Anything that wants to rock or roll the
+// ball composes on top of this rather than writing rotation directly.
+function faceBall(obj, roll = 0) {
+  obj.rotation.set(0, BALL_FACE_Y, roll);
+}
+
 function spawnBall() {
   clearBall();
   hideTrail();
@@ -622,10 +645,12 @@ function spawnBall() {
 
   pointAtNDC(BALL_HOME_NDC.x, BALL_HOME_NDC.y, BALL_DEPTH, BALL_HOME);
   pivot.position.copy(BALL_HOME);
+  faceBall(pivot);
   ballHolder.add(pivot);
   catchState.ballObj = pivot;
   catchState.ball = { x: BALL_HOME.x, y: BALL_HOME.y, z: BALL_HOME.z, vx: 0, vy: 0, vz: 0 };
   catchState.spin = 0;
+  catchState.spinAngle = 0;
   catchState.curve = false;
   SPIN_HALO.material.opacity = 0;
 }
@@ -694,10 +719,17 @@ export function catchPointerMove(x, y, canvasW, canvasH) {
   // through these and a short buffer would cut the search off mid-flick.
   if (h.samples.length > 20) h.samples.shift();
 
-  // Screen y grows downward, so a clockwise on-screen swirl is a negative cross product. Negate
-  // once here so `spin` is +1 for a right-curving ball in world space.
+  // Which way the swirl went, and it is worth deriving rather than guessing — this had the sign
+  // backwards and every curveball bent the wrong way.
+  //
+  // Screen y grows DOWNWARD. Take a clockwise swirl as the viewer sees it: right, then down. That
+  // is prev = (1, 0) then cur = (0, +1), so the cross product prevDx*dy - prevDy*dx = +1.
+  // CLOCKWISE is therefore POSITIVE here, and counter-clockwise negative. `spin` is +1 for a ball
+  // that bends to the RIGHT (it is multiplied straight into +x), so:
+  //     clockwise  -> +1 -> curves right
+  //     counter-cw -> -1 -> curves left
   if (h.pathLen > SPIN_PATH_MIN && Math.abs(h.spinAccum) > SPIN_THRESHOLD) {
-    catchState.spin = h.spinAccum > 0 ? -1 : 1;
+    catchState.spin = h.spinAccum > 0 ? 1 : -1;
   }
 }
 
@@ -799,7 +831,7 @@ export function updateCatch(dt) {
   else if (s.phase === 'fail' || s.phase === 'empty') updateDeadBall(dt);
   else if (s.phase === 'wobble') updateWobble();
   else if (s.phase === 'success' && s.ballObj) {
-    s.ballObj.rotation.z = 0;
+    faceBall(s.ballObj);
     s.ballObj.position.y = s.ballRadius + Math.abs(Math.sin(s.phaseT * 2.4)) * s.ballRadius * 0.5;
   }
   fadeTrail(dt);
@@ -896,13 +928,17 @@ function updateHeldBall(dt) {
   obj.position.set(b.x, b.y, b.z);
 
   if (s.spin !== 0) {
-    obj.rotation.y += dt * 22 * s.spin;
+    // A charged curveball is the ONE place the button is allowed to swing away from the camera:
+    // the ball visibly spinning in your hand is the tell that the swirl took.
+    s.spinAngle += dt * 22 * s.spin;
+    obj.rotation.set(0, BALL_FACE_Y + s.spinAngle, 0);
     SPIN_HALO.scale.setScalar(s.ballRadius * 1.9);
     SPIN_HALO.position.set(b.x, b.y, b.z + 0.02);
     SPIN_HALO.rotation.z += dt * 6 * s.spin;
     SPIN_HALO.material.opacity = Math.min(0.85, SPIN_HALO.material.opacity + dt * 4);
   } else {
-    obj.rotation.y = 0;
+    s.spinAngle = 0;
+    faceBall(obj);
     SPIN_HALO.material.opacity = Math.max(0, SPIN_HALO.material.opacity - dt * 4);
   }
 }
@@ -918,8 +954,10 @@ function updateFlight(dt) {
   b.vy += GRAVITY * dt;
   b.x += b.vx * dt; b.y += b.vy * dt; b.z += b.vz * dt;
   obj.position.set(b.x, b.y, b.z);
-  obj.rotation.x -= dt * 12;
-  if (s.curve) obj.rotation.y += dt * 26 * s.spin;
+  // Button forward the whole flight; only a curveball is allowed to spin, and only about Y so
+  // the button sweeps past the camera rather than tumbling away from it.
+  if (s.curve) { s.spinAngle += dt * 26 * s.spin; obj.rotation.set(0, BALL_FACE_Y + s.spinAngle, 0); }
+  else faceBall(obj);
   SPIN_HALO.material.opacity = Math.max(0, SPIN_HALO.material.opacity - dt * 6);
   pushTrail(b.x, b.y, b.z);
 
@@ -1014,7 +1052,7 @@ function resolveContact(hx, hy) {
   // for the whole absorb and there is nothing for the light to be drawn into.
   s.hitPoint.set(hx, hy, TARGET_Z + 0.5);
   s.ballObj.position.copy(s.hitPoint);
-  s.ballObj.rotation.set(0, 0, 0);
+  faceBall(s.ballObj);
   if (s.monObj) s.monStart.copy(s.monObj.position);
   s.phase = 'absorb';
   s.phaseT = 0;
@@ -1034,7 +1072,7 @@ function updateAbsorb() {
   // 1. Impact: the ball punches in and rocks back out toward the camera.
   const impact = Math.min(1, s.phaseT / ABSORB_IMPACT);
   obj.position.set(hp.x, hp.y, hp.z + Math.sin(impact * Math.PI) * 0.22);
-  obj.rotation.z = Math.sin(impact * Math.PI * 2) * 0.3;
+  faceBall(obj, Math.sin(impact * Math.PI * 2) * 0.3);
 
   const pull = THREE.MathUtils.clamp((s.phaseT - ABSORB_IMPACT) / ABSORB_PULL, 0, 1);
   const fade = THREE.MathUtils.clamp((s.phaseT - ABSORB_IMPACT - ABSORB_PULL) / ABSORB_SETTLE, 0, 1);
@@ -1098,34 +1136,54 @@ function hideAbsorb() {
   ABSORB_LIGHT.intensity = 0;
 }
 
-// GO's wobble: the ball falls from wherever it caught the Pokemon down to the ground, settles,
-// then rocks side to side once per shake. The fall is what makes the shake read as happening on
-// the floor rather than in mid-air, and the camera is pushed in on it the whole time.
+// The ball FALLS to the floor, bounces, settles — and only then starts shaking. The fall is its
+// own beat, not a lead-in that overlaps the first shake: the camera is aimed at the resting spot
+// rather than at the ball, so the ball visibly drops into frame instead of the camera riding down
+// with it and cancelling the whole sense of falling.
 function updateWobble() {
   const s = catchState;
   if (!s.ballObj) return;
   const groundY = s.ballRadius;
   const fromY = s.hitPoint.y;
 
-  if (s.phaseT < DROP_TIME) {
-    const p = s.phaseT / DROP_TIME;
-    s.ballObj.position.set(s.hitPoint.x, fromY + (groundY - fromY) * (p * p), s.hitPoint.z);
-    s.ballObj.rotation.x -= 0.08;
+  // 1. Real gravity fall from the contact point, so the drop time follows the drop height.
+  const fallT = Math.sqrt(Math.max(0.02, 2 * Math.max(0, fromY - groundY) / -GRAVITY));
+  if (s.phaseT < fallT) {
+    const y = fromY + 0.5 * GRAVITY * s.phaseT * s.phaseT;
+    s.ballObj.position.set(s.hitPoint.x, Math.max(groundY, y), s.hitPoint.z);
     return;
   }
 
-  const wt = s.phaseT - DROP_TIME;
+  // 2. One small bounce, then a still beat before anything shakes. The pause is what makes the
+  //    first shake land as an event rather than as the tail of the fall.
+  const afterFall = s.phaseT - fallT;
+  if (afterFall < BOUNCE_TIME) {
+    const p = afterFall / BOUNCE_TIME;
+    s.ballObj.position.set(s.hitPoint.x, groundY + Math.sin(p * Math.PI) * (groundY * 1.1), s.hitPoint.z);
+    return;
+  }
+  s.ballObj.position.set(s.hitPoint.x, groundY, s.hitPoint.z);
+  const wt = afterFall - BOUNCE_TIME - SETTLE_PAUSE;
+  if (wt < 0) return;
+
+  // 3. The shakes. Each one is a quick rock inside a long period — the SILENCE after the rock is
+  //    the suspense, so the ball must come to a dead stop between them rather than swaying the
+  //    whole time.
   const total = WOBBLE_PER * s.wobbles;
   const inWobble = (wt % WOBBLE_PER) / WOBBLE_PER;
-  // One tick per shake, on the beat, so the count is audible as well as visible.
   const done = Math.min(s.wobbles, Math.floor(wt / WOBBLE_PER) + 1);
   if (done > s.shakesDone) { s.shakesDone = done; s.onSfx?.('shake'); }
-  s.ballObj.rotation.x = 0;
-  s.ballObj.rotation.z = Math.sin(inWobble * Math.PI * 2) * 0.45 * (1 - inWobble * 0.4);
-  s.ballObj.position.y = groundY + Math.abs(Math.sin(inWobble * Math.PI * 2)) * groundY * 0.35;
+  if (inWobble < WOBBLE_ROCK) {
+    const r = inWobble / WOBBLE_ROCK;
+    faceBall(s.ballObj, Math.sin(r * Math.PI * 2) * 0.42 * (1 - r * 0.35));
+    s.ballObj.position.y = groundY + Math.abs(Math.sin(r * Math.PI * 2)) * groundY * 0.3;
+  } else {
+    faceBall(s.ballObj);
+    s.ballObj.position.y = groundY;
+  }
   if (wt <= total) return;
 
-  s.ballObj.rotation.z = 0;
+  faceBall(s.ballObj);
   if (s.willCatch) {
     // Three shakes and the click. The click IS the catch.
     s.phase = 'success';
@@ -1168,8 +1226,8 @@ function updateDeadBall(dt) {
       if (b.vy < 0.35) { b.vy = 0; b.vx *= 0.4; b.vz *= 0.4; }
     }
     obj.position.set(b.x, b.y, b.z);
-    obj.rotation.x -= dt * 7;
-    obj.rotation.z += dt * 3;
+    // Even a knocked-away ball keeps its face to the camera rather than tumbling.
+    faceBall(obj);
   }
   if (s.phase === 'empty' || s.phaseT < FAIL_HOLD) return;
 
