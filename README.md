@@ -46,3 +46,5 @@ On the main screen when exploring the dungeon, remove the tap to move or other t
 Move the floor and dungeon name to below the map. Also when transitioning between floors (and also after you select you starter), show exactly the same format as Pokemon Mystery Dungeon - Dungeon name on first line then below that is the floor number. I will also add the descending stairs sound effect (SE_ACT_STAIRS_DOWN.wav) (this track was added on GitHub. Please look there.)
 
 I also added sound effects for when you Evolve (213. Evolution.mp3) and a pokemon joins your team (208. Pokemon Joins.mp3), when you pick up coins (SE_ACT_MONEY.wav) (this track was added on GitHub. Please look there.)
+
+I want to replace the items' menu sprites with better png sprites. please give me a list of which sprites to find.
