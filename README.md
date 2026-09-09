@@ -20,7 +20,7 @@ When you encounter a Pokemon - Wild Pokemon Battle
 
 Updates
 
-For the items that randomly generate on the floor, make them all rotate in place. If the item is a poke ball, use its associated poke ball model. If it is anything else, use the present 3d model, but when you pick it up, show the sprite of what the item you collected was. Also add the 3 types of coins to spawn on the floor.
+For the items that randomly generate on the floor, make them all rotate in place. If the item is a poke ball, use its associated poke ball model. If it is anything else, use the present 3d model, but when you pick it up, show the sprite of what the item you collected was. Also add the 3 types of coins to spawn on the floor. Also, make every floor have at least 15 poke balls to be acquired. (If you see a poke ball on the ground, it can contain 1-5 poke balls of that type. but each floor has at least 15 in total) 
 - On the fourth floor somewhere there is a guaranteed Kecleon shop somewhere on that floor (Kecleon standing on a blanket like in Mystery Dungeon with presents laying on the blanket)
     - If you walk up to Kecleon a pop up menu appears where you can exchange your coins for some of his items. The song (25. Kecleon's Shop.mp3) plays here - (this track was added on GitHub. Please look there.)
 
