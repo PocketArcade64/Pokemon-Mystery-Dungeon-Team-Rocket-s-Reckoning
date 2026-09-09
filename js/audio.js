@@ -9,71 +9,153 @@
 import { state } from './state.js';
 import { MUSIC_LOOPS } from './data/music-loops.js';
 
-const MUSIC_DIR = 'assets/music/';
+const MUSIC_DIR = 'assets/Music Shortened/';
 
 // Every track keyed by the slot that asks for it. The eleven floor slots ARE the theme ids in
 // dungeon.js THEMES, so musicForMode() can hand a theme straight through and a new theme only
 // ever needs one line added here.
+//
+// `resume: true` marks the floor themes, and only those. A floor theme is interrupted by every
+// wild encounter, so it picks up where it left off rather than restarting — otherwise you would
+// only ever hear its first few bars (see playMusic). Everything else restarts from the top, which
+// is the whole point of a battle or title theme: its intro is meant to be heard.
 const TRACKS = {
   // Screens and battles
-  menu:      'Pokémon Exploration Team Theme.mp3',           // title + starter select
-  wild:      'Pokémon Platinum - Wild Battle Theme.mp3',     // wild Pokemon encounter
-  grunt:     'Dark Wasteland.mp3',                           // Team Rocket grunt, end of floor
-  giovanni:  "Dialga's Fight to the Finish.mp3",             // Giovanni, final floor
+  menu:      { file: '01. Pokémon Exploration Team Theme.mp3' },   // title + starter select
+  wild:      { file: '15. Battle! (Wild Pokémon).mp3' },           // any wild encounter, and the catch after it
+  grunt:     { file: '128. Dark Wasteland.mp3' },                  // Team Rocket grunt, end of floor
+  giovanni:  { file: "68. Dialga's Fight to the Finish!.mp3" },    // Giovanni, final floor
+  victory:   { file: '27. Victory! (Trainer Battle).mp3' },        // any Team Rocket win; one-shot fanfare
   // Floor themes, by theme id
-  verdant:   'Apple Woods.mp3',                              // Verdant Forest
-  rocky:     'Aegis Cave.mp3',                               // Rocky Cavern
-  molten:    'Steam Cave.mp3',                               // Molten Caldera
-  frozen:    'Vast Ice Mountain Peak.mp3',                   // Frozen Grotto
-  tidepool:  'Drenched Bluff.mp3',                           // Tidepool Grotto
-  haunted:   'Hidden Land.mp3',                              // Haunted Ruins
-  warehouse: 'Temporal Tower.mp3',                           // Rocket Warehouse
-  desert:    'Quicksand Cave.mp3',                           // Scorched Desert
-  swamp:     'Barren Valley.mp3',                            // Toxic Swamp
-  crystal:   'Crystal Cave.mp3',                             // Crystal Caverns
-  beach:     'Beach Cave.mp3',                               // Sunlit Shore
+  verdant:   { file: '29. Apple Woods.mp3', resume: true },              // Verdant Forest
+  rocky:     { file: '90. Aegis Cave.mp3', resume: true },               // Rocky Cavern
+  molten:    { file: '34. Steam Cave.mp3', resume: true },               // Molten Caldera
+  frozen:    { file: '135. Vast Ice Mountain Peak.mp3', resume: true },  // Frozen Grotto
+  tidepool:  { file: '12. Drenched Bluff.mp3', resume: true },           // Tidepool Grotto
+  haunted:   { file: '58. Hidden Land.mp3', resume: true },              // Haunted Ruins
+  warehouse: { file: '64. Temporal Tower.mp3', resume: true },           // Rocket Warehouse
+  desert:    { file: '41. Quicksand Cave.mp3', resume: true },           // Scorched Desert
+  swamp:     { file: '127. Barren Valley.mp3', resume: true },           // Toxic Swamp
+  crystal:   { file: '43. Crystal Cave.mp3', resume: true },             // Crystal Caverns
+  beach:     { file: '05. Beach Cave.mp3', resume: true },               // Sunlit Shore
 };
 
-const elements = new Map();       // key -> HTMLAudioElement
-const unavailable = new Set();    // keys whose file is missing or unplayable
+// Music plays entirely through WebAudio (fetch -> decodeAudioData -> AudioBufferSourceNode ->
+// GainNode -> destination), never through an <audio>/<video> element. On iOS an HTMLMediaElement
+// is treated as "media": Safari ignores HTMLMediaElement.volume (the slider silently does
+// nothing) and the OS puts a Now Playing card on the lock screen / Dynamic Island that keeps the
+// track running after the app is backgrounded. WebAudio output counts as plain app sound instead
+// — a GainNode gives real volume control, and suspending the AudioContext when the page is hidden
+// actually halts playback, with no Now Playing UI. (Same fix as Pokemon Rumble Run.)
+const XFADE = 0.08;               // seconds blended across the loop seam
+
+const buffers = new Map();        // key -> AudioBuffer | Promise<AudioBuffer|null> | undefined
+const unavailable = new Set();    // keys whose file is missing or undecodable
+const nodes = new Map();          // key -> { src, gain, startedAt, offset }
+const resumeAt = new Map();       // key -> seconds into the track, `resume` tracks only
 let currentKey = null;
 let ctx = null;
 let unlocked = false;
 
-function element(key) {
-  if (unavailable.has(key)) return null;
-  if (elements.has(key)) return elements.get(key);
-  const file = TRACKS[key];
-  if (!file) return null;
-  // Filenames carry spaces and an "é", so percent-encode them rather than trusting the browser.
-  const el = new Audio(MUSIC_DIR + encodeURIComponent(file));
-  el.preload = 'auto';
-  el.volume = 0;
+const loopOf = (key) => (TRACKS[key] ? MUSIC_LOOPS[TRACKS[key].file] : null);
 
-  // Four of the tracks open with audio that never comes back round (see js/data/music-loops.js):
-  // play those to the end, then drop into the loop instead of replaying the intro. The rest loop
-  // whole, and native looping is smoother than seeking by hand, so let the browser do it.
-  const loop = MUSIC_LOOPS[file];
-  if (loop && loop.loopStart > 0) {
-    el.loop = false;
-    el.addEventListener('ended', () => {
-      if (currentKey !== key) return;
-      el.currentTime = loop.loopStart;
-      const p = el.play();
-      if (p && p.catch) p.catch(() => {});
-    });
-  } else {
-    el.loop = true;
+// Cut a decoded track down to just the part the game plays, and blend its loop seam.
+//
+// Both halves matter. These files are intro + two passes of the loop + a fade-out, so everything
+// past loopEnd is dead weight: dropping it halves the PCM we hold, which is the difference between
+// a floor theme costing ~30 MB and ~60 MB of memory. And because the two passes are separate
+// renders rather than one repeated recording (see js/data/music-loops.js), there is no
+// sample-exact splice available — wrapping loopEnd -> loopStart raw can click.
+//
+// The blend: playback wrapping off the end of the loop would naturally have continued into the
+// audio at loopEnd, so fade that continuation into the audio at loopStart across the first XFADE
+// of the loop. Both sides are the same music one loop apart, so it is a blend of like with like.
+function prepare(decoded, loop) {
+  if (!loop || loop.oneShot || !(loop.loopEnd > loop.loopStart)) return decoded;
+  const sr = decoded.sampleRate;
+  const a = Math.round(loop.loopStart * sr);
+  const b = Math.min(Math.round(loop.loopEnd * sr), decoded.length);
+  const x = Math.min(Math.round(XFADE * sr), decoded.length - b, b - a);
+  if (b <= a) return decoded;
+  const out = ctx.createBuffer(decoded.numberOfChannels, b, sr);
+  for (let ch = 0; ch < decoded.numberOfChannels; ch++) {
+    const src = decoded.getChannelData(ch);
+    const dst = out.getChannelData(ch);
+    dst.set(src.subarray(0, b));
+    for (let i = 0; i < x; i++) {
+      const g = 0.5 - 0.5 * Math.cos((Math.PI * i) / x);   // raised cosine
+      dst[a + i] = src[b + i] * (1 - g) + src[a + i] * g;
+    }
   }
+  return out;
+}
 
-  // The only signal that a file was never dropped in. Mark it and stop trying.
-  el.addEventListener('error', () => {
-    unavailable.add(key);
-    elements.delete(key);
-    if (currentKey === key) currentKey = null;
-  });
-  elements.set(key, el);
-  return el;
+// Fetch + decode a track once, caching the AudioBuffer (or the in-flight promise). A missing file
+// or a decode failure marks the key unavailable so every future request is an instant no-op.
+function loadBuffer(key) {
+  if (unavailable.has(key)) return Promise.resolve(null);
+  const cached = buffers.get(key);
+  if (cached) return Promise.resolve(cached);
+  const track = TRACKS[key];
+  if (!track || !ctx) return Promise.resolve(null);
+  // The folder name has a space and the filenames carry an "é", so encode rather than trusting
+  // the browser: encodeURI keeps the slashes, encodeURIComponent handles the leaf.
+  const p = fetch(encodeURI(MUSIC_DIR) + encodeURIComponent(track.file))
+    .then(r => { if (!r.ok) throw new Error('missing'); return r.arrayBuffer(); })
+    .then(raw => ctx.decodeAudioData(raw))
+    .then(decoded => {
+      const ready = prepare(decoded, loopOf(key));
+      buffers.set(key, ready);
+      return ready;
+    })
+    .catch(() => { unavailable.add(key); buffers.delete(key); return null; });
+  buffers.set(key, p);
+  return p;
+}
+
+// How far into the track the given source has got, folded back into the loop region. ctx.currentTime
+// does not advance while the context is suspended, so a track that was playing when the phone
+// locked comes back at the point it stopped without any special case.
+function positionOf(key) {
+  const n = nodes.get(key);
+  if (!n) return 0;
+  const raw = n.offset + (ctx.currentTime - n.startedAt);
+  const loop = loopOf(key);
+  if (!loop || loop.oneShot || !(loop.loopEnd > loop.loopStart)) return raw;
+  if (raw < loop.loopEnd) return raw;
+  const len = loop.loopEnd - loop.loopStart;
+  return loop.loopStart + ((raw - loop.loopEnd) % len);
+}
+
+function stopNode(key) {
+  const n = nodes.get(key);
+  if (!n) return;
+  if (TRACKS[key]?.resume) resumeAt.set(key, positionOf(key));
+  try { n.src.onended = null; n.src.stop(); } catch {}
+  try { n.src.disconnect(); n.gain.disconnect(); } catch {}
+  nodes.delete(key);
+}
+
+// Start a fresh buffer source for `key`, wired through its own gain node, and loop the measured
+// region: playback runs 0 -> loopEnd once (so the intro is heard) and then wraps to loopStart
+// forever, never reaching the album fade-out. One-shots just play out.
+function startSource(key, buffer, offset = 0) {
+  stopNode(key);
+  const src = ctx.createBufferSource();
+  src.buffer = buffer;
+  const loop = loopOf(key);
+  if (loop && !loop.oneShot && loop.loopEnd > loop.loopStart) {
+    src.loop = true;
+    src.loopStart = loop.loopStart;
+    src.loopEnd = Math.min(loop.loopEnd, buffer.duration);
+  }
+  const gain = ctx.createGain();
+  gain.gain.value = state.settings.music;
+  src.connect(gain).connect(ctx.destination);
+  const at = Math.max(0, Math.min(offset, buffer.duration - 0.05));
+  src.start(0, at);
+  nodes.set(key, { src, gain, startedAt: ctx.currentTime, offset: at });
+  if (!src.loop) src.onended = () => { if (nodes.get(key)?.src === src) nodes.delete(key); };
 }
 
 // iOS will not start any audio until a real user gesture has touched the graph. main.js calls
@@ -86,59 +168,73 @@ export function unlockAudio() {
     if (ctx.state === 'suspended') ctx.resume();
   } catch { ctx = null; }
   if (currentKey) playMusic(currentKey, true);
+  // A wild encounter is seconds away at any moment and its theme has to land on contact, so warm
+  // the two tracks that get triggered mid-play rather than by walking into a screen.
+  prefetchMusic('wild', 'victory');
 }
 
+// Live volume changes retarget the gain of whatever track is currently sounding.
 export function applyVolumes() {
-  const el = currentKey ? elements.get(currentKey) : null;
-  if (el) el.volume = state.settings.music;
+  for (const n of nodes.values()) n.gain.gain.value = state.settings.music;
 }
 
 // ---- Music -------------------------------------------------------------------------------------
 export function playMusic(key, force = false) {
   if (!key) { stopMusic(); return; }
-  if (key === currentKey && !force) return;
-  if (currentKey && currentKey !== key) {
-    const prev = elements.get(currentKey);
-    if (prev) { prev.pause(); prev.currentTime = 0; }
-  }
+  if (key === currentKey && !force) return;   // already sounding: leave it alone, do not restart
+  if (currentKey && currentKey !== key) stopNode(currentKey);
   currentKey = key;
-  const el = element(key);
-  if (!el || !unlocked) return;         // no file, or no gesture yet: silence, and that is fine
-  el.volume = state.settings.music;
-  const p = el.play();
-  if (p && p.catch) p.catch(() => { /* autoplay refused; the next gesture retries */ });
+  if (!ctx || !unlocked) return;        // no file, or no gesture yet: silence, and that is fine
+  loadBuffer(key).then(buf => {
+    if (!buf || currentKey !== key) return;
+    startSource(key, buf, TRACKS[key].resume ? (resumeAt.get(key) || 0) : 0);
+  });
 }
 
 export function stopMusic() {
-  if (currentKey) {
-    const el = elements.get(currentKey);
-    if (el) { el.pause(); el.currentTime = 0; }
-  }
+  if (currentKey) stopNode(currentKey);
   currentKey = null;
 }
 
-// One-shot jingle over the top of whatever is looping (floor clear, successful catch).
-export function playJingle(key = 'victory') {
-  const el = element(key);
-  if (!el || !unlocked) return;
-  const one = el.cloneNode();
-  one.loop = false;
-  one.volume = state.settings.music;
-  const p = one.play();
-  if (p && p.catch) p.catch(() => {});
+// Decode ahead of time so a track that is triggered by gameplay rather than by a screen change
+// starts on the beat it is asked for instead of a second later.
+export function prefetchMusic(...keys) {
+  if (!ctx || !unlocked) return;
+  for (const k of keys) if (TRACKS[k]) loadBuffer(k);
 }
+
+// Drop a decoded track. A run walks through up to eleven floor themes and each one costs tens of
+// megabytes of PCM, so main.js releases a floor's theme when it leaves that floor. Never drops
+// whatever is playing.
+export function releaseMusic(key) {
+  if (!key || key === currentKey || !buffers.has(key)) return;
+  buffers.delete(key);
+  resumeAt.delete(key);
+}
+
+// Backgrounding (home button / app switch / locking the phone): suspend the WebAudio clock so
+// playback truly halts, then resume on return. WebAudio never shows a Now Playing card, so there
+// is nothing else to keep an audio session alive in the background.
+document.addEventListener('visibilitychange', () => {
+  if (!ctx) return;
+  if (document.hidden) { if (ctx.state === 'running') ctx.suspend(); }
+  else if (unlocked && ctx.state === 'suspended') ctx.resume();
+});
+window.addEventListener('pagehide', () => { if (ctx && ctx.state === 'running') ctx.suspend(); });
 
 // Which track belongs to which screen. Floors play their own theme's track, so the music changes
 // with the scenery; anything not listed here (glossary, settings, dex, the end screen) keeps
-// whatever was already playing.
+// whatever was already playing — which is what puts the victory fanfare on the win screen and
+// leaves loseRun() to silence the game-over screen itself.
 export function musicForMode(mode, { themeId = null, battleKind = null } = {}) {
   switch (mode) {
     case 'title':
     case 'starter':
       return 'menu';
     case 'playing':
-    case 'paused':
+    case 'pause':
     case 'bag':
+    case 'swap':
       return themeId && TRACKS[themeId] ? themeId : currentKey;
     case 'battle':
       if (battleKind === 'giovanni') return 'giovanni';

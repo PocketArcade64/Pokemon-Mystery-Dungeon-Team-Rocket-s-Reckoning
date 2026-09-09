@@ -18,7 +18,7 @@ import { startCatch, endCatch, updateCatch, rearm, catchState, catchScene, catch
 import * as inv from './inventory.js';
 import * as ui from './ui-screens.js';
 import { uiHooks } from './ui-screens.js';
-import { unlockAudio, playMusic, musicForMode, playJingle, sfx, applyVolumes } from './audio.js';
+import { unlockAudio, playMusic, musicForMode, prefetchMusic, releaseMusic, sfx, applyVolumes } from './audio.js';
 
 const PLAYER_SPEED = 4.7;
 const player = { x: 0, z: 0 };
@@ -122,6 +122,7 @@ function teardownRun() {
 
 function enterFloor(index) {
   const run = state.run;
+  const leavingTheme = run.floor?.theme?.id ?? null;
   if (run.floor) disposeFloor(run.floor);
 
   const theme = run.themes[index];
@@ -132,6 +133,7 @@ function enterFloor(index) {
 
   // The floor boss stands ON the up-stairs tile, so you cannot ascend without going through them.
   const isFinal = index === FLOORS_PER_RUN - 1;
+  prefetchMusic(isFinal ? 'giovanni' : 'grunt');
   const fig = isFinal
     ? makeTrainerFigure({ suit: 0x23232b, accent: 0xf5a623, hair: 0x14141a, scale: 1.2 })
     : makeTrainerFigure({ suit: 0x1d1d24, accent: 0xd8202a, scale: 1.0 });
@@ -155,6 +157,9 @@ function enterFloor(index) {
   saveStats();
 
   setMode('playing');
+  // Only now that the new theme is the one playing: a run walks through up to eleven of these and
+  // each decoded theme is tens of megabytes, so the floor we just left gives its buffer back.
+  if (leavingTheme && leavingTheme !== theme.id) releaseMusic(leavingTheme);
   ui.banner({
     kicker: isFinal ? 'The Bottom' : 'Descending',
     main: theme.name,
@@ -191,8 +196,8 @@ function winRun() {
   state.stats.giovanniDefeats++;
   for (const m of inv.partyAlive()) recordDex('winnerDex', m.dex);
   saveStats();
-  sfx('victory');
-  playJingle('victory');
+  // No sting here: the victory fanfare has been playing since Giovanni went down, and the win
+  // screen carries it over.
   ui.renderEnd({
     won: true,
     floorReached: run.floorIndex + 1,
@@ -214,7 +219,7 @@ function loseRun({ abandoned = false } = {}) {
     partyNames: [],
   });
   setMode('end');
-  playMusic('gameOver');
+  playMusic(null);          // the game-over screen is silent
 }
 
 // ---- Battles ----------------------------------------------------------------------------------
@@ -281,16 +286,20 @@ function finishBattle(result) {
     ui.showBattleContinue('See how far you got');
     return;
   }
-  // Win.
+  // Win. Beating Team Rocket — a Grunt or Giovanni — earns the victory fanfare, which plays over
+  // the result text until you tap Continue. A worn-down wild is not a Rocket win, and its theme
+  // has to carry straight on into the catch minigame, so that branch leaves the music alone.
   if (ctx.kind === 'wild') {
     ui.battleLog(`${ctx.wild ? CATALOG_BY_DEX.get(ctx.wild.dex).name : 'It'} is worn down — now is your chance!`);
     ui.showBattleContinue('Throw a Ball');
   } else if (ctx.kind === 'grunt') {
+    playMusic('victory');
     state.stats.gruntsDefeated++;
     saveStats();
     ui.battleLog('The Grunt scrambles off the stairs!');
     ui.showBattleContinue('Take the stairs');
   } else {
+    playMusic('victory');
     ui.battleLog('Giovanni is beaten. The dungeon is yours.');
     ui.showBattleContinue('Finish the run');
   }
@@ -374,7 +383,6 @@ function onCatchResult(res) {
 
   if (res.caught) {
     sfx('caught');
-    playJingle('victory');
     ui.renderCatchUI({ dex: res.dex, activeBall: res.ballId, msg: res.msg, hint: 'Caught!' });
     state.run.caught++;
     wild.gone = true;
