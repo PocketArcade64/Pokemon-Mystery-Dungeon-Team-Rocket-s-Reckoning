@@ -53,6 +53,10 @@ const TARGET_Z = -5.6;            // depth plane the Pokemon stands on
 // The Pokemon's on-screen HEIGHT as a fraction of the screen, by evolution stage. Vertical FOV is
 // fixed, so a height fraction is aspect-independent — which a world-unit height is not.
 const MON_SCREEN_FRAC = { Basic: 0.26, Stage1: 0.30, Stage2: 0.34, Legendary: 0.36 };
+// ...and a cap on its on-screen WIDTH. Models are fitted by height, so a wide flat species comes
+// out wider than it is tall: Kabuto and Wailmer filled the screen edge to edge and buried the
+// whole stage. Anything over this gets scaled down to fit.
+const MON_SCREEN_W = 0.52;
 const CAPTURE_OF_HEIGHT = 0.56;   // white capture circle radius, as a fraction of the Pokemon
 const MIN_RING_RATIO = 0.13;      // how far the target ring shrinks before it resets
 
@@ -72,25 +76,36 @@ const HOLD_NDC_Y_HI = 0.05;
 //   horizontal distance to the body centre L = 3.96, launch height 0.34, body centre 0.76.
 //   y at the target plane = 2.62 - 102.2 / v^2, so the ball clears the floor from v = 6.25 and
 //   clears the top of the capture circle past v = 9.7.
-// SPEED_MIN/SPEED_SPAN map flick power 0..1 onto v = 5.6..11.0, which puts the CONNECT BAND at
-// power 0.12..0.77 — deliberately wide. In GO almost every throw reaches the Pokemon and what
+// SPEED_MIN/SPEED_SPAN map flick power 0..1 onto v = 5.9..10.9, which puts the CONNECT BAND at
+// power 0.10..0.78 — deliberately wide. In GO almost every throw reaches the Pokemon and what
 // separates a good one from a bad one is where in the ring it lands, so power is a coarse
 // three-way gate (short / connects / over) and the ring plus the aim are the fine skill.
 const GRAVITY = -9.8;
 const ELEV = rad(30);             // launch elevation off horizontal — fixed, as GO's is
-const SPEED_MIN = 5.6;
-const SPEED_SPAN = 5.4;
+const SPEED_MIN = 5.9;
+const SPEED_SPAN = 5.0;
 
 // A flick is release VELOCITY in screen-heights per second, so it feels identical on any screen.
 // Below MIN_FLICK it is a tap or a fumble and the ball just settles back home.
-const MIN_FLICK = 0.55;
-const FLICK_FULL = 3.4;
+//
+// FLICK_FULL 5.2 is high on purpose. It was 3.4, calibrated against a mouse drag, and a real
+// thumb flick clears that easily — so an ordinary throw came out at full power and sailed over
+// the Pokemon every time. Full power now takes a deliberate fling: a comfortable flick measures
+// around 1.7 and lands mid-band, and the whole connect band spans roughly 1.0 to 4.1.
+const MIN_FLICK = 0.5;
+const FLICK_FULL = 5.2;
 const MAX_FLICK_ANGLE = rad(70);  // wider than this is a sideways swipe, not a throw
+
+// How the release velocity is measured. FLICK_WINDOW caps how far back in time the sample search
+// may reach; FLICK_STRAIGHT is the cosine each older leg of the drag must hold against the final
+// leg to still count as part of the same flick (0.6 ≈ 53°). See flickOrigin().
+const FLICK_WINDOW = 130;         // ms
+const FLICK_STRAIGHT = 0.6;
 
 // Aim. The flick's angle off vertical becomes a horizontal launch angle: at L = 3.96 a 12-degree
 // aim throws the ball 0.84 off-centre, which is just outside a Basic target's capture circle.
 const AIM_GAIN = 0.8;
-const AIM_MAX = rad(34);
+const AIM_MAX = rad(30);          // ±2.3 units at the target plane — off-screen is not reachable
 
 // Curveball. 5.2 units/s^2 over a ~0.62 s flight bends the ball about 1.0 — roughly one and a
 // quarter capture-circles — so a curveball genuinely has to be aimed off to the other side.
@@ -108,6 +123,32 @@ const BONUS = { excellent: 0.20, great: 0.13, nice: 0.06, hit: 0 };
 const CURVE_BONUS = 0.06;
 
 const FAIL_HOLD = 1.15;           // seconds a dead ball tumbles before GO hands you a fresh one
+
+// ---- The capture sequence ----------------------------------------------------------------------
+// Contact is not instant any more. The ball is SEEN to hit, the Pokemon is SEEN to be pulled into
+// it as red light, and only then does the ball drop and shake. The three stages run back to back
+// off `phaseT` in the 'absorb' phase.
+const ABSORB_IMPACT = 0.18;       // ball stops dead on the Pokemon and recoils; red flash
+const ABSORB_PULL = 0.52;         // the beam, and the Pokemon shrinking into the ball
+const ABSORB_SETTLE = 0.16;       // beam fades, Pokemon gone
+const ABSORB_TOTAL = ABSORB_IMPACT + ABSORB_PULL + ABSORB_SETTLE;
+
+// GO's shake count says the answer before the answer: three shakes and a click is a catch, and
+// anything short of three is a break-out.
+const WOBBLES_CAUGHT = 3;
+const DROP_TIME = 0.34;           // ball falling from the contact point to the ground
+const WOBBLE_PER = 0.62;          // one shake
+
+// The camera pushes in on the ball for the shake, so the wobble is the whole screen.
+//
+// It pushes in on the WOBBLE, not on the absorb. Starting the move at contact put the camera
+// inside the Pokemon — the ball is at the Pokemon's body then, and the Pokemon is still full
+// size — so the whole absorption played out against a wall of texture. Staying wide until the
+// ball drops means you watch the capture from where you threw it, and the push-in lands just as
+// the ball settles on the ground to shake.
+const ZOOM_LAMBDA = 6.5;          // damping rate toward the zoomed pose
+const ZOOM_BACK = 1.8;            // how far in front of the ball the pushed-in camera sits
+const ZOOM_UP = 0.55;
 
 // ---- Scene -------------------------------------------------------------------------------------
 export const catchScene = new THREE.Scene();
@@ -138,6 +179,7 @@ catchDir.target.position.set(0, 0, TARGET_Z);
 const CAM_FWD = new THREE.Vector3(0, 0, -1).applyQuaternion(catchCamera.quaternion);
 const CAM_UP = new THREE.Vector3(0, 1, 0).applyQuaternion(catchCamera.quaternion);
 const CAM_RIGHT = new THREE.Vector3(1, 0, 0).applyQuaternion(catchCamera.quaternion);
+const CAM_QUAT = catchCamera.quaternion.clone();
 const TAN_HALF_FOV = Math.tan(rad(FOV) / 2);
 
 const halfHeightAt = (depth) => TAN_HALF_FOV * depth;
@@ -317,14 +359,86 @@ const trail = [];
   }
 }
 
+// ---- The red capture light -----------------------------------------------------------------------
+// Additive, unlit and un-fogged: this is an effect, not scenery.
+//
+// Drawn BELOW the ball's render order (6) on purpose. The ball is sitting inside the glow at this
+// point, and if the glow paints after it the ball disappears into a red blob — the one thing the
+// whole animation is supposed to be showing you is the Pokemon going INTO the ball, so the ball
+// has to stay on top. depthTest stays on, so the glow's far hemisphere is still occluded by the
+// Pokemon and it reads as a volume rather than a decal.
+const ABSORB_ORDER = 5;
+
+// The glow that engulfs the Pokemon and shrinks with it.
+const ABSORB_GLOW = new THREE.Mesh(
+  new THREE.SphereGeometry(1, 18, 12),
+  new THREE.MeshBasicMaterial({
+    color: 0xff4a2c, transparent: true, opacity: 0, depthWrite: false,
+    blending: THREE.AdditiveBlending, fog: false,
+  }),
+);
+ABSORB_GLOW.renderOrder = ABSORB_ORDER;
+ABSORB_GLOW.visible = false;
+catchScene.add(ABSORB_GLOW);
+
+// The funnel of light between the two. Built along +Y as a unit-length cone: the WIDE end
+// (radiusTop) is the Pokemon and the narrow end is the ball, so it reads as being sucked in.
+const ABSORB_BEAM = new THREE.Mesh(
+  new THREE.CylinderGeometry(0.5, 0.10, 1, 16, 1, true),
+  new THREE.MeshBasicMaterial({
+    color: 0xff6a3a, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false,
+    blending: THREE.AdditiveBlending, fog: false,
+  }),
+);
+ABSORB_BEAM.renderOrder = ABSORB_ORDER;
+ABSORB_BEAM.visible = false;
+catchScene.add(ABSORB_BEAM);
+
+const ABSORB_LIGHT = new THREE.PointLight(0xff4422, 0, 9);
+catchScene.add(ABSORB_LIGHT);
+
 const monHolder = new THREE.Group();
 catchScene.add(monHolder);
 const ballHolder = new THREE.Group();
 catchScene.add(ballHolder);
 
+// ---- Camera rig ------------------------------------------------------------------------------
+// `camZoom` damps 0 (the wide throwing shot) -> 1 (pushed in on the ball for the shake). It MUST
+// come back to exactly 0 before the next throw: the ring billboards, `pointAtNDC` and the ball's
+// home point are all built from the wide pose's fixed basis, so a camera left a few degrees off
+// would put the ball somewhere other than where the player is aiming.
+let camZoom = 0;
+const _zoomPos = new THREE.Vector3();
+const _zoomLook = new THREE.Vector3();
+
+function resetCamera() {
+  camZoom = 0;
+  catchCamera.position.copy(CAM_POS);
+  catchCamera.quaternion.copy(CAM_QUAT);
+  catchCamera.updateMatrixWorld(true);
+}
+
+function updateCamera(dt) {
+  const s = catchState;
+  const want = (s.phase === 'wobble' || s.phase === 'success') ? 1 : 0;
+  camZoom = THREE.MathUtils.damp(camZoom, want, ZOOM_LAMBDA, dt);
+  if (want === 0 && camZoom < 0.004) { if (camZoom !== 0) resetCamera(); return; }
+
+  const b = s.ballObj ? s.ballObj.position : CAM_LOOK;
+  const focusY = b.y + s.ballRadius * 0.6;
+  _zoomPos.set(b.x * 0.45, focusY + ZOOM_UP, b.z + ZOOM_BACK);
+  _zoomLook.set(b.x, focusY, b.z);
+  catchCamera.position.lerpVectors(CAM_POS, _zoomPos, camZoom);
+  _zoomLook.lerp(CAM_LOOK, 1 - camZoom);
+  catchCamera.lookAt(_zoomLook);
+  catchCamera.updateMatrixWorld(true);
+}
+
 // ---- State -------------------------------------------------------------------------------------
 const BALL_HOME = new THREE.Vector3();
 const _tmp = new THREE.Vector3();
+const _beamDir = new THREE.Vector3();
+const _beamUp = new THREE.Vector3(0, 1, 0);
 
 export const catchState = {
   active: false,
@@ -334,6 +448,7 @@ export const catchState = {
   monObj: null,
   ballObj: null,
   monX: 0, monDrift: 0, monBodyY: 0.8, monHeight: 1.4,
+  monFit: 1,          // extra scale applied to keep a wide species inside the frame
   captureRadius: 0.78,
   ballRadius: 0.1,
   action: null,       // {type:'dodge'|'attack', t, dur} — the Pokemon's current move
@@ -348,6 +463,9 @@ export const catchState = {
   curve: false,       // whether the throw in flight is a curveball
   grade: null,        // 'excellent' | 'great' | 'nice' | 'hit'
   wobbles: 0,
+  shakesDone: 0,
+  hitPoint: new THREE.Vector3(),   // where the ball struck; the absorb and the drop start here
+  monStart: new THREE.Vector3(),   // where the Pokemon stood at that instant
   willCatch: false,
   resultMsg: '',
   accuracyPct: 0,
@@ -355,6 +473,7 @@ export const catchState = {
   onThrow: null,      // () => bool: consume a ball; false means none left
   onGrade: null,      // (label) => void: pop "EXCELLENT!" etc. in the overlay
   onRearm: null,      // () => {ballId, ballsLeft} | null: GO hands you a fresh ball by itself
+  onSfx: null,        // (name) => void: 'absorb' | 'shake' | 'lock', fired on the animation beats
   ballsLeft: 0,
   canvasW: 1, canvasH: 1,
   t: 0,
@@ -398,9 +517,9 @@ function refreshRingColor() {
 // ---- Lifecycle ---------------------------------------------------------------------------------
 // Start a fresh catch attempt sequence for one wild Pokemon. `theme` is the floor theme and it
 // dresses the whole stage.
-export function startCatch({ dex, ballId, ballsLeft, onResult, onThrow, onGrade, onRearm,
+export function startCatch({ dex, ballId, ballsLeft, onResult, onThrow, onGrade, onRearm, onSfx,
                              floorNumber = 1, theme = null }) {
-  clearMon(); clearBall(); hideTrail();
+  clearMon(); clearBall(); hideTrail(); hideAbsorb(); resetCamera();
 
   const th = theme || THEMES[0];
   if (!backdrop || backdropTheme?.id !== th.id) buildBackdrop(th);
@@ -424,16 +543,17 @@ export function startCatch({ dex, ballId, ballsLeft, onResult, onThrow, onGrade,
     // small end of the ring, so Excellent throws get genuinely harder as the run goes on.
     ringPeriod: 1.45 - Math.min(0.45, floorNumber * 0.09),
     ringPhase: 0, ringRatio: 1,
-    ball: null, held: null, spin: 0, curve: false, grade: null,
-    wobbles: 0, willCatch: false, resultMsg: '', accuracyPct: 0,
-    onResult, onThrow, onGrade, onRearm, ballsLeft, t: 0, phaseT: 0,
+    ball: null, held: null, spin: 0, curve: false, grade: null, monFit: 1,
+    wobbles: 0, shakesDone: 0, willCatch: false, resultMsg: '', accuracyPct: 0,
+    onResult, onThrow, onGrade, onRearm, onSfx, ballsLeft, t: 0, phaseT: 0,
   });
   refreshRingColor();
 
-  const monObj = createMonObject(dex, { height });
+  const monObj = createMonObject(dex, { height, onReady: fitMonToFrame });
   monObj.position.set(0, 0, TARGET_Z);
   monHolder.add(monObj);
   catchState.monObj = monObj;
+  catchState.monFit = 1;
 
   // Both rings are sized here, not just the capture circle. main.js starts the encounter from
   // INSIDE the playing branch of the frame loop, so that frame renders the catch scene without
@@ -448,6 +568,32 @@ export function startCatch({ dex, ballId, ballsLeft, onResult, onThrow, onGrade,
   TARGET_RING.visible = true;
 
   spawnBall();
+}
+
+// Shrink the loaded model until it fits the frame sideways, and re-centre the rings on whatever
+// height that leaves. Called once, when the real model replaces the placeholder.
+//
+// `captureRadius` is deliberately NOT recomputed. It stays on the NOMINAL height for the species'
+// stage, so shrinking a wide Pokemon to fit does not also make it a harder target — the circle
+// ends up roughly hugging its width instead of its height, which is what it should do anyway.
+// `monFit` then multiplies every other scale the Pokemon is given, so the dodge lunge and the
+// absorb shrink both compose with it instead of throwing it away.
+const _fitBox = new THREE.Box3();
+const _fitSize = new THREE.Vector3();
+
+function fitMonToFrame(group) {
+  const s = catchState;
+  if (group !== s.monObj) return;                 // a stale load from a previous encounter
+  group.scale.setScalar(1);
+  group.updateMatrixWorld(true);
+  _fitBox.setFromObject(group).getSize(_fitSize);
+  const maxW = MON_SCREEN_W * 2 * halfWidthAt(targetDepth());
+  s.monFit = _fitSize.x > maxW ? maxW / _fitSize.x : 1;
+  group.scale.setScalar(s.monFit);
+  const visualH = Math.max(0.2, _fitSize.y * s.monFit);
+  s.monBodyY = visualH * 0.55;
+  CAPTURE_RING.position.y = s.monBodyY;
+  TARGET_RING.position.y = s.monBodyY;
 }
 
 // One ball, centred on its OWN origin (createBallObject sits a model's feet at y=0, which is wrong
@@ -488,7 +634,8 @@ export function endCatch() {
   catchState.active = false;
   catchState.phase = 'idle';
   catchState.held = null;
-  clearMon(); clearBall(); hideTrail();
+  clearMon(); clearBall(); hideTrail(); hideAbsorb();
+  resetCamera();
   CAPTURE_RING.visible = false;
   TARGET_RING.visible = false;
   SPIN_HALO.material.opacity = 0;
@@ -543,13 +690,45 @@ export function catchPointerMove(x, y, canvasW, canvasH) {
 
   h.x = x; h.y = y;
   h.samples.push({ x, y, t: performance.now() });
-  if (h.samples.length > 10) h.samples.shift();
+  // Deep enough to cover FLICK_WINDOW even on a 120 Hz digitiser — flickOrigin walks backwards
+  // through these and a short buffer would cut the search off mid-flick.
+  if (h.samples.length > 20) h.samples.shift();
 
   // Screen y grows downward, so a clockwise on-screen swirl is a negative cross product. Negate
   // once here so `spin` is +1 for a right-curving ball in world space.
   if (h.pathLen > SPIN_PATH_MIN && Math.abs(h.spinAccum) > SPIN_THRESHOLD) {
     catchState.spin = h.spinAccum > 0 ? -1 : 1;
   }
+}
+
+// Where the flick STARTED: walk back from the release point, through the drag samples, for as
+// long as the path keeps heading the same way as its final leg.
+//
+// THIS IS THE CURVEBALL FIX and it must not be simplified back to "the oldest sample in the last
+// N ms". A swirl is a LOOP, so the sample from a fixed 140 ms ago sits somewhere on the far side
+// of that loop, and measuring from it reads the loop's CHORD as the throw. The chord is mostly
+// sideways, the aim is the flick's angle, so every single curveball launched at the clamped
+// maximum aim angle and flew straight off the side of the screen — in whichever direction the
+// player habitually swirls. Walking back only through legs that agree with the last one isolates
+// the straight flick at the end of the gesture from the swirl that preceded it.
+function flickOrigin(samples, relX, relY, now) {
+  const pts = samples.concat([{ x: relX, y: relY, t: now }]);
+  let refX = 0, refY = 0, refLen = 0;
+  let origin = pts[pts.length - 1];
+  for (let k = pts.length - 1; k > 0; k--) {
+    const a = pts[k - 1], b = pts[k];
+    if (now - a.t > FLICK_WINDOW) break;
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const len = Math.hypot(dx, dy);
+    // Sub-pixel jitter carries no direction. Before the flick is found it is trailing noise at
+    // the release point and is skipped; once inside the flick it means the finger stopped, which
+    // is where the flick began.
+    if (len < 1) { if (refLen) break; continue; }
+    if (!refLen) { refX = dx; refY = dy; refLen = len; origin = a; continue; }
+    if ((refX * dx + refY * dy) / (refLen * len) < FLICK_STRAIGHT) break;
+    origin = a;
+  }
+  return origin;
 }
 
 export function catchPointerUp(x, y, canvasW, canvasH) {
@@ -559,7 +738,7 @@ export function catchPointerUp(x, y, canvasW, canvasH) {
   if (canvasW) { catchState.canvasW = canvasW; catchState.canvasH = canvasH; }
   const ch = catchState.canvasH;
 
-  // Release velocity off the oldest sample still inside the flick window. Velocity rather than
+  // Release velocity off the start of the final straight leg of the gesture. Velocity rather than
   // total drag distance is what makes this a flick: you can drag the ball slowly across the screen
   // to line up your aim and it costs you no power, exactly as in GO.
   //
@@ -567,8 +746,7 @@ export function catchPointerUp(x, y, canvasW, canvasH) {
   // height would stretch the flick ANGLE by the aspect ratio, and the angle is the aim — the same
   // physical gesture would throw somewhere different on a tablet than on a phone.
   const now = performance.now();
-  const recent = h.samples.filter(s => now - s.t < 140);
-  const s0 = recent.length > 1 ? recent[0] : h.samples[0];
+  const s0 = flickOrigin(h.samples, x, y, now);
   const dt = Math.max(0.016, (now - s0.t) / 1000);
   const up = ((s0.y - y) / ch) / dt;
   const side = ((x - s0.x) / ch) / dt;
@@ -617,6 +795,7 @@ export function updateCatch(dt) {
 
   if (s.phase === 'aim') updateHeldBall(dt);
   else if (s.phase === 'flying') updateFlight(dt);
+  else if (s.phase === 'absorb') updateAbsorb();
   else if (s.phase === 'fail' || s.phase === 'empty') updateDeadBall(dt);
   else if (s.phase === 'wobble') updateWobble();
   else if (s.phase === 'success' && s.ballObj) {
@@ -624,6 +803,7 @@ export function updateCatch(dt) {
     s.ballObj.position.y = s.ballRadius + Math.abs(Math.sin(s.phaseT * 2.4)) * s.ballRadius * 0.5;
   }
   fadeTrail(dt);
+  updateCamera(dt);
 }
 
 // The shrinking target ring, on a loop. Snaps back to full the instant it bottoms out.
@@ -684,7 +864,7 @@ function updateMon(dt) {
   s.monX = THREE.MathUtils.clamp(x, -0.95, 0.95);
   s.monObj.position.set(s.monX, Math.abs(Math.sin(s.t * 3.2)) * s.monHeight * 0.05, z);
   s.monObj.rotation.y = lean;
-  s.monObj.scale.setScalar(scale);
+  s.monObj.scale.setScalar(scale * s.monFit);
 }
 
 // True while an attack is actually swinging — a ball arriving in this window gets swatted.
@@ -818,32 +998,118 @@ function resolveContact(hx, hy) {
     : grade === 'great' ? 'GREAT!' : 'NICE!';
   if (label || s.curve) s.onGrade?.([s.curve ? 'CURVEBALL!' : null, label].filter(Boolean).join(' '));
 
-  // The number of wobbles telegraphs how close the roll was, same as the real games.
-  s.wobbles = s.willCatch ? 3 : chance > 0.6 ? 3 : chance > 0.42 ? 2 : 1;
-  s.phase = 'wobble';
-  s.phaseT = 0;
+  // GO's shake count says the answer before the answer arrives: three shakes then the click is a
+  // catch, and one or two is always a break-out. Which of one or two only says how close it was.
+  s.wobbles = s.willCatch ? WOBBLES_CAUGHT : (chance > 0.55 ? 2 : 1);
+  s.shakesDone = 0;
   hideTrail();
   TARGET_RING.visible = false;
   CAPTURE_RING.visible = false;
-  // The Pokemon is drawn into the ball, which then drops to the ground where it was standing.
-  s.ballObj.position.set(s.monX, s.monBodyY, TARGET_Z);
+
+  // Contact is SEEN. The ball stops dead where it struck and the Pokemon is pulled into it as red
+  // light from exactly that point — which is why the contact position is kept rather than the ball
+  // being teleported to the Pokemon's feet.
+  // Nudged toward the camera off the Pokemon's centre plane, so the ball comes to rest on the
+  // near FACE of the thing it hit rather than buried inside it — otherwise the ball is invisible
+  // for the whole absorb and there is nothing for the light to be drawn into.
+  s.hitPoint.set(hx, hy, TARGET_Z + 0.5);
+  s.ballObj.position.copy(s.hitPoint);
   s.ballObj.rotation.set(0, 0, 0);
-  if (s.monObj) s.monObj.visible = false;
+  if (s.monObj) s.monStart.copy(s.monObj.position);
+  s.phase = 'absorb';
+  s.phaseT = 0;
+  s.onSfx?.('absorb');
 }
 
-// GO's wobble: the ball falls to the ground first, settles, then rocks side to side once per
-// wobble. The fall is what makes the wobble read as happening on the floor rather than in mid-air.
-const DROP_TIME = 0.32;
-const WOBBLE_PER = 0.62;
+// ---- The capture: impact, then the Pokemon drawn in as red light ---------------------------------
+// Three stages off phaseT. The Pokemon shrinks and travels toward the BALL, wherever the ball
+// happens to be sitting, with a funnel of light between the two — so the absorption is always
+// anchored to the throw that earned it rather than to a fixed point on the stage.
+function updateAbsorb() {
+  const s = catchState;
+  const obj = s.ballObj;
+  if (!obj) return;
+  const hp = s.hitPoint;
 
+  // 1. Impact: the ball punches in and rocks back out toward the camera.
+  const impact = Math.min(1, s.phaseT / ABSORB_IMPACT);
+  obj.position.set(hp.x, hp.y, hp.z + Math.sin(impact * Math.PI) * 0.22);
+  obj.rotation.z = Math.sin(impact * Math.PI * 2) * 0.3;
+
+  const pull = THREE.MathUtils.clamp((s.phaseT - ABSORB_IMPACT) / ABSORB_PULL, 0, 1);
+  const fade = THREE.MathUtils.clamp((s.phaseT - ABSORB_IMPACT - ABSORB_PULL) / ABSORB_SETTLE, 0, 1);
+
+  // 2. The Pokemon: shrinks and slides into the ball on an ease-in, so it hangs for a beat and
+  //    then snaps away — a linear shrink reads as the model simply being scaled down.
+  const e = pull * pull;
+  if (s.monObj) {
+    if (pull >= 1) {
+      s.monObj.visible = false;
+    } else {
+      s.monObj.position.lerpVectors(s.monStart, hp, e);
+      s.monObj.scale.setScalar(Math.max(0.02, 1 - e) * s.monFit);
+    }
+  }
+
+  // 3. The light. The glow engulfs the Pokemon and shrinks with it; the beam funnels from the
+  //    Pokemon's remaining bulk down into the ball.
+  // Sized off monBodyY / captureRadius rather than the nominal monHeight, so a wide species that
+  // was scaled down to fit the frame gets a glow that matches what is actually on screen.
+  const glowAt = _tmp.copy(s.monStart).lerp(hp, e);
+  glowAt.y += s.monBodyY * (1 - e);
+  const flare = Math.sin(Math.min(1, s.phaseT / (ABSORB_IMPACT + 0.1)) * Math.PI * 0.5);
+  // FLATTENED along z, not a round sphere. The ball is resting on the Pokemon's near face, so a
+  // round glow of this radius encloses it — and three.js draws every transparent object after
+  // every opaque one, so no renderOrder can lift the opaque ball back out of it. Squashing the
+  // glow in depth keeps its near surface behind the ball while it still reads as a blob of light
+  // around the Pokemon from this camera.
+  ABSORB_GLOW.visible = fade < 1;
+  ABSORB_GLOW.position.copy(glowAt);
+  const gr = Math.max(0.03, s.captureRadius * 0.95 * (1 - e * 0.9));
+  ABSORB_GLOW.scale.set(gr, gr, gr * 0.3);
+  ABSORB_GLOW.material.opacity = 0.75 * flare * (1 - fade);
+
+  ABSORB_LIGHT.position.copy(glowAt);
+  ABSORB_LIGHT.intensity = 5.5 * flare * (1 - fade);
+
+  const from = obj.position;
+  const dir = _beamDir.copy(glowAt).sub(from);
+  const len = dir.length();
+  ABSORB_BEAM.visible = pull > 0 && fade < 1 && len > 0.05;
+  if (ABSORB_BEAM.visible) {
+    ABSORB_BEAM.position.copy(from).addScaledVector(dir, 0.5);
+    ABSORB_BEAM.quaternion.setFromUnitVectors(_beamUp, dir.divideScalar(len));
+    ABSORB_BEAM.scale.set(Math.max(0.06, 1 - e * 0.55), len, Math.max(0.06, 1 - e * 0.55));
+    ABSORB_BEAM.material.opacity = 0.85 * Math.sin(pull * Math.PI) * (1 - fade);
+  }
+
+  if (s.phaseT < ABSORB_TOTAL) return;
+  hideAbsorb();
+  if (s.monObj) s.monObj.visible = false;
+  s.phase = 'wobble';
+  s.phaseT = 0;
+}
+
+function hideAbsorb() {
+  ABSORB_GLOW.visible = false;
+  ABSORB_GLOW.material.opacity = 0;
+  ABSORB_BEAM.visible = false;
+  ABSORB_BEAM.material.opacity = 0;
+  ABSORB_LIGHT.intensity = 0;
+}
+
+// GO's wobble: the ball falls from wherever it caught the Pokemon down to the ground, settles,
+// then rocks side to side once per shake. The fall is what makes the shake read as happening on
+// the floor rather than in mid-air, and the camera is pushed in on it the whole time.
 function updateWobble() {
   const s = catchState;
   if (!s.ballObj) return;
   const groundY = s.ballRadius;
+  const fromY = s.hitPoint.y;
 
   if (s.phaseT < DROP_TIME) {
     const p = s.phaseT / DROP_TIME;
-    s.ballObj.position.y = s.monBodyY + (groundY - s.monBodyY) * (p * p);
+    s.ballObj.position.set(s.hitPoint.x, fromY + (groundY - fromY) * (p * p), s.hitPoint.z);
     s.ballObj.rotation.x -= 0.08;
     return;
   }
@@ -851,6 +1117,9 @@ function updateWobble() {
   const wt = s.phaseT - DROP_TIME;
   const total = WOBBLE_PER * s.wobbles;
   const inWobble = (wt % WOBBLE_PER) / WOBBLE_PER;
+  // One tick per shake, on the beat, so the count is audible as well as visible.
+  const done = Math.min(s.wobbles, Math.floor(wt / WOBBLE_PER) + 1);
+  if (done > s.shakesDone) { s.shakesDone = done; s.onSfx?.('shake'); }
   s.ballObj.rotation.x = 0;
   s.ballObj.rotation.z = Math.sin(inWobble * Math.PI * 2) * 0.45 * (1 - inWobble * 0.4);
   s.ballObj.position.y = groundY + Math.abs(Math.sin(inWobble * Math.PI * 2)) * groundY * 0.35;
@@ -858,19 +1127,26 @@ function updateWobble() {
 
   s.ballObj.rotation.z = 0;
   if (s.willCatch) {
+    // Three shakes and the click. The click IS the catch.
     s.phase = 'success';
     s.phaseT = 0;
+    s.onSfx?.('lock');
     s.resultMsg = `Gotcha! ${CATALOG_BY_DEX.get(s.dex)?.name || 'It'} was caught!`;
     s.onResult?.({
       caught: true, msg: s.resultMsg, ballId: s.ballId, dex: s.dex,
       accuracy: s.accuracyPct, grade: s.grade, curve: s.curve,
     });
   } else {
-    // Burst open: the Pokemon is back out and the ball is flung aside.
-    if (s.monObj) s.monObj.visible = true;
-    CAPTURE_RING.visible = true;
+    // Burst open: the Pokemon is back out where it was standing and the ball is flung aside. The
+    // rings stay hidden until the re-arm — the camera is still pushed in, and they are billboards
+    // built for the wide shot, so showing them here would face them the wrong way.
+    if (s.monObj) {
+      s.monObj.visible = true;
+      s.monObj.position.copy(s.monStart);
+      s.monObj.scale.setScalar(s.monFit);
+    }
     const b = s.ball;
-    b.x = s.monX; b.y = groundY; b.z = TARGET_Z;
+    b.x = s.ballObj.position.x; b.y = groundY; b.z = s.ballObj.position.z;
     b.vx = (Math.random() < 0.5 ? -1 : 1) * 2.2; b.vy = 3.4; b.vz = 2.6;
     finishThrow('broke', 'Argh! It broke free!');
   }
@@ -906,7 +1182,12 @@ function updateDeadBall(dt) {
   s.grade = null;
   s.willCatch = false;
   s.held = null;
-  if (s.monObj) s.monObj.visible = true;
+  if (s.monObj) { s.monObj.visible = true; s.monObj.scale.setScalar(s.monFit); }
+  // Hard-snap the camera back to the wide pose. The ring billboards and the ball's home point are
+  // all built from that pose's fixed basis, so aiming from anything else would put the ball
+  // somewhere other than where the player thinks it is.
+  resetCamera();
+  hideAbsorb();
   CAPTURE_RING.visible = true;
   TARGET_RING.visible = true;
   refreshRingColor();

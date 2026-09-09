@@ -725,11 +725,20 @@
     transform: translateX(-50%);
     text-align: center; width: min(66%, 340px);
   }
+  /* The name and its type icons are the ONLY text on this screen. Every prompt and every result
+     line ("flick the ball at it", "the ball sailed clean over it", "it broke free") is gone: the
+     throw, the miss and the break-out are all visible in the 3D scene, and captioning them just
+     put a banner over the thing it was describing. */
   #catch-name {
     font-weight: 700; font-size: 1.3rem; line-height: 1.4;
     text-shadow: 0 2px 0 rgba(0,0,0,0.6), 0 3px 8px rgba(0,0,0,0.4);
   }
-  #catch-sub { font-size: 0.8rem; color: var(--gold); margin-top: 6px; text-shadow: 0 2px 3px rgba(0,0,0,0.6); }
+  #catch-sub { margin-top: 7px; }
+  #catch-sub .type-badges { justify-content: center; }
+  #catch-sub img {
+    height: 22px; width: auto;
+    filter: drop-shadow(0 2px 3px rgba(0,0,0,0.65));
+  }
 
   /* The throw grade. Pops for three quarters of a second on contact, well before the wobbles
      resolve, which is the read-ahead that makes a good throw feel good in GO. */
@@ -755,25 +764,6 @@
     100% { opacity: 0; transform: translate(-50%, -80%) scale(1); }
   }
 
-  /* Both of these float clear of the throw band: the ball sits at 15% up from the bottom and a
-     swipe starts under it, so nothing that could swallow a touch goes below ~30%. */
-  #catch-msg {
-    position: absolute; left: 50%; bottom: 40%;
-    transform: translateX(-50%);
-    background: rgba(11,16,32,0.9); color: var(--gold);
-    border-radius: 8px;
-    box-shadow: 0 4px 0 rgba(0,0,0,0.35);
-    padding: 0.6rem 1.1rem; font-size: 0.85rem; font-weight: 700; text-align: center;
-    white-space: nowrap; max-width: 92vw;
-  }
-  #catch-msg.hidden { display: none; }
-  #catch-hint {
-    position: absolute; left: 50%; bottom: 31%;
-    transform: translateX(-50%);
-    font-size: 0.72rem; color: #fff; text-align: center; white-space: nowrap;
-    background: rgba(0,0,0,0.5); border-radius: 999px; padding: 0.3rem 0.75rem;
-  }
-  #catch-hint.hidden { display: none; }
   /* Icon-only discs, deliberately. A chip wide enough to spell "Great Ball ×4" reaches back over
      the thrown ball at the bottom middle — and chips take pointer events, so it would eat the
      start of a swipe while the picker is open. Round and hard right, they clear the ball. */
@@ -928,8 +918,13 @@
   <div class="screen overlay" id="screen-pause">
     <h2 class="screen-title">Paused</h2>
     <div class="screen-sub" id="pause-sub">—</div>
-    <div class="panel" style="flex:1 1 auto; display:grid; place-items:center; min-height:0">
-      <canvas id="floormap" width="620" height="620" style="width:100%;height:100%;object-fit:contain;image-rendering:pixelated"></canvas>
+    <!-- The canvas is absolutely positioned inside the panel on purpose. As a normal grid item
+         with height:100% it resolved its height against the panel's PRE-shrink size, so on a
+         short screen it overflowed the panel and the button column below painted straight over
+         the bottom half of the map. Absolute + inset:0 pins it to the panel's real box, and
+         object-fit keeps the map square inside it. -->
+    <div class="panel" style="flex:1 1 auto; position:relative; overflow:hidden; min-height:0">
+      <canvas id="floormap" width="620" height="620" style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain;image-rendering:pixelated"></canvas>
     </div>
     <div class="btn-col" style="margin-top:14px">
       <button class="btn" id="btn-resume">Resume</button>
@@ -1047,8 +1042,6 @@
       <div id="catch-sub"></div>
     </div>
     <div id="catch-grade"></div>
-    <div id="catch-msg" class="hidden"></div>
-    <div id="catch-hint">Flick the ball at it · swirl first to curve</div>
     <div id="catch-ballmenu" class="hidden"></div>
     <button id="btn-catch-ball" class="go-round" aria-label="Change Poké Ball">
       <span id="catch-ball-icon"></span>

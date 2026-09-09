@@ -365,18 +365,18 @@ function beginCatch(wild) {
       if (inv.countOf(id) <= 0) return false;
       inv.removeItem(id, 1);
       sfx(catchState.spin !== 0 ? 'curve' : 'throw');
-      ui.renderCatchUI({ dex: wild.dex, activeBall: id, hint: 'Watch it land…' });
+      ui.renderCatchUI({ dex: wild.dex, activeBall: id });
       return true;
     },
     onResult: onCatchResult,
+    // The capture beats, fired by catch.js on the animation itself so the sound lands with the
+    // frame rather than a fixed delay after it.
+    onSfx: (name) => sfx(name),
     // GO hands you a fresh ball on its own after a failed throw. Returning null means the bag is
     // empty: catch.js parks in its 'empty' phase and the Run button is all that is left.
     onRearm: () => {
       const id = inv.activeBall();
-      if (!id) {
-        ui.renderCatchUI({ dex: wild.dex, activeBall: null, hint: 'You are out of Poké Balls' });
-        return null;
-      }
+      if (!id) return null;
       ui.renderCatchUI({ dex: wild.dex, activeBall: id });
       return { ballId: id, ballsLeft: inv.countOf(id) };
     },
@@ -406,7 +406,6 @@ function onCatchResult(res) {
 
   if (res.caught) {
     sfx('caught');
-    ui.renderCatchUI({ dex: res.dex, activeBall: res.ballId, msg: res.msg, hint: 'Caught!' });
     state.run.caught++;
     wild.gone = true;
     disposeObject(wild.obj);
@@ -428,15 +427,11 @@ function onCatchResult(res) {
     return;
   }
 
-  // Failed throw. catch.js re-arms by itself after a beat (onRearm above), exactly as GO does —
-  // all that is left here is to say what happened.
+  // Failed throw. catch.js re-arms by itself after a beat (onRearm above), exactly as GO does, and
+  // the scene has already shown what happened — the only thing left is the sound and the ball
+  // count on the swap button.
   sfx(res.reason === 'broke' ? 'broke' : res.reason === 'deflect' ? 'deflect' : 'select');
-  ui.renderCatchUI({
-    dex: wild.dex,
-    activeBall: inv.activeBall(),
-    msg: res.msg,
-    hint: inv.totalBalls() > 0 ? null : 'You are out of Poké Balls',
-  });
+  ui.renderCatchUI({ dex: wild.dex, activeBall: inv.activeBall() });
 }
 
 // Running ends the encounter for good: the wild LEAVES THE FLOOR. It used to be parked on a

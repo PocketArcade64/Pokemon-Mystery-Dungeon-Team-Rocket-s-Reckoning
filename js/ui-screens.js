@@ -419,20 +419,12 @@ export function floatDamage(side, index, dmg, superEff) {
 // many are left; tapping it pops the other tiers up above it, and picking one closes it again.
 let ballMenuOpen = false;
 
-export function renderCatchUI({ dex, activeBall, msg = null, hint = null }) {
+// The only text on the screen is the name, with the type icons under it. There is deliberately no
+// prompt line and no result line — what the throw did is visible in the 3D scene.
+export function renderCatchUI({ dex, activeBall }) {
   const c = CATALOG_BY_DEX.get(dex);
   $('catch-name').textContent = c ? `Wild ${c.name}` : 'Wild Pokémon';
-  $('catch-sub').innerHTML = c ? `${c.types.join(' / ')} · ${c.stage}` : '';
-
-  const msgEl = $('catch-msg');
-  msgEl.classList.toggle('hidden', !msg);
-  if (msg) msgEl.textContent = msg;
-
-  // The hint hides once a message is up: both sit in the same band and two stacked banners over
-  // the throw is exactly the clutter GO does not have.
-  const hintEl = $('catch-hint');
-  hintEl.textContent = hint || 'Flick the ball at it · swirl first to curve';
-  hintEl.classList.toggle('hidden', !!msg);
+  $('catch-sub').innerHTML = c ? typeBadges(c.types) : '';
 
   const held = BALL_IDS.filter(id => inv.countOf(id) > 0);
   const current = activeBall && inv.countOf(activeBall) > 0 ? activeBall : held[0] || null;

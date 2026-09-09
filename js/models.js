@@ -172,7 +172,11 @@ export function hasModelForDex(dex) { return questByDex.has(dex); }
 // dungeon population never stalls the frame loop.
 const PLACEHOLDER_COLOR = 0x8a8fa8;
 
-export function createMonObject(dex, { height = 1.0, tint = PLACEHOLDER_COLOR } = {}) {
+// `onReady` fires once the real model has replaced the placeholder. The catch minigame needs it:
+// models are fitted by HEIGHT, so a wide, flat species (Kabuto, Wailmer) comes out far wider than
+// it is tall and overflows the encounter frame — and there is no way to know how wide until the
+// model is actually loaded and measured.
+export function createMonObject(dex, { height = 1.0, tint = PLACEHOLDER_COLOR, onReady = null } = {}) {
   const group = new THREE.Group();
   const ph = new THREE.Mesh(
     new THREE.BoxGeometry(height * 0.6, height, height * 0.6),
@@ -190,6 +194,7 @@ export function createMonObject(dex, { height = 1.0, tint = PLACEHOLDER_COLOR } 
     ph.geometry.dispose(); ph.material.dispose();
     group.add(fitModel(model, height));
     group.userData.ready = true;
+    onReady?.(group);
   });
   return group;
 }

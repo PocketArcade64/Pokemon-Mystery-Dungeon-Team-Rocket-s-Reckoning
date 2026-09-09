@@ -313,6 +313,14 @@ export function sfx(name) {
     case 'excellent':[784, 988, 1319].forEach((f, i) =>
                        tone({ freq: f, dur: 0.13, type: 'triangle', gain: 0.24, delay: i * 0.08 })); break;
     case 'wobble':   tone({ freq: 300, dur: 0.06, gain: 0.16, type: 'sine' }); break;
+    // The capture beat, in three parts. The ball swallowing the Pokemon is a downward swoop, each
+    // shake is a dull knock, and the LOCK is the hard bright click that means it is yours — that
+    // click is the moment of the catch and it lands before the fanfare does.
+    case 'absorb':   tone({ freq: 900, endFreq: 220, dur: 0.34, type: 'sine', gain: 0.2 });
+                     noise({ dur: 0.3, gain: 0.12, filterHz: 1200 }); break;
+    case 'shake':    tone({ freq: 260, endFreq: 200, dur: 0.09, type: 'square', gain: 0.15 }); break;
+    case 'lock':     tone({ freq: 1750, dur: 0.05, type: 'square', gain: 0.26 });
+                     tone({ freq: 2400, dur: 0.05, type: 'square', gain: 0.18, delay: 0.045 }); break;
     case 'caught':   [523, 659, 784, 1047].forEach((f, i) =>
                        tone({ freq: f, dur: 0.13, type: 'triangle', gain: 0.22, delay: i * 0.1 })); break;
     case 'broke':    tone({ freq: 500, endFreq: 180, dur: 0.3, type: 'square', gain: 0.2 }); break;

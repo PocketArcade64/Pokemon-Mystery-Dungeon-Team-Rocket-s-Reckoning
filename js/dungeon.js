@@ -530,16 +530,16 @@ export function buildFloor(floor) {
     for (let x = 0; x < W; x++) {
       const v = floor.cells[y * W + x];
       if (v === FLOOR || v === PROP) { floorCells.push([x, y]); continue; }
-      // Only walls that actually touch open space are drawn — the solid rock behind them is
-      // never visible from an overhead camera, and skipping it roughly halves the instance count.
-      let borders = false;
-      for (let dy = -1; dy <= 1 && !borders; dy++) {
-        for (let dx = -1; dx <= 1; dx++) {
-          const n = cellValue(floor, x + dx, y + dy);
-          if (n === FLOOR || n === PROP) { borders = true; break; }
-        }
-      }
-      if (borders) wallCells.push([x, y]);
+      // EVERY solid cell is instanced, not just the ones touching open space.
+      //
+      // This used to draw only the border ring "because the rock behind it is never visible from
+      // an overhead camera". It is: the camera is a DIAGONAL overhead, so past the one-cell skin
+      // you see straight out into the scene background, and the whole floor reads as an island
+      // floating in a black void with wall-shaped edges you would expect to be able to walk past.
+      // Filling the rock is what makes a floor read as rooms carved out of solid ground.
+      // It is still one draw call — instance count is the only thing that goes up, and even the
+      // biggest floor (55x55) lands around 2k boxes, which is nothing for instanced rendering.
+      wallCells.push([x, y]);
     }
   }
 
@@ -736,9 +736,10 @@ export function drawMap(ctx, floor, player, { detail = false } = {}) {
       if (!isSeen(floor, x, y)) continue;
       const v = floor.cells[y * floor.W + x];
       if (v === WALL) {
-        // Only draw walls that border seen open space, so the map reads as carved rooms.
-        if (cellValue(floor, x + 1, y) === WALL && cellValue(floor, x - 1, y) === WALL
-          && cellValue(floor, x, y + 1) === WALL && cellValue(floor, x, y - 1) === WALL) continue;
+        // EVERY seen solid cell is painted, not just the ones fringing a room. Leaving the deep
+        // rock unpainted left it the same black as UNEXPLORED, so explored solid ground and
+        // unknown ground were indistinguishable — the map read as broken, and the black looked
+        // like somewhere you could walk. Black now means "not been there" and nothing else.
         ctx.fillStyle = '#39405a';
       } else if (v === PROP) {
         ctx.fillStyle = '#5a6480';
