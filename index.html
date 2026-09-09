@@ -5,27 +5,32 @@
 <!-- viewport-fit=cover is what makes env(safe-area-inset-*) report real values on iPhone. -->
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
 <title>Pokémon Mystery Dungeon: Team Rocket's Reckoning</title>
+<!-- Home-screen and browser-tab icon. A JPG is fine for both; iOS uses the apple-touch-icon for
+     "Add to Home Screen", so it must be square and at least 180px (this one is 1024px). -->
+<link rel="icon" href="apple-touch-icon.jpg" />
+<link rel="apple-touch-icon" href="apple-touch-icon.jpg" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-title" content="Team Rocket's Reckoning" />
 <!-- black-translucent keeps the Dynamic Island area one consistent color instead of flipping. -->
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-<meta name="theme-color" content="#100a1c" />
+<meta name="theme-color" content="#0b1020" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<!-- Press Start 2P is the display face (titles, buttons, numbers); Silkscreen carries body copy,
-     because Press Start 2P is unreadable in a paragraph at any size that fits a phone. -->
-<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Silkscreen:wght@400;700&display=swap" rel="stylesheet" />
+<!-- Silkscreen is the only face, the way Rumble Run uses a single pixel font throughout: weight,
+     size and colour carry the hierarchy instead of a second display face. -->
+<link href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&display=swap" rel="stylesheet" />
 <style>
   /* =============================================================================================
-     PIXEL-ART UI, Pokémon Rumble Rush flavoured: chunky toy-bright colour over a dark plum, every
-     surface fenced in a hard black outline, no curve anywhere. Three rules make the whole thing
-     hold together, and breaking any one of them is what makes pixel UI look like web UI:
-       1. NO border-radius, NO blurred shadows. Bevels are solid offset shadows at whole pixels.
-       2. Colour fills are FLAT BANDS (a two-stop gradient with both stops at the same %), never
-          smooth ramps — a smooth gradient cannot be drawn with a limited palette, so it reads
-          instantly as "not pixel art".
-       3. Everything is a multiple of --px, so nothing lands on a half pixel.
+     UI in Pokémon Rumble Run's design language: toy-bright gold and silver controls on a deep
+     navy-plum ground. Three rules carry that look, and they are the opposite of the hard-edged
+     pixel UI this screen used to wear:
+       1. Controls are ROUNDED (12-14px) and lit by a smooth top-to-bottom gradient.
+       2. Depth is ONE hard, unblurred drop in the control's own dark shade; pressing it slides the
+          face down into that drop. No CRT scanlines, no dither, no stacked bevels.
+       3. Panels are translucent white over the screen gradient, fenced by a single 1px white edge.
+     Chunky, outlined controls survive in exactly two places Rumble keeps them: sliders and
+     scrollbars, which is why --px and --outline are still here.
      ============================================================================================= */
   :root {
     /* Safe-area shorthands. Every HUD element and every screen's padding is built from these —
@@ -35,26 +40,31 @@
     --sal: env(safe-area-inset-left, 0px);
     --sar: env(safe-area-inset-right, 0px);
 
-    --px: 3px;                /* the nominal pixel: every border and bevel is a multiple of it */
+    --px: 3px;                /* sliders and scrollbars still step in whole pixels */
 
-    --void: #100a1c;          /* the outline colour — every panel and button is fenced in it */
-    --void-2: #1b1030;
-    --ink: #fff7e6;
-    --ink-dim: #ab9ccf;
-    --panel: #2a1c46;
-    --panel-2: #3b2864;
-    --edge: #6b4fa8;
-    --edge-lt: #9a7ede;
-    --gold: #ffc63c;
-    --gold-lt: #ffe486;
-    --gold-dark: #a86407;
+    --void: #0b1020;          /* the page ground, and what the iOS status bar is tinted to */
+    --void-2: #2b2f3a;        /* recessed ground: slider tracks, HP gutters, empty slots */
+    --outline: #14161c;       /* the hard outline Rumble keeps on its chunky controls */
+    --ink: #ffffff;
+    --ink-dim: #9aa1ad;
+    --panel: rgba(255,255,255,0.06);
+    --panel-2: rgba(255,255,255,0.10);
+    --edge: rgba(255,255,255,0.12);
+    --edge-lt: rgba(255,255,255,0.22);
+    --gold: #ffd54f;          /* accent text: headings, values, selected state */
+    --gold-lt: #ffe082;       /* gold button gradient, top stop */
+    --gold-mid: #ffca28;      /* gold button gradient, bottom stop */
+    --gold-dark: #b8860b;     /* the drop under a gold button */
+    --silver: #cfd8dc;        /* secondary button gradient, top stop */
+    --silver-2: #90a4ae;      /* secondary button gradient, bottom stop */
+    --silver-dark: #546e7a;   /* the drop under a secondary button */
     --rocket: #ef3b45;
     --rocket-dark: #8b0f18;
-    --teal: #3ee6ae;
-    --teal-dark: #0d8f68;
+    --teal: #66bb6a;          /* healthy HP */
+    --teal-dark: #2e7d32;
     --violet: #a76bff;
-    --danger: #ff4d5a;
-    --danger-dark: #8d1220;
+    --danger: #ff5252;
+    --danger-dark: #c62828;
   }
 
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -67,12 +77,15 @@
     overscroll-behavior: none;
     -webkit-user-select: none; user-select: none;
     color: var(--ink);
-    font-family: 'Silkscreen', 'Courier New', monospace;
+    font-family: 'Silkscreen', 'Trebuchet MS', system-ui, sans-serif;
     font-weight: 400;
-    letter-spacing: 0.2px;
-    /* Pixel art must never be smoothed on the way to the screen. */
+    /* Silkscreen has a small x-height; the looser tracking and line-height are what make it
+       readable at button and body sizes. Straight from Rumble Run. */
+    letter-spacing: 0.5px;
+    line-height: 1.6;
+    /* Pixel sprites (type badges, item icons, minimap, the voxel canvas) must never be smoothed
+       on the way to the screen. Photographic art opts back out per element. */
     image-rendering: pixelated;
-    -webkit-font-smoothing: none;
   }
 
   /* lvh = LARGE viewport unit: the full screen INCLUDING the iOS home-indicator zone. dvh and
@@ -83,9 +96,9 @@
   }
 
   h1, h2, h3, .display {
-    font-family: 'Press Start 2P', 'Silkscreen', monospace;
-    font-weight: 400;
-    letter-spacing: 0;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    margin: 0;
   }
 
   #game-canvas {
@@ -117,206 +130,165 @@
   }
   .screen.visible { display: flex; }
 
-  /* The sheet background is a dither, not a gradient: a 4px checker of two plums plus a wide
-     vignette. At phone density it reads as the stippled shading of a GBA menu. */
+  /* Rumble Run's screen ground: one smooth navy-to-plum gradient. The 4px dither checker and the
+     violet vignette that used to be here are gone — a plain gradient is what lets the rounded gold
+     controls on top read as Rumble instead of as a GBA menu. */
   .screen.sheet {
-    background:
-      radial-gradient(120% 70% at 50% 0%, rgba(167,107,255,0.30), transparent 62%),
-      repeating-conic-gradient(from 0deg at 50% 50%, #1b1030 0% 25%, #170d29 25% 50%) 0 0 / 4px 4px;
+    background: linear-gradient(180deg, rgba(15,20,40,0.94), rgba(30,15,45,0.94));
   }
+  /* An overlay sits over live gameplay, so it is a flat scrim rather than the full gradient. */
   .screen.overlay {
-    background:
-      repeating-linear-gradient(0deg, rgba(16,10,28,0.90) 0 2px, rgba(16,10,28,0.80) 2px 4px);
-  }
-
-  /* Scanlines. Only on the cinematic screens (title, banner, end of run) — over a dense list they
-     would fight the text they sit on. */
-  .crt::after {
-    content: ''; position: absolute; inset: 0; pointer-events: none; z-index: 6;
-    /* Kept light on purpose: at the first attempt's 0.20 the lines banded the gold buttons into
-       corduroy instead of reading as a CRT. */
-    background: repeating-linear-gradient(0deg, rgba(0,0,0,0.09) 0 1px, transparent 1px 4px);
+    background: rgba(8,10,20,0.72);
   }
 
   .screen-title {
-    font-family: 'Press Start 2P', monospace;
-    font-size: 13px; line-height: 1.6; text-transform: uppercase;
-    color: var(--gold-lt);
-    text-shadow: var(--px) var(--px) 0 var(--void);
+    font-weight: 700;
+    font-size: clamp(1.15rem, 4.8vw, 1.7rem); line-height: 1.35;
+    color: var(--gold);
+    text-shadow: 0 3px 0 var(--gold-dark), 0 4px 8px rgba(0,0,0,0.4);
     margin: 4px 0 12px; text-align: center; flex: 0 0 auto;
   }
-  .screen-sub { color: var(--ink-dim); font-size: 12px; text-align: center; margin: -4px 0 12px; line-height: 1.5; }
+  .screen-sub { color: var(--ink-dim); font-size: 0.85rem; text-align: center; margin: -4px 0 12px; }
 
   .scroll { flex: 1 1 auto; overflow-y: auto; -webkit-overflow-scrolling: touch; touch-action: pan-y; }
 
   /* iOS hides overlay scrollbars anyway; this is for desktop testing, where the default rounded
      grey bar is the one un-pixel thing left on screen. */
-  .scroll::-webkit-scrollbar { width: 8px; }
-  .scroll::-webkit-scrollbar-track { background: var(--void-2); }
-  .scroll::-webkit-scrollbar-thumb { background: var(--edge); border: 2px solid var(--void); }
+  .scroll { scrollbar-width: thin; scrollbar-color: var(--gold-mid) var(--void-2); }
+  .scroll::-webkit-scrollbar { width: 12px; }
+  .scroll::-webkit-scrollbar-track { background: var(--void-2); border: 3px solid var(--outline); }
+  .scroll::-webkit-scrollbar-thumb {
+    background: var(--gold-mid); border: 3px solid var(--outline);
+    box-shadow: inset -2px -2px 0 var(--gold-dark), inset 2px 2px 0 #fff3c4;
+  }
 
-  /* ---- Pixel frame ---------------------------------------------------------------------------
-     The classic three-ring menu box, from the inside out: a lit inner bevel, a coloured border,
-     then the black outline drawn as a hard spread shadow. Reused by every panel-like surface. */
+  /* ---- Panels --------------------------------------------------------------------------------
+     Rumble Run's panel is deliberately plain: translucent white over the screen gradient, one
+     hairline white edge, generously rounded. The three-ring pixel frame that used to be here
+     (lit inner bevel, coloured border, hard black outline) and its scanline wash are both gone. */
   .panel {
-    background:
-      repeating-linear-gradient(0deg, rgba(255,255,255,0.030) 0 2px, transparent 2px 4px),
-      linear-gradient(180deg, var(--panel-2) 0 46%, var(--panel) 46% 100%);
-    border: var(--px) solid var(--edge);
-    border-radius: 0;
-    padding: 10px;
-    box-shadow:
-      inset 0 var(--px) 0 rgba(255,255,255,0.16),
-      inset 0 calc(var(--px) * -1) 0 rgba(0,0,0,0.45),
-      0 0 0 var(--px) var(--void);
+    background: var(--panel);
+    border: 1px solid var(--edge);
+    border-radius: 14px;
+    padding: 0.9rem 1rem;
   }
 
   /* ---- Buttons -------------------------------------------------------------------------------
-     A pixel button is four solid layers: flat two-band fill, an inset highlight on the top-left
-     and shade on the bottom-right, a hard drop in the darker shade of its own colour, and a black
-     outline drawn around BOTH the face and the drop so the whole stack stays fenced. */
+     Rumble Run's button, and the reason the scanlines had to go: a smooth gold gradient, rounded
+     12px, and ONE hard unblurred drop in its own dark shade. Pressing it moves the face down by
+     exactly the drop's height, so the button reads as sinking flush into the page. */
   .btn {
-    appearance: none; border: 0; border-radius: 0;
-    font-family: 'Press Start 2P', monospace;
-    font-size: 11px; line-height: 1.5; letter-spacing: 0.5px;
-    text-transform: uppercase;
-    color: #2b1600;
-    background: linear-gradient(180deg, var(--gold-lt) 0 42%, var(--gold) 42% 100%);
-    padding: 13px 12px;
+    appearance: none; border: 0; border-radius: 12px;
+    font: inherit; font-weight: 700;
+    font-size: 1.05rem; line-height: 1.4; letter-spacing: 0.5px;
+    color: #23262e;
+    background: linear-gradient(180deg, var(--gold-lt), var(--gold-mid));
+    padding: 0.7rem 1.5rem;
     width: 100%;
     cursor: pointer;
-    box-shadow:
-      inset var(--px) var(--px) 0 rgba(255,255,255,0.55),
-      inset calc(var(--px) * -1) calc(var(--px) * -1) 0 rgba(0,0,0,0.22),
-      0 5px 0 0 var(--gold-dark),
-      0 0 0 var(--px) var(--void),
-      0 5px 0 var(--px) var(--void);
-    /* No transition: a pixel button snaps. Easing it makes it feel like a web page again. */
+    box-shadow: 0 4px 0 var(--gold-dark);
+    transition: transform 0.05s ease, filter 0.12s ease, background 0.12s ease;
   }
-  .btn:active {
-    transform: translateY(5px);
-    box-shadow:
-      inset var(--px) var(--px) 0 rgba(255,255,255,0.35),
-      inset calc(var(--px) * -1) calc(var(--px) * -1) 0 rgba(0,0,0,0.3),
-      0 0 0 0 var(--gold-dark),
-      0 0 0 var(--px) var(--void);
-  }
+  /* Hover shifts the colour rather than the shape, so nothing jumps under a cursor. */
+  .btn:hover:not(:disabled) { filter: brightness(1.12) saturate(1.15); }
+  .btn:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--gold-dark); }
+
   .btn.secondary {
-    color: var(--ink);
-    background: linear-gradient(180deg, var(--edge) 0 42%, #4a3479 42% 100%);
-    text-shadow: 0 2px 0 rgba(0,0,0,0.5);
-    box-shadow:
-      inset var(--px) var(--px) 0 rgba(255,255,255,0.22),
-      inset calc(var(--px) * -1) calc(var(--px) * -1) 0 rgba(0,0,0,0.35),
-      0 5px 0 0 #2b1c4c,
-      0 0 0 var(--px) var(--void),
-      0 5px 0 var(--px) var(--void);
+    color: #1a1d24;
+    background: linear-gradient(180deg, var(--silver), var(--silver-2));
+    box-shadow: 0 4px 0 var(--silver-dark);
   }
-  .btn.secondary:active {
-    box-shadow:
-      inset var(--px) var(--px) 0 rgba(255,255,255,0.14),
-      inset calc(var(--px) * -1) calc(var(--px) * -1) 0 rgba(0,0,0,0.4),
-      0 0 0 var(--px) var(--void);
-  }
+  .btn.secondary:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--silver-dark); }
+
   .btn.danger {
-    color: #fff2f2;
-    background: linear-gradient(180deg, #ff7a7a 0 42%, var(--danger) 42% 100%);
-    text-shadow: 0 2px 0 rgba(0,0,0,0.45);
-    box-shadow:
-      inset var(--px) var(--px) 0 rgba(255,255,255,0.4),
-      inset calc(var(--px) * -1) calc(var(--px) * -1) 0 rgba(0,0,0,0.28),
-      0 5px 0 0 var(--danger-dark),
-      0 0 0 var(--px) var(--void),
-      0 5px 0 var(--px) var(--void);
+    color: #fff;
+    background: linear-gradient(180deg, #ff8a80, var(--danger));
+    text-shadow: 0 2px 0 rgba(0,0,0,0.3);
+    box-shadow: 0 4px 0 var(--danger-dark);
   }
-  .btn.danger:active {
-    box-shadow:
-      inset var(--px) var(--px) 0 rgba(255,255,255,0.25),
-      inset calc(var(--px) * -1) calc(var(--px) * -1) 0 rgba(0,0,0,0.34),
-      0 0 0 var(--px) var(--void);
-  }
-  .btn.small { font-size: 9px; padding: 11px 8px; letter-spacing: 0; }
-  /* Grey a disabled button, do not tint it — desaturating gold lands on olive, which reads as a
-     different button rather than a dead one. */
-  .btn:disabled { filter: grayscale(1) brightness(0.62); }
-  .btn-row { display: flex; gap: 12px; }
-  .btn-col { display: flex; flex-direction: column; gap: 8px; }
-  /* The drop shadow lives outside the box, so stacked buttons need room for it: 5px of drop plus
-     the 3px outline around it. */
-  .btn-col > .btn, .btn-row > .btn, .seg > .btn, .btn-col > .btn-row { margin-bottom: 8px; }
+  .btn.danger:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--danger-dark); }
+
+  .btn.small { font-size: 0.9rem; padding: 0.5rem 1rem; }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; background: #999; box-shadow: 0 4px 0 #555; }
+  .btn-row { display: flex; gap: 0.7rem; }
+  .btn-col { display: flex; flex-direction: column; gap: 0.7rem; }
+  /* The drop hangs below the face, outside the box, so stacked buttons need that much clearance. */
+  .btn-col > .btn, .btn-row > .btn, .seg > .btn, .btn-col > .btn-row { margin-bottom: 4px; }
 
   /* Square icon buttons (bag, pause). Same stack, no label. */
   .btn.icon { width: 54px; height: 54px; padding: 0; display: grid; place-items: center; }
   .btn.icon svg { width: 26px; height: 26px; display: block; }
 
-  /* ---- Title screen ------------------------------------------------------------------------- */
-  #screen-title { justify-content: center; align-items: center; }
-  .logo-wrap { text-align: center; margin-bottom: 18px; }
-  .logo-badge {
-    width: 64px; height: 64px; margin: 0 auto 14px;
-    display: grid; place-items: center;
-    background: linear-gradient(180deg, #ff5a63 0 40%, var(--rocket) 40% 100%);
-    border: var(--px) solid var(--void);
-    box-shadow:
-      inset var(--px) var(--px) 0 rgba(255,255,255,0.35),
-      inset calc(var(--px) * -1) calc(var(--px) * -1) 0 rgba(0,0,0,0.3),
-      0 0 0 var(--px) #fff7e6,
-      0 0 0 calc(var(--px) * 2) var(--void);
+  /* ---- Title screen ---------------------------------------------------------------------------
+     Laid out exactly like Rumble Run's menu: the logo rides the TOP of the screen, the button
+     column is pushed to the BOTTOM by margin-top:auto, and the leftover space falls between them.
+     Nothing here is vertically centred. */
+  #screen-title {
+    justify-content: flex-start; align-items: center;
+    padding-top: max(2vh, calc(var(--sat) + 1.5vh));
   }
-  .logo-badge svg { width: 30px; height: 42px; display: block; }
-  .logo-kicker {
-    font-family: 'Press Start 2P', monospace; font-size: 9px; letter-spacing: 1px;
-    color: var(--gold); text-transform: uppercase; line-height: 1.8;
-    text-shadow: 2px 2px 0 var(--void);
+  .logo-wrap { text-align: center; margin-bottom: 0.3rem; }
+  /* A downscaled high-res PNG, so it has to opt out of the global pixelated rendering or its
+     outlines break into jaggies. The drop-shadow is what lifts it off the gradient. */
+  #title-logo {
+    display: block;
+    width: min(78vw, 460px); max-height: 30vh;
+    object-fit: contain;
+    image-rendering: auto;
+    filter: drop-shadow(0 6px 10px rgba(0,0,0,0.45));
   }
-  .logo-main {
-    font-family: 'Press Start 2P', monospace;
-    font-size: clamp(17px, 5.6vw, 24px); line-height: 1.5;
-    margin: 10px 0 0; text-transform: uppercase;
-    color: var(--ink);
-    text-shadow: var(--px) var(--px) 0 var(--void-2), 0 calc(var(--px) * 2) 0 var(--void);
+  #screen-title .btn-col {
+    width: min(300px, 100%);
+    margin-top: auto;
+    margin-bottom: max(4vh, calc(var(--sab) + 2vh));
   }
-  .logo-rocket { color: var(--rocket); text-shadow: var(--px) var(--px) 0 #4a0b0e, 0 calc(var(--px) * 2) 0 var(--void); }
-  #screen-title .btn-col { width: min(300px, 100%); }
-  .title-foot {
-    color: var(--ink-dim); font-size: 10px; margin-top: 18px; text-align: center; line-height: 1.7;
+  /* Landscape on a phone has no vertical room to spare: cap the logo so the buttons still fit. */
+  @media (orientation: landscape) and (max-height: 520px) {
+    #title-logo { max-height: 22vh; }
+    #screen-title .btn-col { margin-bottom: max(1vh, var(--sab)); }
   }
 
   /* ---- Starter select ----------------------------------------------------------------------- */
+  /* The preview canvas is transparent, so this is just the recessed well Rumble puts behind its
+     roster: a dark translucent ground, one hairline edge, rounded. */
   #starter-preview {
     width: 100%; height: 32vh; min-height: 165px;
     display: block;
-    background:
-      repeating-conic-gradient(from 0deg at 50% 50%, #3a2a63 0% 25%, #33255a 25% 50%) 0 0 / 6px 6px;
-    border: var(--px) solid var(--edge);
-    box-shadow: 0 0 0 var(--px) var(--void), inset 0 0 0 var(--px) rgba(0,0,0,0.35);
+    background: rgba(0,0,0,0.28);
+    border: 1px solid var(--edge);
+    border-radius: 12px;
   }
   .starter-name {
-    text-align: center; font-family: 'Press Start 2P', monospace; font-size: 14px;
-    margin: 16px 0 4px; color: var(--gold-lt); text-shadow: 2px 2px 0 var(--void);
+    text-align: center; font-weight: 700; font-size: 1.3rem;
+    margin: 0.7rem 0 0.2rem; color: var(--gold); text-shadow: 0 2px 0 rgba(0,0,0,0.5);
   }
-  .starter-meta { text-align: center; color: var(--ink-dim); font-size: 11px; margin-bottom: 12px; }
-  /* Detail appended after a name set in the display face. Its own line, body font, no shadow. */
+  .starter-meta { text-align: center; color: var(--ink-dim); font-size: 0.8rem; margin-bottom: 12px; }
+  /* Detail appended after the name. Its own line, regular weight, no shadow. */
   .meta-inline {
-    display: block; font-family: 'Silkscreen', monospace; font-size: 11px;
-    color: var(--ink-dim); margin-top: 6px; text-shadow: none; letter-spacing: 0.2px;
+    display: block; font-size: 0.78rem; font-weight: 400;
+    color: var(--ink-dim); margin-top: 6px; text-shadow: none;
   }
   .starter-row { display: flex; gap: 10px; }
+  /* Rumble's roster box: translucent white, rounded, a hard drop that doubles as the "pick me"
+     cue, and a gold border plus gold wash when selected. */
   .starter-card {
     flex: 1 1 0; min-width: 0;
-    background: linear-gradient(180deg, var(--panel-2) 0 46%, var(--panel) 46% 100%);
-    border: var(--px) solid var(--edge);
-    box-shadow: 0 0 0 var(--px) var(--void), inset 0 var(--px) 0 rgba(255,255,255,0.14);
-    padding: 9px 4px 8px; text-align: center;
-    font-size: 11px; cursor: pointer;
+    background: rgba(255,255,255,0.07);
+    border: 2px solid transparent;
+    border-radius: 10px;
+    box-shadow: 0 4px 0 var(--silver-dark);
+    padding: 0.55rem 4px 0.5rem; text-align: center;
+    font-size: 0.72rem; cursor: pointer;
   }
   .starter-card.selected {
     border-color: var(--gold);
-    background: linear-gradient(180deg, #6b4f1a 0 46%, #4a3510 46% 100%);
+    background: rgba(255,213,79,0.22);
+    box-shadow: 0 4px 0 var(--gold-dark);
     transform: translateY(-3px);
   }
   .starter-card .sc-name {
-    font-family: 'Press Start 2P', monospace; font-size: 8px; line-height: 1.5;
+    /* Three cards across a phone, so this stays small enough that a long name still fits. */
+    font-weight: 700; font-size: 0.58rem; line-height: 1.4;
     display: block; margin-bottom: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   .type-badges { display: flex; gap: 3px; justify-content: center; }
@@ -330,10 +302,10 @@
   #minimap-wrap {
     top: calc(var(--sat) + 10px); left: calc(var(--sal) + 10px);
     width: 108px; height: 108px;
-    border: var(--px) solid var(--edge);
+    border: 1px solid var(--edge);
+    border-radius: 10px;
     overflow: hidden;
-    background: rgba(16,10,28,0.8);
-    box-shadow: 0 0 0 var(--px) var(--void);
+    background: rgba(11,16,32,0.8);
   }
   #minimap { width: 100%; height: 100%; display: block; image-rendering: pixelated; }
 
@@ -342,84 +314,86 @@
   #bag-count {
     position: absolute; top: -8px; right: -8px;
     min-width: 22px; height: 20px; padding: 0 4px;
-    background: var(--rocket); color: #fff;
-    font-family: 'Press Start 2P', monospace; font-size: 9px;
+    background: var(--danger); color: #fff;
+    font-weight: 700; font-size: 0.62rem;
     display: grid; place-items: center;
-    border: var(--px) solid var(--void);
+    border-radius: 6px;
+    box-shadow: 0 2px 0 rgba(0,0,0,0.35);
   }
   #btn-pause { top: calc(var(--sat) + 10px); right: calc(var(--sar) + 10px); }
 
+  /* Centred in the band BETWEEN the minimap and the pause button, not on the whole screen: at
+     left:50% the longest theme ("B1F Rocket Warehouse") ran 21px under the minimap on a 375px
+     phone. left+right fence the band, width:fit-content keeps the pill hugging its text, and
+     margin-inline:auto centres it in whatever is left. */
   #floor-chip {
-    top: calc(var(--sat) + 16px); left: 50%; transform: translateX(-50%);
-    background: linear-gradient(180deg, var(--panel-2) 0 46%, var(--panel) 46% 100%);
-    border: var(--px) solid var(--edge);
-    box-shadow: 0 0 0 var(--px) var(--void);
-    padding: 7px 12px;
-    font-family: 'Press Start 2P', monospace; font-size: 9px; white-space: nowrap;
+    top: calc(var(--sat) + 16px);
+    left: calc(var(--sal) + 122px);
+    right: calc(var(--sar) + 68px);
+    width: fit-content; margin-inline: auto;
+    background: rgba(11,16,32,0.85);
+    border: 1px solid var(--edge);
+    border-radius: 8px;
+    padding: 0.3rem 0.6rem;
+    font-weight: 700; font-size: 0.58rem; white-space: nowrap;
+    text-shadow: 0 2px 4px rgba(0,0,0,0.6);
   }
   #floor-chip .theme { color: var(--gold); }
 
   #buff-strip {
     top: calc(var(--sat) + 58px); left: 50%; transform: translateX(-50%);
-    display: flex; gap: 6px; font-size: 10px;
+    display: flex; gap: 6px; font-size: 0.68rem;
   }
   .buff-pill {
-    background: var(--teal-dark); border: var(--px) solid var(--void);
-    color: #d8fff2; padding: 3px 7px; font-weight: 700;
-    box-shadow: inset 0 2px 0 rgba(255,255,255,0.2);
+    background: var(--teal-dark); color: #e8fff0;
+    border-radius: 999px; padding: 0.2rem 0.6rem; font-weight: 700;
+    box-shadow: 0 2px 0 rgba(0,0,0,0.35);
   }
-  .buff-pill.repel { background: #4b2a91; color: #e2d4ff; }
+  .buff-pill.repel { background: #5e35b1; color: #ede7f6; }
 
-  /* Lead Pokemon HP, bottom-right so it never fights the joystick for space. */
+  /* Lead Pokemon HP, bottom-right so it never fights the joystick for space. Over live gameplay a
+     translucent-white panel would vanish, so this one keeps a dark ground. */
   #lead-hp {
     right: calc(var(--sar) + 12px); bottom: calc(var(--sab) + 20px);
-    width: 152px; padding: 8px 9px;
-    background: linear-gradient(180deg, var(--panel-2) 0 46%, var(--panel) 46% 100%);
-    border: var(--px) solid var(--edge);
-    box-shadow: 0 0 0 var(--px) var(--void);
+    width: 152px; padding: 0.5rem 0.6rem;
+    background: rgba(11,16,32,0.72);
+    border: 1px solid var(--edge);
+    border-radius: 12px;
   }
-  #lead-hp .name { font-size: 11px; margin-bottom: 6px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  #lead-hp .name { font-size: 0.72rem; margin-bottom: 6px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   #lead-hp .party-count { color: var(--gold); }
 
-  /* Segmented HP bar: a flat fill with a repeating mask punched over it, so it drains in blocks
-     rather than sliding smoothly. Same trick as every 8-bit health meter. */
+  /* HP bar: a smooth rounded meter. The 8-bit segment mask that used to be punched over it was the
+     same striping the buttons had, and it read as a rendering artefact next to rounded controls. */
   .hpbar {
-    position: relative; height: 12px;
+    position: relative; height: 10px;
     background: var(--void-2);
-    border: var(--px) solid var(--void);
+    border-radius: 999px;
     overflow: hidden;
   }
-  .hpbar > i {
-    display: block; height: 100%;
-    background: linear-gradient(180deg, #8bffdc 0 40%, var(--teal) 40% 100%);
-  }
-  .hpbar.mid > i { background: linear-gradient(180deg, var(--gold-lt) 0 40%, var(--gold) 40% 100%); }
-  .hpbar.low > i { background: linear-gradient(180deg, #ff8f96 0 40%, var(--danger) 40% 100%); }
-  .hpbar::after {
-    content: ''; position: absolute; inset: 0; pointer-events: none;
-    background: repeating-linear-gradient(90deg, transparent 0 4px, rgba(16,10,28,0.85) 4px 6px);
-  }
+  .hpbar > i { display: block; height: 100%; background: var(--teal); }
+  .hpbar.mid > i { background: var(--gold-mid); }
+  .hpbar.low > i { background: var(--danger); }
 
-  /* Virtual joystick, bottom-left. Hand-rolled — no external dependency. Square, because a round
-     stick in a square-cornered UI is the one thing that would give the game away. */
+  /* Virtual joystick, bottom-left. Hand-rolled — no external dependency. Round, matching the
+     rounded controls everywhere else. */
   #joystick {
     left: calc(var(--sal) + 16px); bottom: calc(var(--sab) + 16px);
     width: 122px; height: 122px;
-    background: rgba(43,28,76,0.5);
-    border: var(--px) solid rgba(154,126,222,0.55);
-    box-shadow: 0 0 0 var(--px) rgba(16,10,28,0.7);
+    background: rgba(11,16,32,0.40);
+    border: 2px solid rgba(255,255,255,0.28);
+    border-radius: 50%;
     touch-action: none;
   }
   #joystick.hidden { display: none; }
-  #joystick.active { background: rgba(59,40,100,0.7); }
+  #joystick.active { background: rgba(11,16,32,0.62); }
   #joystick-knob {
     position: absolute; left: 50%; top: 50%;
     width: 50px; height: 50px;
     transform: translate(-50%, -50%);
-    background: linear-gradient(180deg, var(--edge-lt) 0 42%, var(--edge) 42% 100%);
-    border: var(--px) solid var(--void);
-    box-shadow: inset var(--px) var(--px) 0 rgba(255,255,255,0.4),
-                inset calc(var(--px) * -1) calc(var(--px) * -1) 0 rgba(0,0,0,0.35);
+    background: linear-gradient(180deg, var(--silver), var(--silver-2));
+    border-radius: 50%;
+    box-shadow: 0 3px 0 var(--silver-dark);
     pointer-events: none;
   }
 
@@ -427,20 +401,22 @@
      the lead-HP panel. */
   #tap-hint {
     left: calc(var(--sal) + 16px); bottom: calc(var(--sab) + 22px);
-    color: var(--ink-dim); font-size: 10px;
-    background: rgba(16,10,28,0.85); border: var(--px) solid var(--edge);
-    padding: 6px 10px; white-space: nowrap;
+    color: #fff; font-size: 0.8rem;
+    background: rgba(0,0,0,0.55);
+    border-radius: 999px;
+    padding: 0.5rem 1rem; white-space: nowrap;
   }
   #tap-hint.hidden { display: none; }
 
   #toast {
     left: 50%; bottom: calc(var(--sab) + 100px); transform: translateX(-50%);
     max-width: min(84vw, 380px);
-    background: var(--void); border: var(--px) solid var(--gold);
-    box-shadow: 0 0 0 var(--px) var(--void);
-    padding: 10px 12px;
-    font-size: 11px; text-align: center; line-height: 1.6;
-    opacity: 0; transition: opacity 0.12s steps(3);
+    background: rgba(11,16,32,0.9); color: var(--gold);
+    border-radius: 8px;
+    box-shadow: 0 4px 0 rgba(0,0,0,0.35);
+    padding: 0.6rem 1.1rem;
+    font-size: 0.85rem; font-weight: 700; text-align: center;
+    opacity: 0; transition: opacity 0.18s ease;
     pointer-events: none;
   }
   #toast.show { opacity: 1; }
@@ -449,44 +425,49 @@
   #banner {
     position: absolute; inset: 0; display: none;
     place-items: center; text-align: center;
-    background: repeating-linear-gradient(0deg, rgba(16,10,28,0.86) 0 2px, rgba(16,10,28,0.74) 2px 4px);
+    background: rgba(8,10,20,0.72);
   }
   #banner.visible { display: grid; }
   #banner .banner-inner { padding: 22px; }
   #banner .b-kicker {
-    font-family: 'Press Start 2P', monospace; color: var(--gold); letter-spacing: 1px;
-    font-size: 9px; text-transform: uppercase; text-shadow: 2px 2px 0 var(--void);
+    font-weight: 700; color: var(--gold); letter-spacing: 1.5px;
+    font-size: 0.7rem; text-transform: uppercase; text-shadow: 0 2px 4px rgba(0,0,0,0.6);
   }
   #banner .b-main {
-    font-family: 'Press Start 2P', monospace; font-size: clamp(16px, 5.4vw, 22px);
-    margin: 14px 0; line-height: 1.5;
-    text-shadow: var(--px) var(--px) 0 var(--void-2), 0 calc(var(--px) * 2) 0 var(--void);
+    font-weight: 700; font-size: clamp(1.5rem, 6.4vw, 2.6rem);
+    margin: 0.6rem 0; line-height: 1.3;
+    text-shadow: 0 3px 0 rgba(0,0,0,0.55), 0 4px 10px rgba(0,0,0,0.45);
   }
-  #banner .b-sub { color: var(--ink-dim); font-size: 11px; }
+  #banner .b-sub { color: var(--ink-dim); font-size: 0.85rem; }
 
   /* ---- Bag / inventory ---------------------------------------------------------------------- */
   .team-strip { display: grid; grid-template-columns: repeat(6, 1fr); gap: 5px; margin-bottom: 12px; }
   .team-slot {
-    background: linear-gradient(180deg, var(--panel-2) 0 46%, var(--panel) 46% 100%);
-    border: var(--px) solid var(--edge);
-    box-shadow: 0 0 0 2px var(--void);
+    background: rgba(255,255,255,0.07);
+    border: 2px solid transparent;
+    border-radius: 8px;
+    box-shadow: 0 4px 0 var(--silver-dark);
     padding: 5px 2px; text-align: center; min-width: 0; cursor: pointer;
   }
-  /* An empty party slot is a recessed hole, not a black box: dropping the saturation on the
-     panel fill just turned it near-black and it read as a rendering fault. */
+  /* An empty party slot is a dashed outline over a barely-there fill, the way Rumble marks an
+     unfilled dex box — a solid dark fill read as a rendering fault. */
   .team-slot.empty {
-    background: var(--void-2); border-color: #4a3479; color: var(--ink-dim);
-    box-shadow: 0 0 0 2px var(--void), inset 0 var(--px) 0 rgba(0,0,0,0.5);
+    background: rgba(255,255,255,0.03);
+    border: 2px dashed var(--edge); color: var(--ink-dim);
+    box-shadow: 0 4px 0 rgba(255,255,255,0.10);
     cursor: default;
   }
   .team-slot.fainted { border-color: var(--danger); }
-  .team-slot.selected { border-color: var(--gold); background: linear-gradient(180deg, #6b4f1a 0 46%, #4a3510 46% 100%); }
+  .team-slot.selected {
+    border-color: var(--gold); background: rgba(255,213,79,0.22);
+    box-shadow: 0 4px 0 var(--gold-dark);
+  }
   .team-slot .ts-name {
-    font-size: 10px; overflow: hidden; text-overflow: ellipsis;
+    font-size: 0.66rem; overflow: hidden; text-overflow: ellipsis;
     white-space: nowrap; margin-bottom: 4px;
   }
-  .team-slot .ts-hp { font-size: 10px; color: var(--ink-dim); margin-top: 4px; }
-  .team-slot .ts-dex { font-size: 8px; color: var(--gold); }
+  .team-slot .ts-hp { font-size: 0.62rem; color: var(--ink-dim); margin-top: 4px; }
+  .team-slot .ts-dex { font-size: 0.55rem; color: var(--gold); }
 
   /* Items: a scrollable grid exactly 5 columns wide (design brief §5). */
   /* The right/bottom padding is for the qty badges, which overhang their cell on purpose. An
@@ -495,191 +476,188 @@
   .item-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 9px; padding: 4px 8px 8px 4px; }
   .item-cell {
     position: relative; aspect-ratio: 1;
-    background: linear-gradient(180deg, var(--panel-2) 0 46%, var(--panel) 46% 100%);
-    border: var(--px) solid var(--edge);
-    box-shadow: 0 0 0 2px var(--void), inset 0 var(--px) 0 rgba(255,255,255,0.12);
+    background: rgba(255,255,255,0.07);
+    border: 2px solid transparent;
+    border-radius: 8px;
+    box-shadow: 0 4px 0 var(--silver-dark);
     display: grid; place-items: center; padding: 5px; cursor: pointer;
   }
   .item-cell.selected {
     border-color: var(--gold);
-    background: linear-gradient(180deg, #6b4f1a 0 46%, #4a3510 46% 100%);
+    background: rgba(255,213,79,0.22);
+    box-shadow: 0 4px 0 var(--gold-dark);
   }
   .item-cell svg { width: 100%; height: 100%; display: block; image-rendering: pixelated; }
   .item-cell .qty {
     position: absolute; bottom: -6px; right: -6px;
     min-width: 20px; height: 18px; padding: 0 3px;
-    background: var(--edge); color: var(--ink);
-    font-family: 'Press Start 2P', monospace; font-size: 8px;
+    background: var(--silver-dark); color: var(--ink);
+    font-weight: 700; font-size: 0.55rem;
     display: grid; place-items: center;
-    border: 2px solid var(--void);
+    border-radius: 6px;
+    box-shadow: 0 2px 0 rgba(0,0,0,0.35);
   }
-  .item-detail { margin-top: 12px; min-height: 82px; font-size: 11px; }
+  .item-detail { margin-top: 12px; min-height: 82px; font-size: 0.8rem; }
   .item-detail .id-name {
-    font-family: 'Press Start 2P', monospace; font-size: 11px; color: var(--gold-lt);
-    line-height: 1.5; text-shadow: 2px 2px 0 var(--void);
+    font-weight: 700; font-size: 0.95rem; color: var(--gold);
+    line-height: 1.4; text-shadow: 0 2px 0 rgba(0,0,0,0.5);
   }
-  .item-detail .id-desc { color: var(--ink-dim); margin-top: 7px; line-height: 1.6; }
-  .empty-note { color: var(--ink-dim); font-size: 11px; text-align: center; padding: 26px 10px; line-height: 1.7; }
+  .item-detail .id-desc { color: var(--ink-dim); margin-top: 7px; }
+  .empty-note { color: var(--ink-dim); font-size: 0.8rem; text-align: center; padding: 26px 10px; }
 
   /* ---- Glossary ----------------------------------------------------------------------------- */
   .gloss-row {
     display: flex; gap: 11px; align-items: flex-start; padding: 11px 2px;
-    border-bottom: 2px solid var(--edge);
+    border-bottom: 1px solid var(--edge);
   }
   .gloss-row:last-child { border-bottom: 0; }
   .gloss-icon {
     flex: 0 0 40px; width: 40px; height: 40px; padding: 3px;
-    background: var(--void-2); border: 2px solid var(--void);
+    background: rgba(0,0,0,0.28); border-radius: 8px;
   }
   .gloss-icon svg { width: 100%; height: 100%; image-rendering: pixelated; }
   .gloss-name {
-    font-family: 'Press Start 2P', monospace; font-size: 10px; color: var(--gold-lt); line-height: 1.5;
+    font-weight: 700; font-size: 0.85rem; color: var(--gold); line-height: 1.4;
   }
-  .gloss-desc { font-size: 11px; color: var(--ink-dim); line-height: 1.6; margin-top: 5px; }
+  .gloss-desc { font-size: 0.8rem; color: var(--ink-dim); margin-top: 5px; }
 
   /* ---- Settings ----------------------------------------------------------------------------- */
   .setting { margin-bottom: 22px; }
   .setting label {
-    display: block; font-family: 'Press Start 2P', monospace; font-size: 9px;
-    line-height: 1.6; margin-bottom: 10px; text-transform: uppercase;
+    display: block; font-weight: 700; font-size: 0.9rem;
+    margin-bottom: 10px;
   }
-  .setting .val { color: var(--gold); float: right; }
+  .setting .val { color: var(--gold); float: right; font-weight: 400; }
+  /* Sliders are the one control Rumble Run keeps chunky and outlined: a dark track with a hard
+     black fence and a square gold block for the thumb. The element itself IS the track. */
   input[type=range] {
     -webkit-appearance: none; appearance: none;
-    width: 100%; height: 28px; background: transparent;
+    width: 100%; height: 14px;
+    background: var(--void-2);
+    border: var(--px) solid var(--outline);
+    border-radius: 0; outline: none; cursor: pointer;
     /* The UA's default 2px margin on top of width:100% is what put a horizontal scrollbar in the
        Settings scroll pane. */
     margin: 0;
   }
-  input[type=range]::-webkit-slider-runnable-track {
-    height: 12px; border-radius: 0;
-    background: var(--void-2);
-    border: var(--px) solid var(--void);
-    box-shadow: 0 0 0 2px var(--edge);
-  }
   input[type=range]::-webkit-slider-thumb {
     -webkit-appearance: none; appearance: none;
-    width: 22px; height: 26px; margin-top: -10px; border-radius: 0;
-    background: linear-gradient(180deg, var(--gold-lt) 0 42%, var(--gold) 42% 100%);
-    border: var(--px) solid var(--void);
-    box-shadow: inset 2px 2px 0 rgba(255,255,255,0.5), inset -2px -2px 0 rgba(0,0,0,0.3);
+    width: 18px; height: 22px; border-radius: 0;
+    background: var(--gold-mid);
+    border: var(--px) solid var(--outline);
+    box-shadow: inset -2px -2px 0 var(--gold-dark), inset 2px 2px 0 #fff3c4;
   }
   input[type=range]::-moz-range-track {
-    height: 12px; border-radius: 0; background: var(--void-2); border: var(--px) solid var(--void);
+    height: 8px; border-radius: 0; background: var(--void-2); border: var(--px) solid var(--outline);
   }
   input[type=range]::-moz-range-thumb {
-    width: 20px; height: 24px; border-radius: 0; border: var(--px) solid var(--void); background: var(--gold);
+    width: 12px; height: 16px; border-radius: 0;
+    background: var(--gold-mid); border: var(--px) solid var(--outline);
+    box-shadow: inset -2px -2px 0 var(--gold-dark), inset 2px 2px 0 #fff3c4;
   }
-  .seg { display: flex; gap: 10px; }
+  .seg { display: flex; gap: 0.7rem; }
   .seg .btn { flex: 1 1 0; }
-  /* The pressed half of a segmented control is the gold face; the other half is the purple one.
+  /* The pressed half of a segmented control wears the gold face, the other half the silver one.
      Written as explicit aria-pressed rules so the DOM state is the single source of truth. */
   .seg .btn[aria-pressed=true] {
-    color: #2b1600;
-    background: linear-gradient(180deg, var(--gold-lt) 0 42%, var(--gold) 42% 100%);
+    color: #23262e;
+    background: linear-gradient(180deg, var(--gold-lt), var(--gold-mid));
     text-shadow: none;
-    box-shadow:
-      inset var(--px) var(--px) 0 rgba(255,255,255,0.55),
-      inset calc(var(--px) * -1) calc(var(--px) * -1) 0 rgba(0,0,0,0.22),
-      0 5px 0 0 var(--gold-dark),
-      0 0 0 var(--px) var(--void),
-      0 5px 0 var(--px) var(--void);
+    box-shadow: 0 4px 0 var(--gold-dark);
   }
   .seg .btn[aria-pressed=false] {
-    color: var(--ink);
-    background: linear-gradient(180deg, var(--edge) 0 42%, #4a3479 42% 100%);
-    text-shadow: 0 2px 0 rgba(0,0,0,0.5);
-    box-shadow:
-      inset var(--px) var(--px) 0 rgba(255,255,255,0.22),
-      inset calc(var(--px) * -1) calc(var(--px) * -1) 0 rgba(0,0,0,0.35),
-      0 5px 0 0 #2b1c4c,
-      0 0 0 var(--px) var(--void),
-      0 5px 0 var(--px) var(--void);
+    color: #1a1d24;
+    background: linear-gradient(180deg, var(--silver), var(--silver-2));
+    text-shadow: none;
+    box-shadow: 0 4px 0 var(--silver-dark);
   }
-  .setting-note { font-size: 10px; color: var(--ink-dim); margin-top: 10px; line-height: 1.7; }
+  .setting-note { font-size: 0.75rem; color: var(--ink-dim); margin-top: 10px; }
 
   /* ---- Pokedex / Stats ---------------------------------------------------------------------- */
   #dex-preview {
     width: 100%; height: 24vh; min-height: 132px; display: block;
-    background:
-      repeating-conic-gradient(from 0deg at 50% 50%, #3a2a63 0% 25%, #33255a 25% 50%) 0 0 / 6px 6px;
-    border: var(--px) solid var(--edge);
-    box-shadow: 0 0 0 var(--px) var(--void);
+    background: rgba(0,0,0,0.28);
+    border: 1px solid var(--edge);
+    border-radius: 12px;
   }
   .stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 12px 0; }
   .stat-tile {
-    background: linear-gradient(180deg, var(--panel-2) 0 46%, var(--panel) 46% 100%);
-    border: var(--px) solid var(--edge);
-    box-shadow: 0 0 0 2px var(--void);
-    padding: 9px 4px; text-align: center;
+    background: rgba(255,255,255,0.07);
+    border: 1px solid var(--edge);
+    border-radius: 10px;
+    padding: 0.55rem 4px; text-align: center;
   }
   .stat-tile .sv {
-    font-family: 'Press Start 2P', monospace; font-size: 14px; color: var(--gold-lt);
-    line-height: 1.4; text-shadow: 2px 2px 0 var(--void);
+    font-weight: 700; font-size: 1.15rem; color: var(--gold);
+    line-height: 1.3; text-shadow: 0 2px 0 rgba(0,0,0,0.5);
   }
-  .stat-tile .sl { font-size: 10px; color: var(--ink-dim); text-transform: uppercase; margin-top: 5px; }
-  .dex-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; padding: 2px; }
+  .stat-tile .sl { font-size: 0.62rem; color: var(--ink-dim); text-transform: uppercase; letter-spacing: 1px; margin-top: 5px; }
+  .dex-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; padding: 2px 2px 6px; }
   .dex-cell {
     aspect-ratio: 1;
-    border: var(--px) solid var(--edge);
-    box-shadow: 0 0 0 2px var(--void);
-    background: var(--panel); display: grid; place-items: center;
-    font-size: 10px; text-align: center; padding: 3px; cursor: pointer; min-width: 0;
+    border: 2px solid transparent;
+    border-radius: 8px;
+    background: rgba(255,255,255,0.07);
+    box-shadow: 0 4px 0 rgba(255,255,255,0.10);
+    display: grid; place-items: center;
+    font-size: 0.62rem; text-align: center; padding: 3px; cursor: pointer; min-width: 0;
     overflow: hidden;
   }
-  .dex-cell.caught { border-color: var(--teal); }
-  .dex-cell.winner { border-color: var(--gold); background: #4a3510; }
-  .dex-cell.selected { box-shadow: 0 0 0 2px var(--void), 0 0 0 5px var(--gold-lt); }
+  /* The bar under each box reads as the "collected" cue, the way Rumble tints its dex slots. */
+  .dex-cell.caught { border-color: var(--teal); box-shadow: 0 4px 0 var(--teal-dark); }
+  .dex-cell.winner { border-color: var(--gold); background: rgba(255,213,79,0.22); box-shadow: 0 4px 0 var(--gold-dark); }
+  .dex-cell.selected { border-color: var(--gold-lt); background: rgba(255,213,79,0.3); }
   .dex-cell span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; width: 100%; }
-  .legend { display: flex; gap: 10px; justify-content: center; font-size: 10px; color: var(--ink-dim); margin: 10px 0; }
+  .legend { display: flex; gap: 10px; justify-content: center; font-size: 0.68rem; color: var(--ink-dim); margin: 10px 0; }
   .legend i {
-    display: inline-block; width: 9px; height: 9px; margin-right: 4px; vertical-align: middle;
-    border: 2px solid var(--void);
+    display: inline-block; width: 10px; height: 10px; margin-right: 4px; vertical-align: middle;
+    border-radius: 3px;
   }
 
   /* ---- Battle overlay ----------------------------------------------------------------------- */
   #screen-battle { justify-content: space-between; }
   .battle-title {
-    text-align: center; font-family: 'Press Start 2P', monospace; font-size: 12px; line-height: 1.6;
-    text-shadow: 2px 2px 0 var(--void);
+    text-align: center; font-weight: 700; font-size: 1rem; line-height: 1.5;
+    text-shadow: 0 2px 4px rgba(0,0,0,0.6);
   }
   .battle-title .vs { color: var(--rocket); }
   .combat-side { display: flex; flex-direction: column; gap: 6px; }
   .combat-row {
     display: flex; align-items: center; gap: 9px;
-    background: linear-gradient(180deg, var(--panel-2) 0 46%, var(--panel) 46% 100%);
-    border: var(--px) solid var(--edge);
-    box-shadow: 0 0 0 2px var(--void);
-    padding: 7px 9px;
+    background: rgba(255,255,255,0.07);
+    border: 2px solid transparent;
+    border-radius: 10px;
+    padding: 0.45rem 0.6rem;
   }
   .combat-row.lead { border-color: var(--gold); }
   .combat-row.fainted { filter: saturate(0.15) brightness(0.55); }
   .combat-row.hurt { transform: translateX(-6px); border-color: var(--danger); }
   .combat-row .cr-main { flex: 1 1 auto; min-width: 0; }
-  .combat-row .cr-name { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-bottom: 4px; }
-  .combat-row .cr-hpnum { font-size: 10px; color: var(--ink-dim); margin-top: 4px; }
+  .combat-row .cr-name { font-size: 0.78rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-bottom: 4px; }
+  .combat-row .cr-hpnum { font-size: 0.68rem; color: var(--ink-dim); margin-top: 4px; }
   .combat-row .cr-stage {
-    flex: 0 0 auto; font-family: 'Press Start 2P', monospace; font-size: 7px; color: var(--gold);
-    border: 2px solid var(--void); background: var(--void-2); padding: 3px 4px;
+    flex: 0 0 auto; font-weight: 700; font-size: 0.55rem; color: var(--gold);
+    background: rgba(0,0,0,0.35); border-radius: 5px; padding: 0.2rem 0.3rem;
   }
   /* flex:0 0 auto is what keeps the log readable. #screen-battle is a space-between column, and
      with a full party of six plus three enemies the total wants more room than the screen has —
      without this the log is the thing that gets compressed, and its last line gets clipped. */
   #battle-log {
     flex: 0 0 auto;
-    background: var(--void); border: var(--px) solid var(--edge);
-    box-shadow: 0 0 0 2px var(--void);
-    padding: 11px 12px; font-size: 11px; min-height: 64px; text-align: center;
-    display: grid; place-items: center; line-height: 1.7;
+    background: rgba(11,16,32,0.85);
+    border: 1px solid var(--edge);
+    border-radius: 12px;
+    padding: 0.7rem 0.8rem; font-size: 0.8rem; min-height: 64px; text-align: center;
+    display: grid; place-items: center;
   }
   #battle-log .se { color: var(--gold); font-weight: 700; }
   .float-dmg {
-    position: absolute; font-family: 'Press Start 2P', monospace; font-size: 13px;
+    position: absolute; font-weight: 700; font-size: 1.1rem;
     color: var(--danger); pointer-events: none;
-    text-shadow: 2px 2px 0 var(--void);
-    animation: floatUp 0.75s steps(8) forwards;
+    text-shadow: 0 2px 0 rgba(0,0,0,0.6), 0 3px 6px rgba(0,0,0,0.5);
+    animation: floatUp 0.75s ease-out forwards;
   }
-  .float-dmg.se { color: var(--gold); font-size: 16px; }
+  .float-dmg.se { color: var(--gold); font-size: 1.35rem; }
   @keyframes floatUp {
     from { opacity: 1; transform: translateY(0); }
     to { opacity: 0; transform: translateY(-34px); }
@@ -694,27 +672,27 @@
   #screen-catch .ball-chip, #screen-catch .btn { pointer-events: auto; }
   #catch-top { text-align: center; }
   #catch-name {
-    font-family: 'Press Start 2P', monospace; font-size: 13px; line-height: 1.6;
-    text-shadow: var(--px) var(--px) 0 var(--void);
+    font-weight: 700; font-size: 1.3rem; line-height: 1.4;
+    text-shadow: 0 2px 0 rgba(0,0,0,0.6), 0 3px 8px rgba(0,0,0,0.4);
   }
-  #catch-sub { font-size: 11px; color: var(--gold); margin-top: 6px; text-shadow: 2px 2px 0 var(--void); }
+  #catch-sub { font-size: 0.8rem; color: var(--gold); margin-top: 6px; text-shadow: 0 2px 3px rgba(0,0,0,0.6); }
 
   /* The throw grade. Pops for three quarters of a second on contact, well before the wobbles
      resolve, which is the read-ahead that makes a good throw feel good in GO. */
   #catch-grade {
     position: absolute; top: 30%; left: 50%;
     transform: translate(-50%, -50%);
-    font-family: 'Press Start 2P', monospace; font-size: clamp(15px, 5.4vw, 22px);
-    color: var(--gold-lt); text-align: center;
-    text-shadow: var(--px) var(--px) 0 var(--void), 0 calc(var(--px) * 2) 0 var(--rocket-dark);
+    font-weight: 700; font-size: clamp(1.15rem, 5.4vw, 1.7rem);
+    color: var(--gold); text-align: center;
+    text-shadow: 0 3px 0 var(--gold-dark), 0 4px 10px rgba(0,0,0,0.5);
     pointer-events: none; opacity: 0;
     /* "CURVEBALL! EXCELLENT!" is two awards, and on one line at this font size it runs off both
        edges of a phone. Each award is its own <span>, stacked. */
     width: 100%; padding: 0 8px;
   }
-  #catch-grade span { display: block; line-height: 1.6; }
-  #catch-grade span + span { color: var(--gold); font-size: 0.82em; }
-  #catch-grade.pop { animation: gradePop 0.9s steps(10) forwards; }
+  #catch-grade span { display: block; line-height: 1.5; }
+  #catch-grade span + span { color: var(--gold-lt); font-size: 0.82em; }
+  #catch-grade.pop { animation: gradePop 0.9s ease-out forwards; }
   @keyframes gradePop {
     0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.4); }
     18%  { opacity: 1; transform: translate(-50%, -50%) scale(1.15); }
@@ -725,26 +703,28 @@
 
   #catch-bottom { display: flex; flex-direction: column; gap: 10px; align-items: center; }
   #catch-msg {
-    background: var(--void); border: var(--px) solid var(--gold);
-    box-shadow: 0 0 0 2px var(--void);
-    padding: 9px 12px; font-size: 11px; text-align: center; line-height: 1.6;
+    background: rgba(11,16,32,0.9); color: var(--gold);
+    border-radius: 8px;
+    box-shadow: 0 4px 0 rgba(0,0,0,0.35);
+    padding: 0.6rem 1.1rem; font-size: 0.85rem; font-weight: 700; text-align: center;
   }
   #catch-msg.hidden { display: none; }
   #catch-balls { display: flex; gap: 8px; align-items: center; }
   .ball-chip {
     display: flex; align-items: center; gap: 5px;
-    background: linear-gradient(180deg, var(--panel-2) 0 46%, var(--panel) 46% 100%);
-    border: var(--px) solid var(--edge);
-    box-shadow: 0 0 0 2px var(--void);
-    padding: 5px 8px; font-family: 'Press Start 2P', monospace; font-size: 9px; cursor: pointer;
+    background: rgba(255,255,255,0.08);
+    border: 2px solid transparent;
+    border-radius: 10px;
+    box-shadow: 0 3px 0 rgba(0,0,0,0.4);
+    padding: 0.3rem 0.5rem; font-weight: 700; font-size: 0.68rem; cursor: pointer;
   }
-  .ball-chip.active { border-color: var(--gold); background: linear-gradient(180deg, #6b4f1a 0 46%, #4a3510 46% 100%); }
+  .ball-chip.active { border-color: var(--gold); background: rgba(255,213,79,0.22); }
   .ball-chip svg { width: 22px; height: 22px; image-rendering: pixelated; }
   #catch-hint {
-    font-size: 10px; color: var(--ink-dim); text-align: center; line-height: 1.7;
-    background: rgba(16,10,28,0.8); padding: 5px 9px; border: 2px solid var(--edge);
+    font-size: 0.75rem; color: #fff; text-align: center;
+    background: rgba(0,0,0,0.55); border-radius: 999px; padding: 0.35rem 0.8rem;
   }
-  #catch-actions { display: flex; gap: 10px; width: min(330px, 100%); }
+  #catch-actions { display: flex; gap: 0.7rem; width: min(330px, 100%); }
 
   /* ---- Swap-or-release ---------------------------------------------------------------------- */
   #screen-swap { justify-content: center; gap: 12px; }
@@ -752,38 +732,37 @@
   /* ---- Game over / victory ------------------------------------------------------------------ */
   #screen-end { justify-content: center; align-items: center; text-align: center; }
   #end-kicker {
-    font-family: 'Press Start 2P', monospace; letter-spacing: 1px; text-transform: uppercase;
-    font-size: 9px; text-shadow: 2px 2px 0 var(--void);
+    font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase;
+    font-size: 0.7rem; text-shadow: 0 2px 4px rgba(0,0,0,0.6);
   }
   #end-title {
-    font-family: 'Press Start 2P', monospace; font-size: clamp(18px, 6.4vw, 28px);
-    margin: 14px 0 12px; line-height: 1.5; text-transform: uppercase;
-    text-shadow: var(--px) var(--px) 0 var(--void-2), 0 calc(var(--px) * 2) 0 var(--void);
+    font-weight: 700; font-size: clamp(1.8rem, 7vw, 3rem);
+    margin: 0.5rem 0 0.4rem; line-height: 1.25;
+    color: var(--gold);
+    text-shadow: 0 3px 0 var(--gold-dark), 0 4px 8px rgba(0,0,0,0.4);
   }
-  #end-sub { color: var(--ink-dim); font-size: 11px; max-width: 320px; line-height: 1.8; }
+  #end-sub { color: var(--ink-dim); font-size: 0.85rem; max-width: 320px; }
   #end-stats { margin: 18px 0; width: min(330px, 100%); }
   #screen-end .btn-col { width: min(300px, 100%); }
 
   /* ---- Loading ------------------------------------------------------------------------------ */
   #boot {
     position: fixed; inset: 0; z-index: 10; display: grid; place-items: center;
-    background:
-      repeating-conic-gradient(from 0deg at 50% 50%, #1b1030 0% 25%, #170d29 25% 50%) 0 0 / 4px 4px;
+    background: linear-gradient(180deg, rgba(15,20,40,0.98), rgba(30,15,45,0.98));
     text-align: center;
   }
   #boot.hidden { display: none; }
-  /* A stepped square spinner: steps(8) makes it tick round in eighths like a sprite animation
-     instead of sweeping like a CSS loader. */
   #boot .spin {
     width: 30px; height: 30px; margin: 0 auto 18px;
     border: var(--px) solid var(--edge);
     border-top-color: var(--gold);
     border-right-color: var(--gold);
-    animation: spin 0.8s steps(8) infinite;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
   }
   #boot .boot-label {
-    font-family: 'Press Start 2P', monospace; font-size: 10px; line-height: 1.7; color: var(--gold-lt);
-    text-shadow: 2px 2px 0 var(--void);
+    font-weight: 700; font-size: 0.8rem; color: var(--gold);
+    text-shadow: 0 2px 4px rgba(0,0,0,0.5);
   }
   @keyframes spin { to { transform: rotate(360deg); } }
 </style>
@@ -796,13 +775,6 @@
      shape-rendering=crispEdges so they stay hard-edged at any size. -->
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
   <defs>
-    <!-- The Team Rocket R, 5x7 pixels. -->
-    <g id="px-rocket-r">
-      <rect x="0" y="0" width="4" height="1"/><rect x="0" y="1" width="1" height="2"/>
-      <rect x="4" y="1" width="1" height="2"/><rect x="0" y="3" width="4" height="1"/>
-      <rect x="0" y="4" width="1" height="3"/><rect x="2" y="4" width="1" height="1"/>
-      <rect x="3" y="5" width="1" height="1"/><rect x="4" y="6" width="1" height="1"/>
-    </g>
     <!-- Satchel, 12x12. -->
     <g id="px-bag">
       <rect x="4" y="1" width="1" height="2" fill="#3c2a12"/><rect x="5" y="0" width="2" height="1" fill="#3c2a12"/>
@@ -824,13 +796,10 @@
 <div id="ui-root">
 
   <!-- ============ TITLE ============ -->
-  <div class="screen sheet crt" id="screen-title">
+  <div class="screen sheet" id="screen-title">
     <div class="logo-wrap">
-      <div class="logo-badge">
-        <svg viewBox="0 0 5 7" shape-rendering="crispEdges" fill="#fff7e6"><use href="#px-rocket-r" /></svg>
-      </div>
-      <div class="logo-kicker">Pokémon Mystery Dungeon</div>
-      <h1 class="logo-main">Team <span class="logo-rocket">Rocket's</span><br />Reckoning</h1>
+      <img id="title-logo" src="Title%20logo.png"
+           alt="Pokémon Mystery Dungeon: Team Rocket's Reckoning" />
     </div>
     <div class="btn-col">
       <button class="btn" id="btn-start">Start Run</button>
@@ -840,7 +809,6 @@
         <button class="btn secondary small" id="btn-settings-title">Settings</button>
       </div>
     </div>
-    <div class="title-foot">5 Floors · Permadeath<br />Giovanni waits at the bottom</div>
   </div>
 
   <!-- ============ STARTER SELECT ============ -->
@@ -880,7 +848,7 @@
   </div>
 
   <!-- ============ FLOOR BANNER ============ -->
-  <div id="banner" class="crt">
+  <div id="banner">
     <div class="banner-inner">
       <div class="b-kicker" id="banner-kicker">Descending</div>
       <div class="b-main" id="banner-main">Verdant Forest</div>
@@ -1030,7 +998,7 @@
   </div>
 
   <!-- ============ END OF RUN ============ -->
-  <div class="screen sheet crt" id="screen-end">
+  <div class="screen sheet" id="screen-end">
     <div id="end-kicker">Run Over</div>
     <div id="end-title">Wiped Out</div>
     <div id="end-sub">—</div>
