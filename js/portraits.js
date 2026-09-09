@@ -1,16 +1,13 @@
 // Still portraits of a species' 3D model, rendered once and cached as a PNG data URL.
 //
-// The bag's team strip shows all six party members' models at once. Six live previews would mean
-// six WebGL contexts on top of the game's own plus the two rotating ones on starter select and the
-// Pokedex, and browsers cap the number of contexts a page may hold — the oldest gets killed, which
-// on a phone means the DUNGEON goes black. So the bag gets flat images instead: ONE offscreen
-// context renders each species once, hands back a data URL, and never renders it again.
-//
-// The renderer is created lazily on the first request and kept for the life of the page: the cache
-// makes it idle almost immediately, and tearing a context down and rebuilding it per portrait is
-// far more expensive than holding one.
+// The bag's team strip shows all six party members' models at once, and the switch and
+// swap-or-release screens do the same. Six live 3D views would be six WebGL contexts, and a page
+// gets only a handful before the browser starts killing the oldest — see js/modelstage.js for what
+// that does to the dungeon. So these are flat images: each species is rendered ONCE through the
+// shared offscreen stage and never rendered again.
 import * as THREE from 'three';
 import { setPreviewModel, hasModelForDex } from './models.js';
+import { renderToStage } from './modelstage.js';
 
 const SIZE = 160;           // square, and comfortably above the ~64px the strip displays at
 // Half-height of the ortho box. Models are fitted to 1.0 tall and then centred on the camera's own
@@ -22,33 +19,19 @@ let rig = null;
 
 function ensureRig() {
   if (rig) return rig;
+  // A plain 2D canvas: the stage renders, this receives the blit, and toDataURL reads it back.
   const canvas = document.createElement('canvas');
   canvas.width = canvas.height = SIZE;
-  // preserveDrawingBuffer keeps the rendered frame readable by toDataURL. Without it the buffer is
-  // allowed to be cleared the moment the draw call returns, and portraits come out blank on some
-  // drivers even when toDataURL is called on the very next line.
-  const renderer = new THREE.WebGLRenderer({
-    canvas, antialias: true, alpha: true, preserveDrawingBuffer: true,
-  });
-  renderer.setPixelRatio(1);          // SIZE is already the pixel size we want
-  renderer.setSize(SIZE, SIZE, false);
-
-  const scene = new THREE.Scene();
-  scene.add(new THREE.HemisphereLight(0xffffff, 0x6a6a88, 1.3));
-  const dl = new THREE.DirectionalLight(0xfff6e6, 1.0);
-  dl.position.set(-3, 5, 4);
-  scene.add(dl);
+  const ctx = canvas.getContext('2d');
 
   // Dead level and aimed at the origin, so world y=0 is the middle of the image and a model
   // straddling it is centred by construction.
   const camera = new THREE.OrthographicCamera(-FRUSTUM, FRUSTUM, FRUSTUM, -FRUSTUM, 0.01, 60);
+  camera.userData.frustum = FRUSTUM;
   camera.position.set(0, 0, 4);
   camera.lookAt(0, 0, 0);
 
-  const holder = new THREE.Group();
-  scene.add(holder);
-
-  rig = { canvas, renderer, scene, camera, holder };
+  rig = { canvas, ctx, camera, holder: new THREE.Group() };
   return rig;
 }
 
@@ -130,7 +113,9 @@ export function requestPortrait(dex) {
     fitted.position.y = -0.5 * shrink;
 
     await awaitTextures(fitted);
-    r.renderer.render(r.scene, r.camera);
+    const shot = renderToStage(r.holder, r.camera, 1);
+    r.ctx.clearRect(0, 0, SIZE, SIZE);
+    r.ctx.drawImage(shot.canvas, shot.sx, shot.sy, shot.sw, shot.sh, 0, 0, SIZE, SIZE);
     const url = r.canvas.toDataURL('image/png');
     cache.set(dex, url);
     return url;

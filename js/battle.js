@@ -182,11 +182,6 @@ export function wildEnemyTeam(dex, floorNumber) {
   return m ? [m] : [];
 }
 
-// A compact "what am I about to fight" preview line for the battle intro banner.
-export function describeTeam(team) {
-  return team.map(m => m.name).join(', ');
-}
-
 export function stageLabel(dex) {
   const c = CATALOG_BY_DEX.get(dex);
   return c ? c.stage : 'Basic';

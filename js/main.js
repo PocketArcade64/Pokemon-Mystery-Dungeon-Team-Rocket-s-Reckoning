@@ -12,7 +12,7 @@ import {
   atStairs, drawMap, makeTrainerFigure,
 } from './dungeon.js';
 import { createInput } from './movement.js';
-import { createBattle, generateGruntTeam, generateGiovanniTeam, wildEnemyTeam, describeTeam } from './battle.js';
+import { createBattle, generateGruntTeam, generateGiovanniTeam, wildEnemyTeam } from './battle.js';
 import { startCatch, endCatch, updateCatch, setCatchBall, catchState, catchScene, catchCamera,
          catchPointerDown, catchPointerMove, catchPointerUp } from './catch.js';
 import * as inv from './inventory.js';
@@ -259,7 +259,9 @@ function startBattle(kind, wild = null) {
   sfx('encounter');
   setMode('battle');
   ui.renderBattle(battle);
-  if (kind !== 'wild') ui.battleLog(`${title} sent out ${describeTeam(enemies)}!`);
+  // The LEAD only, the way the games announce it. Listing all six of Giovanni's ran to four lines
+  // in the message band, and how many he is carrying is already on the Poke Ball strip in his box.
+  if (kind !== 'wild') ui.battleLog(`${title} sent out ${enemies[0]?.name || 'a Pokemon'}!`);
 }
 
 function updateBattleFrame(dtMs) {
@@ -269,10 +271,13 @@ function updateBattleFrame(dtMs) {
     if (ev.type === 'hit') {
       const side = ev.side === 'party' ? 'enemy' : 'party';
       const idx = side === 'enemy' ? battle.enemies.indexOf(ev.defender) : battle.party.indexOf(ev.defender);
+      // Deliberately NOT written to the message band. A hit is shown on the field — the number
+      // floating off the Pokemon that took it, its model flashing, its HP bar dropping. Narrating
+      // every blow in text as well meant the band rewrote itself twice a second, which is what the
+      // eye followed instead of the fight. Only the beats that change the situation get a line:
+      // a faint, a switch, a revive, the result.
       ui.floatDamage(side, idx, ev.dmg, ev.superEff);
       ui.updateBattleRows(battle);
-      ui.battleLog(`${ev.attacker.name} struck ${ev.defender.name} for ${ev.dmg}` +
-        (ev.superEff ? ` <span class="se">- super effective!</span>` : '.'));
       sfx(ev.superEff ? 'superhit' : 'hit');
     } else if (ev.type === 'faint') {
       ui.updateBattleRows(battle);
@@ -411,6 +416,22 @@ function beginCatch(wild) {
       if (!id) return null;
       ui.renderCatchUI({ dex: wild.dex, activeBall: id });
       return { ballId: id, ballsLeft: inv.countOf(id) };
+    },
+    // The bag ran dry mid-encounter and there is nothing left to throw. End it rather than
+    // parking on a screen with no move left — the Run button in the corner was the only way out
+    // and it read as a freeze. The wild leaves the floor, exactly as fleeing does; it has to,
+    // because a wild left standing has no collision with the player and walks through them.
+    onEmpty: () => {
+      const w = catchCtx?.wild;
+      // A beat so the last ball is seen to fall before the screen changes.
+      setTimeout(() => {
+        if (state.mode !== 'catch') return;      // already resolved some other way
+        endCatch();
+        removeWild(w);
+        catchCtx = null;
+        setMode('playing');
+        ui.toast(`Out of Poke Balls - ${CATALOG_BY_DEX.get(w?.dex)?.name || 'it'} got away!`);
+      }, 1200);
     },
     onGrade: (label) => {
       // The grade lands the instant the ball touches, well before the wobbles resolve — that

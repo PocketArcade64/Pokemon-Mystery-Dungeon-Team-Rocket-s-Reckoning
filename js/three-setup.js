@@ -90,33 +90,27 @@ if (window.visualViewport) window.visualViewport.addEventListener('resize', onVi
 window.addEventListener('load', () => setTimeout(onViewportChange, 300));
 onViewportChange();
 
-// ---- Small self-contained renderers for the DOM preview canvases -------------------------------
-// Used by the starter-select and Pokedex screens for the rotating 3D model preview. Each gets its
-// own WebGL context, matching how Rumble Run's roster screen worked.
-export function createPreview(previewCanvas, { frustum = 1.5, background = null } = {}) {
-  const r = new THREE.WebGLRenderer({ canvas: previewCanvas, antialias: true, alpha: !background });
-  r.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-  const s = new THREE.Scene();
-  if (background !== null) s.background = new THREE.Color(background);
-  s.add(new THREE.HemisphereLight(0xffffff, 0x6a6a88, 1.25));
-  const dl = new THREE.DirectionalLight(0xfff6e6, 1.0);
-  dl.position.set(-3, 5, 4);
-  s.add(dl);
-  const c = new THREE.OrthographicCamera(-frustum, frustum, frustum, -frustum, 0.01, 60);
-  c.userData.frustum = frustum;
-  c.position.set(0, 1.7, 4.4);
-  c.lookAt(0, 0.75, 0);
-  const holder = new THREE.Group();
-  s.add(holder);
+// ---- Context loss ------------------------------------------------------------------------------
+// A lost context used to be indistinguishable from the game being broken: models rendered as
+// untextured blocks, textures flashed, and returning to the title fixed nothing because the
+// context was gone for the life of the page. Three.js re-initialises its own state on restore, but
+// only if the loss event is cancelled — otherwise the browser never offers a restore at all.
+//
+// The real defence is not holding many contexts in the first place (see js/modelstage.js, which
+// exists to keep the page at two). This is the backstop, and it logs loudly so the cause is
+// visible rather than being guessed at from the symptoms.
+canvas.addEventListener('webglcontextlost', (e) => {
+  e.preventDefault();
+  console.error('[three-setup] WebGL context LOST on the main canvas - the dungeon will not draw ' +
+                'until it is restored. This is usually too many live contexts or GPU memory.');
+}, false);
 
-  function resize() {
-    const w = previewCanvas.clientWidth || 1, h = previewCanvas.clientHeight || 1;
-    r.setSize(w, h, false);
-    const aspect = w / h;
-    c.left = -frustum * aspect; c.right = frustum * aspect;
-    c.top = frustum; c.bottom = -frustum;
-    c.updateProjectionMatrix();
-  }
-  resize();
-  return { renderer: r, scene: s, camera: c, holder, resize, render: () => { resize(); r.render(s, c); } };
-}
+canvas.addEventListener('webglcontextrestored', () => {
+  console.warn('[three-setup] WebGL context restored; re-uploading GPU resources.');
+  onViewportChange();
+}, false);
+
+// There is deliberately no createPreview() any more. It made a WebGL context per DOM preview
+// canvas, and at four of those plus the dungeon's the page was over the limit that browsers
+// enforce by killing the OLDEST context. Model views now go through createModelView() in
+// js/modelstage.js, which shares one offscreen context between all of them.

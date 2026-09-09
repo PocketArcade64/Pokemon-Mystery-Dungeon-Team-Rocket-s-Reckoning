@@ -490,6 +490,7 @@ export const catchState = {
   onThrow: null,      // () => bool: consume a ball; false means none left
   onGrade: null,      // (label) => void: pop "EXCELLENT!" etc. in the overlay
   onRearm: null,      // () => {ballId, ballsLeft} | null: GO hands you a fresh ball by itself
+  onEmpty: null,      // () => void: fired once when the bag runs dry and there is nothing to throw
   onSfx: null,        // (name) => void: 'absorb' | 'shake' | 'lock', fired on the animation beats
   ballsLeft: 0,
   canvasW: 1, canvasH: 1,
@@ -535,7 +536,7 @@ function refreshRingColor() {
 // Start a fresh catch attempt sequence for one wild Pokemon. `theme` is the floor theme and it
 // dresses the whole stage.
 export function startCatch({ dex, ballId, ballsLeft, onResult, onThrow, onGrade, onRearm, onSfx,
-                             floorNumber = 1, theme = null }) {
+                             onEmpty, floorNumber = 1, theme = null }) {
   clearMon(); clearBall(); hideTrail(); hideAbsorb(); resetCamera();
 
   const th = theme || THEMES[0];
@@ -562,7 +563,7 @@ export function startCatch({ dex, ballId, ballsLeft, onResult, onThrow, onGrade,
     ringPhase: 0, ringRatio: 1,
     ball: null, held: null, spin: 0, spinAngle: 0, curve: false, grade: null, monFit: 1,
     wobbles: 0, shakesDone: 0, willCatch: false, resultMsg: '', accuracyPct: 0,
-    onResult, onThrow, onGrade, onRearm, onSfx, ballsLeft, t: 0, phaseT: 0,
+    onResult, onThrow, onGrade, onRearm, onSfx, onEmpty, ballsLeft, t: 0, phaseT: 0,
   });
   refreshRingColor();
 
@@ -1232,7 +1233,15 @@ function updateDeadBall(dt) {
   if (s.phase === 'empty' || s.phaseT < FAIL_HOLD) return;
 
   const next = s.onRearm?.();
-  if (!next) { s.phase = 'empty'; s.phaseT = 0; return; }
+  if (!next) {
+    // Out of balls. The 'empty' phase used to be a DEAD END: there was nothing left to throw, the
+    // encounter never resolved, and the only way out was noticing the small Run button in the
+    // corner. It reads as a freeze. Tell main.js instead and let it close the encounter.
+    s.phase = 'empty';
+    s.phaseT = 0;
+    s.onEmpty?.();
+    return;
+  }
   s.ballId = next.ballId;
   s.ballsLeft = next.ballsLeft;
   s.phase = 'aim';

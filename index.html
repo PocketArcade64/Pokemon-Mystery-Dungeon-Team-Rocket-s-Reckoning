@@ -766,14 +766,21 @@
   }
   #foe-trainer-name.hidden { display: none; }
 
-  /* ---- The message band along the bottom ---- */
-  #battle-bottom { flex: 0 0 auto; display: flex; gap: 10px; align-items: stretch; margin-top: 10px; }
+  /* ---- The message band along the bottom ----
+     Its height is FIXED, not min-height. #battle-field is the flex item that absorbs the leftover
+     space and both info boxes are positioned against its edges, so a message wrapping onto a
+     second line used to shrink the field and slide both HP bars — the one part of the screen the
+     player is actually reading. Now nothing above the band can move, whatever the text does. */
+  #battle-bottom {
+    flex: 0 0 auto; height: 94px;
+    display: flex; gap: 10px; align-items: stretch; margin-top: 10px;
+  }
   #battle-log {
-    flex: 1 1 auto; min-width: 0;
+    flex: 1 1 auto; min-width: 0; height: 100%; overflow: hidden;
     background: rgba(11,16,32,0.85);
     border: 1px solid var(--edge);
     border-radius: 12px;
-    padding: 0.7rem 0.8rem; font-size: 1.04rem; min-height: 64px; text-align: center;
+    padding: 0.6rem 0.8rem; font-size: 1.04rem; text-align: center;
     display: grid; place-items: center;
   }
   #battle-log .se { color: var(--gold); font-weight: 700; }
@@ -783,16 +790,27 @@
   #battle-actions { flex: 0 0 auto; display: flex; flex-direction: column; gap: 6px; justify-content: center; }
   #battle-actions .btn { width: 96px; padding: 0.5rem 0.4rem; }
 
+  /* The damage number is the only report a hit gets now, so it is bigger and heavier than it was
+     when it was decoration over a line of log text. It is centred on the Pokemon it belongs to,
+     hence translateX(-50%) in every keyframe — dropping it from one makes the number jump sideways
+     halfway through the rise. */
   .float-dmg {
-    position: absolute; font-weight: 700; font-size: 1.43rem;
-    color: var(--danger); pointer-events: none;
-    text-shadow: 0 2px 0 rgba(0,0,0,0.6), 0 3px 6px rgba(0,0,0,0.5);
-    animation: floatUp 0.75s ease-out forwards;
+    position: absolute; font-weight: 700; font-size: 1.9rem;
+    color: var(--danger); pointer-events: none; text-align: center;
+    white-space: nowrap;
+    text-shadow: 0 3px 0 rgba(0,0,0,0.75), 0 4px 10px rgba(0,0,0,0.6);
+    animation: floatUp 0.95s ease-out forwards;
   }
-  .float-dmg.se { color: var(--gold); font-size: 1.755rem; }
+  .float-dmg.se { color: var(--gold); font-size: 2.3rem; }
+  .float-dmg .se-tag {
+    display: block; font-size: 0.72rem; letter-spacing: 1px;
+    color: var(--gold-lt); margin-top: 2px;
+  }
   @keyframes floatUp {
-    from { opacity: 1; transform: translateY(0); }
-    to { opacity: 0; transform: translateY(-34px); }
+    0%   { opacity: 0; transform: translate(-50%, 4px) scale(0.7); }
+    18%  { opacity: 1; transform: translate(-50%, -4px) scale(1.12); }
+    32%  { opacity: 1; transform: translate(-50%, -8px) scale(1); }
+    100% { opacity: 0; transform: translate(-50%, -46px) scale(1); }
   }
 
   /* Landscape on a phone has almost no vertical room, and there is not enough of it to stack the
@@ -807,7 +825,7 @@
     #foe-trainer-name { top: var(--sprite); width: min(24vw, 150px); font-size: 0.7rem; }
     .fighter.foe { top: var(--trainer); right: calc(var(--sprite) + 10px); width: min(20vw, 112px); }
     .fighter.you { bottom: 4%; left: 0; width: min(22vw, 124px); }
-    #battle-log { min-height: 48px; }
+    #battle-bottom { height: 68px; }
   }
 
   /* ---- Catch overlay -------------------------------------------------------------------------

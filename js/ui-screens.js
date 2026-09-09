@@ -4,11 +4,12 @@
 // `<div class="screen">` siblings, exactly one carrying `.visible` at a time, switched by a single
 // function. Nothing here knows about the game loop — main.js registers callbacks on `uiHooks` and
 // this module only ever calls those.
+import * as THREE from 'three';
 import { state, MAX_PARTY, saveSettings, saveStats, resetStats } from './state.js';
 import { ITEMS, ITEM_BY_ID, BALL_IDS } from './data/items.js';
 import { CATALOG_BY_DEX } from './data/pokemon-catalog.js';
 import { typeIconPath } from './data/type-chart.js';
-import { createPreview } from './three-setup.js';
+import { createModelView } from './modelstage.js';
 import { setPreviewModel, hasModelForDex } from './models.js';
 import { portraitFor, preloadPortraits } from './portraits.js';
 import * as inv from './inventory.js';
@@ -108,8 +109,8 @@ export function hideBanner() {
 let starterPreview = null, dexPreview = null;
 
 function ensurePreviews() {
-  if (!starterPreview) starterPreview = createPreview($('starter-preview'), { frustum: 1.25 });
-  if (!dexPreview) dexPreview = createPreview($('dex-preview'), { frustum: 1.25 });
+  if (!starterPreview) starterPreview = createModelView($('starter-preview'), { frustum: 1.25 });
+  if (!dexPreview) dexPreview = createModelView($('dex-preview'), { frustum: 1.25 });
 }
 
 // Called from the main loop so every screen that owns a 3D canvas keeps rendering while it is up.
@@ -399,10 +400,29 @@ let foePreview = null, youPreview = null;
 let foeShownDex = null, youShownDex = null;
 let fieldBob = 0;
 
+// Half-height of the fighters' ortho box, with the camera dead level on the origin. A model is
+// fitted to 1.0 tall and then dropped so its FEET sit just above the frame's bottom edge — see
+// placeFighter. Aiming the camera above the model instead left it floating in the middle of the
+// frame with its ground shadow stranded underneath it.
+const FIGHTER_FRUSTUM = 0.62;
+
 function ensureBattlePreviews() {
-  // frustum 0.9 leaves a little air around a model fitted to 1.0 tall.
-  if (!foePreview) foePreview = createPreview($('foe-model'), { frustum: 0.9 });
-  if (!youPreview) youPreview = createPreview($('you-model'), { frustum: 0.9 });
+  const opts = { frustum: FIGHTER_FRUSTUM, camY: 0, camZ: 4, lookY: 0 };
+  if (!foePreview) foePreview = createModelView($('foe-model'), opts);
+  if (!youPreview) youPreview = createModelView($('you-model'), opts);
+}
+
+// Stand a freshly loaded fighter on the bottom of its frame, shrinking it if it is wider than the
+// frame is. Models are fitted by HEIGHT, so a wide species (Marowak with its bone, Gyarados) comes
+// out wider than tall and would otherwise run off both sides.
+function placeFighter(fitted) {
+  if (!fitted) return;
+  const box = new THREE.Box3().setFromObject(fitted);
+  const w = box.max.x - box.min.x;
+  const limit = FIGHTER_FRUSTUM * 2 * 0.94;
+  const shrink = w > limit ? limit / w : 1;
+  if (shrink < 1) fitted.scale.setScalar(shrink);
+  fitted.position.y = -FIGHTER_FRUSTUM * 0.86;
 }
 
 export function renderBattle(battle) {
@@ -479,15 +499,22 @@ function fillMonBox(side, mon, { showNumbers }) {
   if (showNumbers) $('you-hpnum').textContent = `${mon.hp} / ${mon.maxHp}`;
 }
 
+// A model's forward direction at rotation.y = 0 is +Z, which is straight at the camera. So a
+// half-turn is a dead-on back view and 0 is a dead-on front view — but the two then face the
+// camera rather than each other. Angling both by 45 degrees puts them on the screen's diagonal,
+// looking across it at one another:
+//   YOURS  3/4 PI  -> forward (+0.71, 0, -0.71): away from the camera and to the RIGHT (up-right)
+//   FOE   -1/4 PI  -> forward (-0.71, 0, +0.71): toward the camera and to the LEFT (down-left)
+const FACING = { you: Math.PI * 0.75, foe: -Math.PI * 0.25 };
+
 function syncFighter(side, mon, preview, getShown, setShown) {
   const wrap = $(`${side}-fighter`);
   if (!mon || !preview) return;
   wrap.classList.toggle('fainted', mon.hp <= 0);
   if (getShown() === mon.dex) return;
   setShown(mon.dex);
-  // Your side is turned to face AWAY from the camera — that is the back view.
-  preview.holder.rotation.y = side === 'you' ? Math.PI : 0;
-  setPreviewModel(preview.holder, mon.dex, 1.0);
+  preview.holder.rotation.y = FACING[side];
+  setPreviewModel(preview.holder, mon.dex, 1.0).then(placeFighter);
 }
 
 // Driven from the main loop so both fighters keep rendering: the models load asynchronously, so a
@@ -521,25 +548,36 @@ function updateSwapButton(battle) {
   $('btn-battle-swap').style.display = live && battle.partyAlive() > 1 ? 'block' : 'none';
 }
 
-// A damage number that floats off whichever side just got hit — over that side's info box, where
-// the HP bar the player is watching actually is.
+// The damage number, floating off the Pokemon that just took the hit.
+//
+// This is now the ONLY report of a hit — nothing is written to the message band for one any more.
+// A line of prose per blow meant the band rewrote itself twice a second and the actual fight was
+// the thing nobody watched. So the number lands on the body it belongs to, over the model rather
+// than over the info box, and a super-effective hit says so here instead of in the log.
 export function floatDamage(side, _index, dmg, superEff) {
-  const box = side === 'enemy' ? $('foe-box') : $('you-box');
-  if (!box) return;
-  box.classList.add('hurt');
-  $(`${side === 'enemy' ? 'foe' : 'you'}-fighter`)?.classList.add('hurt');
+  const key = side === 'enemy' ? 'foe' : 'you';
+  const fighter = $(`${key}-fighter`);
+  const box = $(`${key}-box`);
+  if (!fighter) return;
+
+  box?.classList.add('hurt');
+  fighter.classList.add('hurt');
   setTimeout(() => {
-    box.classList.remove('hurt');
-    $(`${side === 'enemy' ? 'foe' : 'you'}-fighter`)?.classList.remove('hurt');
+    box?.classList.remove('hurt');
+    fighter.classList.remove('hurt');
   }, 160);
+
   const el = document.createElement('div');
   el.className = 'float-dmg' + (superEff ? ' se' : '');
-  el.textContent = `-${dmg}`;
-  const r = box.getBoundingClientRect();
-  el.style.left = (r.right - 62) + 'px';
-  el.style.top = (r.top + 6) + 'px';
+  el.innerHTML = superEff
+    ? `-${dmg}<span class="se-tag">SUPER EFFECTIVE</span>`
+    : `-${dmg}`;
+  const r = fighter.getBoundingClientRect();
+  // Centred on the model and started around its shoulders, so the rise clears the body.
+  el.style.left = (r.left + r.width / 2) + 'px';
+  el.style.top = (r.top + r.height * 0.22) + 'px';
   document.body.appendChild(el);
-  setTimeout(() => el.remove(), 800);
+  setTimeout(() => el.remove(), 950);
 }
 
 // ---- Party switch ------------------------------------------------------------------------------
