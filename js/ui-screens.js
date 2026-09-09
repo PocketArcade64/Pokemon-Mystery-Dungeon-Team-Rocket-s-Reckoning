@@ -32,7 +32,6 @@ export const uiHooks = {
   useItem: (_itemId, _mon) => {},
   setControls: (_mode) => {},
   battleContinue: () => {},
-  catchAgain: () => {},
   catchFlee: () => {},
   chooseBall: (_id) => {},
   resolveSwap: (_index) => {},
@@ -60,6 +59,8 @@ export function showScreen(mode) {
   // The HUD is live during play and stays visible behind the catch overlay (which is transparent
   // by design so you can see the 3D mini-scene) but not behind any full sheet.
   $('hud').classList.toggle('visible', mode === 'playing');
+  // A ball picker left open would still be sitting there on the next encounter.
+  if (mode !== 'catch') setBallMenu(false);
 }
 
 // ---- Type badges -------------------------------------------------------------------------------
@@ -413,28 +414,49 @@ export function floatDamage(side, index, dmg, superEff) {
 }
 
 // ---- Catch overlay ----------------------------------------------------------------------------
-export function renderCatchUI({ dex, activeBall, msg = null, showAgain = false, hint = null }) {
+// Three controls, GO's layout: Run top-left, the 3D ball bottom-middle (canvas, not DOM), and the
+// ball swap bottom-right. The swap is a single button carrying the ball you are holding and how
+// many are left; tapping it pops the other tiers up above it, and picking one closes it again.
+let ballMenuOpen = false;
+
+// The only text on the screen is the name, with the type icons under it. There is deliberately no
+// prompt line and no result line — what the throw did is visible in the 3D scene.
+export function renderCatchUI({ dex, activeBall }) {
   const c = CATALOG_BY_DEX.get(dex);
   $('catch-name').textContent = c ? `Wild ${c.name}` : 'Wild Pokémon';
-  $('catch-sub').innerHTML = c ? `${c.types.join(' / ')} · ${c.stage}` : '';
-  const msgEl = $('catch-msg');
-  msgEl.classList.toggle('hidden', !msg);
-  if (msg) msgEl.textContent = msg;
-  $('catch-hint').textContent = hint || 'Land it in the shrinking ring · swirl first to curve';
-  $('btn-catch-again').style.display = showAgain ? 'block' : 'none';
+  $('catch-sub').innerHTML = c ? typeBadges(c.types) : '';
 
-  const chips = BALL_IDS.filter(id => inv.countOf(id) > 0).map(id => {
-    const item = ITEM_BY_ID.get(id);
-    return `<div class="ball-chip ${id === activeBall ? 'active' : ''}" data-id="${id}">
-      ${item.svg}<span>×${inv.countOf(id)}</span></div>`;
+  const held = BALL_IDS.filter(id => inv.countOf(id) > 0);
+  const current = activeBall && inv.countOf(activeBall) > 0 ? activeBall : held[0] || null;
+  const item = current ? ITEM_BY_ID.get(current) : null;
+  $('catch-ball-icon').innerHTML = item ? item.svg : '';
+  $('catch-ball-count').textContent = current ? `×${inv.countOf(current)}` : '×0';
+  $('btn-catch-ball').style.opacity = held.length ? '1' : '0.45';
+
+  // Only the tiers you are NOT holding right now — a picker whose top entry is the ball already in
+  // your hand is a wasted tap.
+  const others = held.filter(id => id !== current);
+  const menu = $('catch-ballmenu');
+  menu.innerHTML = others.map(id => {
+    const it = ITEM_BY_ID.get(id);
+    return `<div class="ball-chip" data-id="${id}" title="${it.name}">${it.svg}<span>×${inv.countOf(id)}</span></div>`;
+  }).join('');
+  menu.querySelectorAll('.ball-chip[data-id]').forEach(el => {
+    el.addEventListener('click', () => {
+      sfx('select');
+      setBallMenu(false);
+      uiHooks.chooseBall(el.dataset.id);
+    });
   });
-  $('catch-balls').innerHTML = chips.length ? chips.join('') : `<div class="ball-chip">No balls left!</div>`;
-  $('catch-balls').querySelectorAll('.ball-chip[data-id]').forEach(el => {
-    el.addEventListener('click', () => { sfx('select'); uiHooks.chooseBall(el.dataset.id); });
-  });
+  if (!others.length) setBallMenu(false);
 }
 
-export function setCatchFleeLabel(label) { $('btn-catch-flee').textContent = label; }
+export function setBallMenu(open) {
+  ballMenuOpen = open && $('catch-ballmenu').children.length > 0;
+  $('catch-ballmenu').classList.toggle('hidden', !ballMenuOpen);
+}
+
+export function toggleBallMenu() { setBallMenu(!ballMenuOpen); }
 
 // "NICE!" / "GREAT!" / "EXCELLENT!" / "CURVEBALL!" on contact. The class has to come off and go
 // back on for the animation to restart on a second throw, and reading offsetWidth in between is
@@ -557,8 +579,8 @@ export function bindUI() {
   });
 
   click('btn-battle-continue', () => { sfx('confirm'); uiHooks.battleContinue(); });
-  click('btn-catch-again', () => { sfx('select'); uiHooks.catchAgain(); });
-  click('btn-catch-flee', () => { sfx('back'); uiHooks.catchFlee(); });
+  click('btn-catch-ball', () => { sfx('select'); toggleBallMenu(); });
+  click('btn-catch-flee', () => { sfx('back'); setBallMenu(false); uiHooks.catchFlee(); });
 
   click('btn-swap-confirm', () => {
     if (swapSelected === null) return;

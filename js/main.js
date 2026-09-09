@@ -13,7 +13,7 @@ import {
 } from './dungeon.js';
 import { createInput } from './movement.js';
 import { createBattle, generateGruntTeam, generateGiovanniTeam, wildEnemyTeam, describeTeam } from './battle.js';
-import { startCatch, endCatch, updateCatch, rearm, catchState, catchScene, catchCamera,
+import { startCatch, endCatch, updateCatch, setCatchBall, catchState, catchScene, catchCamera,
          catchPointerDown, catchPointerMove, catchPointerUp } from './catch.js';
 import * as inv from './inventory.js';
 import * as ui from './ui-screens.js';
@@ -345,8 +345,10 @@ function beginCatch(wild) {
   const ballId = inv.activeBall();
   if (!ballId) {
     ui.toast('You have no Poké Balls left!');
-    // Leave the wild alone for a while so you are not stuck bumping into it with an empty bag.
+    // Leave the wild alone for a while so you are not stuck bumping into it with an empty bag,
+    // and send it walking off rather than leaving it standing in your footprint.
     wild.cooldownUntil = performance.now() + 10000;
+    sendWildAway(wild);
     setMode('playing');
     return;
   }
@@ -356,15 +358,28 @@ function beginCatch(wild) {
     ballId,
     ballsLeft: inv.countOf(ballId),
     floorNumber: state.run.floorIndex + 1,
+    // The encounter stage is dressed as the floor you are standing on.
+    theme: state.run.floor.theme,
     onThrow: () => {
       const id = catchState.ballId;
       if (inv.countOf(id) <= 0) return false;
       inv.removeItem(id, 1);
       sfx(catchState.spin !== 0 ? 'curve' : 'throw');
-      ui.renderCatchUI({ dex: wild.dex, activeBall: id, hint: 'Watch it land…' });
+      ui.renderCatchUI({ dex: wild.dex, activeBall: id });
       return true;
     },
     onResult: onCatchResult,
+    // The capture beats, fired by catch.js on the animation itself so the sound lands with the
+    // frame rather than a fixed delay after it.
+    onSfx: (name) => sfx(name),
+    // GO hands you a fresh ball on its own after a failed throw. Returning null means the bag is
+    // empty: catch.js parks in its 'empty' phase and the Run button is all that is left.
+    onRearm: () => {
+      const id = inv.activeBall();
+      if (!id) return null;
+      ui.renderCatchUI({ dex: wild.dex, activeBall: id });
+      return { ballId: id, ballsLeft: inv.countOf(id) };
+    },
     onGrade: (label) => {
       // The grade lands the instant the ball touches, well before the wobbles resolve — that
       // read-ahead is most of what makes a good GO throw feel good.
@@ -373,8 +388,16 @@ function beginCatch(wild) {
     },
   });
   setMode('catch');
-  ui.setCatchFleeLabel('Leave It');
   ui.renderCatchUI({ dex: wild.dex, activeBall: ballId });
+}
+
+// Point a wild away from the player and let it walk off. Used when an encounter cannot start — a
+// wanderer left standing inside the player reads as broken.
+function sendWildAway(wild) {
+  const dx = wild.x - player.x, dz = wild.z - player.z;
+  const d = Math.hypot(dx, dz) || 1;
+  wild.dirX = dx / d; wild.dirZ = dz / d;
+  wild.retarget = 2.5;
 }
 
 function onCatchResult(res) {
@@ -383,7 +406,6 @@ function onCatchResult(res) {
 
   if (res.caught) {
     sfx('caught');
-    ui.renderCatchUI({ dex: res.dex, activeBall: res.ballId, msg: res.msg, hint: 'Caught!' });
     state.run.caught++;
     wild.gone = true;
     disposeObject(wild.obj);
@@ -405,30 +427,26 @@ function onCatchResult(res) {
     return;
   }
 
-  // Failed throw. Offer another if there is a ball for it, otherwise the attempt is over.
+  // Failed throw. catch.js re-arms by itself after a beat (onRearm above), exactly as GO does, and
+  // the scene has already shown what happened — the only thing left is the sound and the ball
+  // count on the swap button.
   sfx(res.reason === 'broke' ? 'broke' : res.reason === 'deflect' ? 'deflect' : 'select');
-  const remaining = inv.totalBalls();
-  ui.renderCatchUI({
-    dex: wild.dex,
-    activeBall: inv.activeBall(),
-    msg: res.msg,
-    showAgain: remaining > 0,
-    hint: remaining > 0 ? 'Pick a ball and try again' : 'You are out of balls',
-  });
-  ui.setCatchFleeLabel(remaining > 0 ? 'Give Up' : 'Back to the Dungeon');
+  ui.renderCatchUI({ dex: wild.dex, activeBall: inv.activeBall() });
 }
 
-function onCatchAgain() {
-  const ballId = inv.activeBall();
-  if (!ballId) { ui.toast('No balls left.'); return; }
-  rearm(ballId, inv.countOf(ballId));
-  ui.renderCatchUI({ dex: catchCtx.wild.dex, activeBall: ballId });
-}
-
+// Running ends the encounter for good: the wild LEAVES THE FLOOR. It used to be parked on a
+// cooldown and left standing where it was, which meant it promptly walked straight through the
+// player — there is no wild-vs-player collision, and a cooldown only suppresses the encounter,
+// not the body.
 function onCatchFlee() {
   const wild = catchCtx?.wild;
   endCatch();
-  if (wild && !wild.gone) wild.cooldownUntil = performance.now() + 9000;
+  if (wild && !wild.gone) {
+    wild.gone = true;
+    disposeObject(wild.obj);
+    wild.obj = null;
+    ui.toast(`${CATALOG_BY_DEX.get(wild.dex)?.name || 'It'} slipped away.`);
+  }
   catchCtx = null;
   setMode('playing');
 }
@@ -606,12 +624,11 @@ Object.assign(uiHooks, {
     ui.setControlHint(m);
   },
   battleContinue: onBattleContinue,
-  catchAgain: onCatchAgain,
   catchFlee: onCatchFlee,
   chooseBall: (id) => {
     inv.itemApi.setActiveBall(id);
-    if (catchState.active && catchState.phase === 'aim') rearm(id, inv.countOf(id));
-    ui.renderCatchUI({ dex: catchCtx.wild.dex, activeBall: id });
+    setCatchBall(id, inv.countOf(id));
+    if (catchCtx) ui.renderCatchUI({ dex: catchCtx.wild.dex, activeBall: id });
   },
   resolveSwap: (index) => {
     const res = inv.resolvePendingCatch(index);
