@@ -52,6 +52,8 @@ ________________________
 
 I want to replace the items' menu sprites with better png sprites. please look in the assets/sprites folder for the new pixel art icons.
 
+Change the Full Heal to Full Restore.
+
 Make every run start with the player having 10 pokeballs. 
 
 Please remodel the stairs 3d model to be like the Minecraft cobblestone stairs model but make the stairs be heading down deeper into the dungeon and be recessed in the floor. Make the team Rocket grunts 3d model standing at the top of the stairs
