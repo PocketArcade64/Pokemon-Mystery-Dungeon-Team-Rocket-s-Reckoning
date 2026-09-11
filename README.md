@@ -32,7 +32,7 @@ This is a major update - please methodically plan out how you will approach this
 
 ______________________________
 
-Please allow the pokemon models on the selection screen at the beginning of the run able to be rotated just like in Pokemon Rumble Run. Please just look how Pokemon Rumble Run handles that in the Pokédex in the Reference Material from Old Project folder.
+✅ Please allow the pokemon models on the selection screen at the beginning of the run able to be rotated just like in Pokemon Rumble Run. Please just look how Pokemon Rumble Run handles that in the Pokédex in the Reference Material from Old Project folder.
 
 Please change the Pokédex to be exactly like Pokemon Rumble Run. Please just look how Pokemon Rumble Run handles that in the Pokédex in the Reference Material from Old Project folder. But keep the relevant stats for the context of this game, like times seen, times caught, runs won for each pokemon. If you win a run with a pokemon in your party, change their Pokédex square icon background to gold. 
 - At the top of the Pokédex have general stats like total runs, wins, pokemon caught, team rocket grunts defeated
@@ -52,17 +52,17 @@ ___________________________
 
 ________________________
 
-Please add in the Master Ball (which already exits as a 3d Model). For every other type of poke ball that spawns, the master ball has a 1/50 change of replacing it in the spawn logic. When you throw the master ball, even if you miss the pokemon, it is a guaranteed catch.  
+✅ Please add in the Master Ball (which already exits as a 3d Model). For every other type of poke ball that spawns, the master ball has a 1/50 change of replacing it in the spawn logic. When you throw the master ball, even if you miss the pokemon, it is a guaranteed catch.  
 
-Please in the settings menu add a debug menu with password “Team Rocket” where inside this menu you can add items to your inventory and add money for testing purposes.
+✅ Please in the settings menu add a debug menu with password “Team Rocket” where inside this menu you can add items to your inventory and add money for testing purposes.
 
-I want to replace the items' menu sprites with better png sprites. please look in the assets/sprites folder for the new pixel art icons.
+✅ I want to replace the items' menu sprites with better png sprites. please look in the assets/sprites folder for the new pixel art icons.
 
-Change the Full Heal to Full Restore.
+✅ Change the Full Heal to Full Restore.
 
-Make every run start with the player having 10 pokeballs. 
+✅ Make every run start with the player having 10 pokeballs. 
 
-Please remodel the stairs 3d model to be like the Minecraft cobblestone stairs model but make the stairs be heading down deeper into the dungeon and be recessed in the floor. Make the team Rocket grunts 3d model standing at the top of the stairs
+✅ Please remodel the stairs 3d model to be like the Minecraft cobblestone stairs model but make the stairs be heading down deeper into the dungeon and be recessed in the floor. Make the team Rocket grunts 3d model standing at the top of the stairs
 
 ____________________
 
@@ -91,7 +91,14 @@ _____________________
 
 Can you please redesign the bag below the party pokemon and design it to be more thematically looking like a pixel art brown satchel bag in the inventory menu with small squares where each item takes up a slot. Design this bag to look polished and fitting pixel art.
 
-After you beat a team rocket grunt, do you advise that the player is given a choice of 3 reward items? And should your team be fully healed after beating a rocket grunt? Maybe add a randomly spawning Chansey station that allows you to heal infinitely each time you approach it and a menu prompt appears. Change the functionality of healing items so if your Pokemon is fainted and you use a healing item on them, it cannot bring them back from being fainted (only a revive can do that)
+If you run away from a Pokemon encounter, instead of saying “(Pokemon) slipped away” say “You fled from (Pokemon)”
+
+After you beat a team rocket grunt, do you advise that the player is given a choice of 3 reward items? ❌
+And should your team be fully healed after beating a rocket grunt? ❌
+
+✅ Maybe add a randomly spawning Chansey station that allows you to heal once you approach it and a menu prompt appears. 
+
+✅ Change the functionality of healing items so if your Pokemon is fainted and you use a healing item on them, it cannot bring them back from being fainted (only a revive can do that) 
 
 _________________
 
@@ -113,4 +120,4 @@ At the bottom of this card shows Deepest Floor: B1F
 
 ______________
 
-Are all pokemon able to be acquired in some way? how did you implement legendaries?
+✅ Are all pokemon able to be acquired in some way? how did you implement legendaries?
