@@ -294,6 +294,116 @@
     #screen-title .btn-col { margin-bottom: max(1vh, var(--sab)); }
   }
 
+  /* ---- Mode select -------------------------------------------------------------------------- */
+  /* TWO COLUMNS AT EVERY WIDTH: Classic on the left, Endless on the right. Side by side is the
+     point of the screen — the two modes are being compared, and a player scrolling from one stacked
+     card to another is reading them one at a time instead.
+     That is what sets the type on this screen. At 320px, the narrowest phone, two columns of a
+     14px-padded screen with a 10px gutter leave a 144px card and about 125px of text inside it, so
+     the rules run at 0.78rem and each one is written to fit two of those lines (see MODE_CARDS in
+     js/ui-screens.js — the rules are deliberately terse, not summarised). Lengthen a rule and it
+     is this column it has to fit.
+     Rumble's panel language rather than the satchel's: these are controls, so they are rounded and
+     lit by a smooth gradient with one hard drop underneath. */
+  .mode-cards {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+    padding: 2px 2px 8px;
+    /* On a tablet or in landscape the cards would otherwise stretch to half a very wide screen and
+       leave two columns of mostly empty panel. */
+    max-width: 720px; margin: 0 auto;
+  }
+  .mode-card {
+    display: flex; flex-direction: column; min-width: 0;
+    background: var(--panel);
+    border: 1px solid var(--edge-lt);
+    border-radius: 14px;
+    box-shadow: 0 4px 0 rgba(0,0,0,0.35);
+    padding: 0.7rem 0.6rem 0.6rem;
+  }
+  .mode-card .mc-name {
+    font-weight: 700; font-size: 1.092rem; color: var(--gold);
+    text-shadow: 0 2px 0 rgba(0,0,0,0.5); line-height: 1.35;
+  }
+  .mode-card .mc-tagline {
+    color: var(--ink); font-size: 0.845rem; line-height: 1.45;
+    margin: 3px 0 9px; opacity: 0.85;
+  }
+  /* The rules. A real list rather than a paragraph, because each line is one rule and the player is
+     comparing the two cards line by line. The marker is a gold dash drawn by ::before — a UA disc
+     is a round grey dot, the one shape the rest of this UI never uses. */
+  .mode-card .mc-rules {
+    list-style: none; margin: 0; padding: 0;
+    color: var(--ink-dim); font-size: 0.78rem; line-height: 1.5;
+  }
+  .mode-card .mc-rules li { position: relative; padding-left: 11px; margin-bottom: 6px; }
+  .mode-card .mc-rules li::before {
+    content: ''; position: absolute; left: 0; top: 0.62em;
+    width: 7px; height: 2px; background: var(--gold-mid);
+  }
+  /* The saved run. Gold-edged and set off from the rules above it, because it is the one thing on
+     the card that is about THIS player rather than about the mode. */
+  .mode-card .ms-saved {
+    margin-top: 8px; padding: 7px 6px 8px;
+    background: rgba(255,213,79,0.10);
+    border: 1px solid rgba(255,213,79,0.38);
+    border-radius: 10px;
+  }
+  .mode-card .ms-saved-head {
+    font-weight: 700; font-size: 0.754rem; line-height: 1.4;
+    color: var(--gold); margin-bottom: 6px;
+  }
+  /* Up to six portraits on one line inside a card that is 144px wide at 320px, so they FLEX rather
+     than sit at a fixed size: `flex: 1 1 0` with a max, which fills the row at a party of two and
+     shrinks to fit at a party of six instead of wrapping onto a second line. Six at the narrowest
+     works out at ~17px each — small, but it is a glance telling you WHO is down there, and the
+     shapes and colours carry that at 17px even where a name would not fit at all. */
+  .mode-card .ms-team { display: flex; gap: 3px; }
+  .mode-card .ms-mon {
+    flex: 1 1 0; min-width: 0; max-width: 34px;
+    aspect-ratio: 1;
+    background: rgba(0,0,0,0.30);
+    border: 1px solid var(--edge);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  .mode-card .ms-mon img, .mode-card .ms-mon .ms-mon-art {
+    width: 100%; height: 100%; display: block;
+  }
+  /* A fainted party member is shown, not hidden: "you were on B14F and two of them were down" is
+     part of the answer to whether to go back in. Same greyscale treatment the bag's team strip and
+     the Poke Ball strips use for a faint. */
+  .mode-card .ms-mon.fainted img { filter: grayscale(1) brightness(0.5); }
+  /* margin-top:auto pins the buttons and the stat line to the BOTTOM of the card. The two cards
+     have different amounts of rules text, and without this the Endless card's buttons would sit
+     lower than Classic's — side by side, that reads as a mistake. */
+  /* Stacked rather than side by side: two buttons across a 144px card give a 68px button, and
+     "Continue" does not fit in 68px at .btn.small's size. Continue is first, since it is the
+     primary action whenever it is there at all. */
+  .mode-card .mc-actions {
+    margin-top: auto; padding-top: 12px;
+    display: flex; flex-direction: column; gap: 7px;
+  }
+  .mode-card .mc-actions .btn { width: 100%; margin-bottom: 0; }
+  /* The headline number, along the bottom of the card and fenced off from the buttons: Wins for
+     Classic, Deepest Floor for Endless. */
+  /* Label over value rather than beside it: "DEEPEST FLOOR" and "B14F" on one 144px line would
+     leave the number nowhere to go, and centring the pair keeps the two cards' footers matching
+     even though one label is a word and the other is two. */
+  .mode-card .mc-stat {
+    margin-top: 10px; padding-top: 8px;
+    border-top: 1px solid var(--edge);
+    text-align: center;
+  }
+  .mode-card .mcs-label {
+    display: block; font-size: 0.715rem; color: var(--ink-dim);
+    text-transform: uppercase; letter-spacing: 0.04em; line-height: 1.4;
+  }
+  .mode-card .mcs-value {
+    display: block; margin-top: 1px;
+    font-weight: 700; font-size: 1.352rem; color: var(--gold);
+    text-shadow: 0 2px 0 rgba(0,0,0,0.5);
+  }
+
   /* ---- Starter select ----------------------------------------------------------------------- */
   /* The preview canvas is transparent, so this is just the recessed well Rumble puts behind its
      roster: a dark translucent ground, one hairline edge, rounded. */
@@ -855,21 +965,22 @@
   /* The title needs nothing: "Paused" is one short word, so at full width and centred on the SCREEN
      it clears the button on its own.
 
-     The floor summary reserves the button's column so it sits on its own natural line directly
-     under the title, clearing the button by 18px. The reserve is on the LEFT, matching the corner
-     the button moved to, and since .screen-sub is centred text that ALSO pushes the summary right
-     by half the reserve — which is what keeps "B3F - Scorched Desert" from reading as if it were
-     hanging off the button.
+     The floor summary is centred on the SCREEN — no reserved column, no padding, dead centre under
+     "Paused" — and it clears Abandon Run by dropping BELOW the button's bottom edge rather than by
+     sitting beside it. Those are the only two ways to keep a centred line off a corner button, and
+     going down is the one that leaves the line actually centred: reserving the button's column is
+     what pushed the summary off-centre to the right.
+     The margin is built from --quit-h and --sat, the two things that decide where the button's
+     bottom edge is, so the clearance holds on a phone with a Dynamic Island as well as without one.
+     At 63px of button and no inset it comes out at 21px, putting the summary 10px under the button.
+     It costs the map panel ~33px of height, which is what the column-reserve layout was buying —
+     and is the price of a centred line.
 
-     This used to need a second, narrow-screen layout that pushed the summary clear of the button's
-     bottom edge instead, because the worst case then — "B5F - Rocket Warehouse - 6/6 standing"
-     (longest theme name plus the party count) — measured 232px and wrapped onto three lines once
-     the button's 100px column was reserved at 320px. Dropping the party count took the worst case
-     to "B5F - Rocket Warehouse" at ~138px, which clears the 192px left at 320px, the narrowest
-     phone — so one layout now covers every screen. Re-measure if the wording grows back or the
-     1.105rem font size changes. */
+     Worth knowing if the wording ever grows back: the summary used to carry the party count
+     ("B5F - Rocket Warehouse - 6/6 standing", 232px) and needed a second layout below 360px
+     because of it. Floor and theme alone is ~138px, so this one rule covers every screen. */
   #screen-pause .screen-sub {
-    padding-left: calc(var(--quit-w) + 20px);
+    margin-top: calc(var(--sat) + var(--quit-h) - 42px);
     /* A touch more air under the summary than .screen-sub's default 12px: it separates the header
        block from the map, which is a real boundary. */
     margin-bottom: 16px;
@@ -1785,9 +1896,26 @@
     </div>
   </div>
 
+  <!-- ============ MODE SELECT ============
+       Start Run lands here, not on starter select. Both cards are built by
+       ui-screens.js renderModeSelect() — the rules text, the saved-run strip and the headline
+       number all live in MODE_CARDS there, so this is only the frame they go in.
+  -->
+  <div class="screen sheet" id="screen-mode">
+    <h2 class="screen-title">Choose a run</h2>
+    <div class="screen-sub">Two ways down. Each keeps its own run and its own record.</div>
+    <div class="scroll" style="min-height:0">
+      <div class="mode-cards" id="mode-cards"></div>
+    </div>
+    <button class="btn secondary small" id="btn-mode-back" style="margin-top:14px">Back</button>
+  </div>
+
   <!-- ============ STARTER SELECT ============ -->
   <div class="screen sheet" id="screen-starter">
     <h2 class="screen-title">Choose your partner</h2>
+    <!-- Which run the partner is for. Set by renderStarterSelect; the mode was chosen a screen
+         ago and there would otherwise be nothing on this screen saying which one won. -->
+    <div class="screen-sub" id="starter-mode">Classic Run</div>
     <canvas id="starter-preview"></canvas>
     <div class="starter-name" id="starter-name">-</div>
     <div class="starter-meta" id="starter-meta"></div>

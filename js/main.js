@@ -1,13 +1,15 @@
 // State machine + the single requestAnimationFrame loop. This is the only module that knows the
 // whole game; everything else is a self-contained system it drives.
 import * as THREE from 'three';
-import { state, makeMon, saveSettings, saveStats, recordDex, FLOORS_PER_RUN, MAX_PARTY } from './state.js';
+import { state, makeMon, saveSettings, saveStats, recordDex, FLOORS_PER_RUN, MAX_PARTY,
+         ENDLESS_BOSS_EVERY, saveRun, clearSave, savedRunSummary } from './state.js';
 import { renderer, scene, camera, canvas, followCamera, resetCameraFollow, onViewportChange } from './three-setup.js';
 import { createMonObject, disposeObject, preloadDex, preloadPickupModels } from './models.js';
 import { STARTER_DEX, CATALOG_BY_DEX } from './data/pokemon-catalog.js';
 import { ITEM_BY_ID, COIN_BY_ID } from './data/items.js';
 import {
   generateFloor, buildFloor, disposeFloor, pickRunThemes, pickShopFloors, pickChanseyFloors,
+  THEME_BY_ID, pickEndlessCycle, rollEndlessShop, ENDLESS_MIN_GAP,
   atChansey, atUsedChansey, spendChansey, cellToWorld, cellValue,
   FLOOR, moveWithCollision, revealAround, revealWholeFloor, updateWilds, updateFloorDecor,
   itemAtPlayer, wildAtPlayer, atStairs, atShop, drawMap, makeTrainerFigure, STAIR_TOP, MINIMAP_CELLS,
@@ -53,8 +55,14 @@ function setMode(next, { returnTo = null } = {}) {
     case 'title':
       teardownRun();
       break;
+    case 'mode':
+      ui.renderModeSelect({
+        classic: savedRunSummary('classic'),
+        endless: savedRunSummary('endless'),
+      });
+      break;
     case 'starter':
-      ui.renderStarterSelect(offerStarters());
+      ui.renderStarterSelect(offerStarters(), { runMode: pendingRunMode });
       break;
     case 'playing':
       ui.updateHUD();
@@ -134,7 +142,13 @@ function offerStarters() {
   return offer;
 }
 
-function beginRun(starterDex) {
+// Which mode the run being set up is in. Set when the player picks a card on the mode screen and
+// read when they finally pick a starter, because those are two screens apart and the run object
+// that would otherwise hold it does not exist until the second one. Backing out of starter select
+// leaves it set, which is harmless — the mode screen always writes it again on the way through.
+let pendingRunMode = 'classic';
+
+function beginRun(starterDex, runMode = pendingRunMode) {
   // TEAR THE PREVIOUS RUN DOWN FIRST. This is not belt-and-braces, it is the only thing that does
   // it on the "Play Again" path: that button goes newRun -> setMode('starter') -> here, and
   // setMode only calls teardownRun() for 'title'. Because the line below then replaces state.run
@@ -148,14 +162,29 @@ function beginRun(starterDex) {
   // counting instanced meshes in the scene: 5 on run 1, 11 on run 2, and still 5 left over after
   // returning to the title.
   teardownRun();
+  // A new run in a mode DISCARDS that mode's saved run. This is the point of no return for it, and
+  // it has to be here rather than on the mode-select screen: the player can back out of starter
+  // select, and backing out must not have eaten the run they were offered a Continue for.
+  clearSave(runMode);
+  const classic = runMode === 'classic';
   state.run = {
-    themes: pickRunThemes(FLOORS_PER_RUN),
-    // Which floors carry Kecleon's stall is decided ONCE, here, rather than per floor: the
-    // no-two-random-stalls-in-a-row rule needs to see the whole run at once.
-    shopFloors: pickShopFloors(FLOORS_PER_RUN),
-    // Chansey's rest stops, decided up front for the same reason: it is a property of the RUN, and
-    // deciding per floor would make it impossible to reason about how many a run can hold.
-    chanseyFloors: pickChanseyFloors(FLOORS_PER_RUN),
+    runMode,
+    // Theme ids by floor, `themeIds[n - 1]` for floor n. Ids rather than theme objects so the
+    // sequence serializes into a save as it stands, and one flat list rather than classic's fixed
+    // five plus an Endless special case — Endless simply appends another eleven-floor cycle to the
+    // same list whenever themeForFloor runs off the end of it.
+    themeIds: classic ? pickRunThemes(FLOORS_PER_RUN).map(t => t.id) : [],
+    // Which floors carry Kecleon's stall, and which carry Chansey. Classic decides ONCE, here: the
+    // no-two-random-stalls-in-a-row rule needs to see the whole run at once, and Chansey's stops
+    // are a property of the RUN rather than of a floor.
+    //
+    // Endless has no whole run to see, so both sets start empty and ensureFloorFixtures() adds to
+    // them one floor at a time. `fixturesThrough` is how far that has got: classic starts already
+    // finished, which is what keeps the two modes on one code path instead of two.
+    shopFloors: classic ? pickShopFloors(FLOORS_PER_RUN) : new Set(),
+    chanseyFloors: classic ? pickChanseyFloors(FLOORS_PER_RUN) : new Set(),
+    fixturesThrough: classic ? FLOORS_PER_RUN : 0,
+    lastRandomShop: -10,
     floorIndex: -1,
     floor: null,
     party: [makeMon(starterDex)],
@@ -180,6 +209,110 @@ function beginRun(starterDex) {
   enterFloor(0);
 }
 
+// ---- Picking up a saved run -------------------------------------------------------------------
+// The counterpart to beginRun: same run object, filled from the save instead of from scratch, and
+// then straight into enterFloor for the floor the snapshot was taken on. The floor itself is
+// REGENERATED — see the header over SAVE_KEY in state.js for why that is the deliberate choice and
+// why it is very nearly invisible.
+//
+// Everything derived is derived again rather than read back: a party member is rebuilt with
+// makeMon(dex) and only its HP is restored, so a save cannot carry a stale name, type, damage
+// figure or maxHp across a catalog edit. A mon whose species has since left the catalog is dropped
+// rather than faked, and a run left with nobody at all falls back to the mode-select screen.
+function continueRun(runMode) {
+  const snap = state.saves[runMode];
+  if (!snap) { setMode('mode'); return; }
+
+  const party = [];
+  for (const entry of snap.party || []) {
+    const mon = makeMon(entry?.dex);
+    if (!mon) continue;
+    mon.hp = Math.max(0, Math.min(mon.maxHp, entry.hp | 0));
+    party.push(mon);
+  }
+  if (!party.length) { clearSave(runMode); setMode('mode'); return; }
+
+  teardownRun();
+  state.run = {
+    runMode,
+    themeIds: (snap.themeIds || []).slice(),
+    shopFloors: new Set(snap.shopFloors || []),
+    chanseyFloors: new Set(snap.chanseyFloors || []),
+    // The saved floor's fixtures are already in those two sets, so the roll must not run again for
+    // it — that is exactly what fixturesThrough prevents, and why it is in the snapshot. Classic
+    // floors it at FLOORS_PER_RUN rather than trusting the field: classic decided every floor in
+    // beginRun, so "all of them" is true by construction and a snapshot missing the field (or
+    // written by an older build) cannot make classic start rolling Endless's schedule.
+    fixturesThrough: runMode === 'classic'
+      ? FLOORS_PER_RUN
+      : Math.max(0, snap.fixturesThrough | 0),
+    lastRandomShop: snap.lastRandomShop ?? -10,
+    floorIndex: -1,
+    floor: null,
+    party,
+    bag: { ...(snap.bag || {}) },
+    coins: Math.max(0, snap.coins | 0),
+    activeBall: snap.activeBall || null,
+    // The three timed fields are deliberately NOT restored; see state.js.
+    attackBonus: 0,
+    attackBonusUntil: 0,
+    repelUntil: 0,
+    revives: Math.max(0, snap.revives | 0),
+    caught: Math.max(0, snap.caught | 0),
+    pendingCatch: null,
+  };
+  preloadPickupModels();
+  // Not counted as a new run in the lifetime stats: runsPlayed counts runs STARTED, and this one
+  // was already counted when beginRun made it.
+  enterFloor(Math.max(0, (snap.floorNumber | 0) - 1));
+}
+
+// ---- What a floor number means in each mode ---------------------------------------------------
+// The theme for a floor, growing Endless's sequence if the floor is past the end of it. Endless
+// appends a whole shuffled cycle of all eleven themes at a time (see pickEndlessCycle), told the
+// tail of what came before so that the seam between two cycles cannot put a theme within
+// ENDLESS_MIN_GAP floors of itself.
+function themeForFloor(run, floorNumber) {
+  while (run.themeIds.length < floorNumber) {
+    // Most recent FIRST, which is the order pickEndlessCycle reads its distances in.
+    const recent = run.themeIds.slice(-(ENDLESS_MIN_GAP - 1)).reverse();
+    for (const t of pickEndlessCycle(recent)) run.themeIds.push(t.id);
+  }
+  return THEME_BY_ID.get(run.themeIds[floorNumber - 1]) ?? THEME_BY_ID.get(run.themeIds[0]);
+}
+
+// Endless rolls a floor's stall and rest stop the first time that floor is reached, and remembers
+// the answer. Floors are only ever entered in ascending order, so "the first time" is just "past
+// fixturesThrough" — which also makes continuing a save a no-op here, since the saved floor's roll
+// is already in the sets. Classic starts with fixturesThrough at the end of the run and never
+// enters the loop.
+const ENDLESS_CHANSEY_CHANCE = 0.5;
+
+function ensureFloorFixtures(run, floorNumber) {
+  for (let f = run.fixturesThrough + 1; f <= floorNumber; f++) {
+    const { shop, lastRandom } = rollEndlessShop(f, run.lastRandomShop, ENDLESS_BOSS_EVERY);
+    run.lastRandomShop = lastRandom;
+    if (shop) run.shopFloors.add(f);
+    if (Math.random() < ENDLESS_CHANSEY_CHANCE) run.chanseyFloors.add(f);
+    run.fixturesThrough = f;
+  }
+}
+
+// Who is standing on the up-stairs. Classic: a Grunt on floors 1-4 and Giovanni on the fifth, which
+// is the end of the run. Endless: Giovanni on every fifth floor, which is NOT the end of anything —
+// beating him takes the stairs like a Grunt does.
+function bossKindFor(run, floorNumber) {
+  if (run.runMode === 'endless') return floorNumber % ENDLESS_BOSS_EVERY === 0 ? 'giovanni' : 'grunt';
+  return floorNumber === FLOORS_PER_RUN ? 'giovanni' : 'grunt';
+}
+
+// Which Giovanni this is: 1 for classic's only one and for Endless floor 5, 2 for Endless floor 10.
+// battle.js scales his team by it.
+function giovanniEncounter(run, floorNumber) {
+  if (run.runMode !== 'endless') return 1;
+  return Math.max(1, Math.floor(floorNumber / ENDLESS_BOSS_EVERY));
+}
+
 // Permadeath: nothing carries over. The run object is dropped whole and the next one is built
 // from scratch — no items, no unlocks, no leftover party.
 function teardownRun() {
@@ -200,10 +333,15 @@ function enterFloor(index) {
   const leavingTheme = run.floor?.theme?.id ?? null;
   if (run.floor) disposeFloor(run.floor);
 
-  const theme = run.themes[index];
-  const floor = generateFloor(index + 1, theme, {
-    shop: run.shopFloors.has(index + 1),
-    chansey: run.chanseyFloors.has(index + 1),
+  const floorNumber = index + 1;
+  // Both of these are no-ops in classic, where the whole run was decided in beginRun. In Endless
+  // they are what makes floor `floorNumber` exist at all, and they run BEFORE generateFloor because
+  // it is handed their answers.
+  ensureFloorFixtures(run, floorNumber);
+  const theme = themeForFloor(run, floorNumber);
+  const floor = generateFloor(floorNumber, theme, {
+    shop: run.shopFloors.has(floorNumber),
+    chansey: run.chanseyFloors.has(floorNumber),
   });
   run.floor = floor;
   run.floorIndex = index;
@@ -215,13 +353,16 @@ function enterFloor(index) {
   else releaseMusic('kecleon');
 
   // The floor boss stands ON the up-stairs tile, so you cannot ascend without going through them.
-  const isFinal = index === FLOORS_PER_RUN - 1;
-  // On the last floor, warm Giovanni's own defeat fanfare alongside his battle theme — it has to
-  // land on the frame he goes down, and it is the only track cued by the fight rather than by a
-  // screen change.
-  if (isFinal) prefetchMusic('giovanni', 'victory-boss');
+  // In classic that is Giovanni on floor 5 and the run ends with him; in Endless it is Giovanni on
+  // every fifth floor and the run carries on past him.
+  const bossKind = bossKindFor(run, floorNumber);
+  const isBoss = bossKind === 'giovanni';
+  // On a Giovanni floor, warm his own defeat fanfare alongside his battle theme — it has to land on
+  // the frame he goes down, and it is the only track cued by the fight rather than by a screen
+  // change.
+  if (isBoss) prefetchMusic('giovanni', 'victory-boss');
   else prefetchMusic('grunt');
-  const fig = isFinal
+  const fig = isBoss
     ? makeTrainerFigure({ suit: 0x23232b, accent: 0xf5a623, hair: 0x14141a, scale: 1.2 })
     : makeTrainerFigure({ suit: 0x1d1d24, accent: 0xd8202a, scale: 1.0 });
   const sw = cellToWorld(floor, floor.stairsCell.x, floor.stairsCell.y);
@@ -233,7 +374,7 @@ function enterFloor(index) {
   fig.position.set(sw.x, STAIR_TOP.y, sw.z + STAIR_TOP.z);
   fig.rotation.y = STAIR_TOP.facing;
   floor.group.add(fig);
-  floor.boss = { obj: fig, defeated: false, kind: isFinal ? 'giovanni' : 'grunt' };
+  floor.boss = { obj: fig, defeated: false, kind: bossKind };
 
   const start = cellToWorld(floor, floor.startCell.x, floor.startCell.y);
   player.x = start.x; player.z = start.z;
@@ -245,8 +386,22 @@ function enterFloor(index) {
 
   // Everything that wanders this floor counts as "seen" for the lifetime Pokedex.
   for (const w of floor.wilds) recordDex('seenDex', w.dex);
-  if (index + 1 > state.stats.bestFloor) state.stats.bestFloor = index + 1;
+  // Depth records, and they are kept PER MODE because they answer different questions. `bestFloor`
+  // is classic's and stops at 5 — which is also what it has always meant, since classic was the
+  // only mode when it was written, so existing saved records carry over unchanged. Letting Endless
+  // write to it would put "Best Ever: B40F" on a classic win screen whose own ceiling is B5F.
+  //
+  // Both are written on ARRIVAL rather than on death, so reaching B30F counts even if the app is
+  // closed there.
+  const depthKey = run.runMode === 'endless' ? 'endlessBestFloor' : 'bestFloor';
+  if (floorNumber > state.stats[depthKey]) state.stats[depthKey] = floorNumber;
   saveStats();
+
+  // THE ONE SAVE POINT IN THE GAME. Taken here, on arrival, with the floor built and the player
+  // standing at its entrance and nothing yet done on it — which is what makes a snapshot of the
+  // party, the bag and the floor number a complete description of where you are. See the header
+  // over SAVE_KEY in state.js for what is in it and what is deliberately left out.
+  saveRun(run);
 
   // Arriving on a floor plays its theme from the TOP. Floor themes are `resume: true` so that
   // stepping out of a battle or the shop drops you back in where you left off, but this is not a
@@ -267,7 +422,9 @@ function enterFloor(index) {
 
 function advanceFloor() {
   const run = state.run;
-  if (run.floorIndex + 1 >= FLOORS_PER_RUN) { winRun(); return; }
+  // Endless has no floor to run out of: there is no winRun in it, only the next floor, until the
+  // party wipes. Classic stops at FLOORS_PER_RUN, which is the floor Giovanni was on.
+  if (run.runMode === 'classic' && run.floorIndex + 1 >= FLOORS_PER_RUN) { winRun(); return; }
   // The descending-stairs sound, then straight into the next floor's card — PMD shows ONE title
   // card per floor, so the old "Floor Clear / Up the stairs" banner that used to play first is
   // gone. enterFloor puts the card up itself.
@@ -292,9 +449,10 @@ function syncPlayerModel() {
 function winRun() {
   const run = state.run;
   state.stats.runsWon++;
-  state.stats.giovanniDefeats++;
   for (const m of inv.partyAlive()) recordDex('winnerDex', m.dex);
   saveStats();
+  // The run is over, so there is nothing left to come back to.
+  clearSave(run.runMode);
   // No sting here, and no playMusic call either: Victory! (Team Galactic) has been playing since
   // Giovanni went down and holds the music lock, so the win screen simply carries it over.
   ui.renderEnd({
@@ -302,6 +460,7 @@ function winRun() {
     floorReached: run.floorIndex + 1,
     caught: run.caught,
     partyNames: inv.partyAlive().map(m => m.name),
+    runMode: run.runMode,
   });
   setMode('end');
 }
@@ -309,12 +468,17 @@ function winRun() {
 function loseRun({ abandoned = false } = {}) {
   const run = state.run;
   saveStats();
+  // PERMADEATH, and this is the line that enforces it against the save slot. A wipe or an abandon
+  // takes the run's snapshot with it, so there is no floor to reload and no way to retreat out of
+  // a loss — which is the whole reason the only write is on ARRIVAL at a floor.
+  clearSave(run.runMode);
   ui.renderEnd({
     won: false,
     abandoned,
     floorReached: run.floorIndex + 1,
     caught: run.caught,
     partyNames: [],
+    runMode: run.runMode,
   });
   setMode('end');
   // You Lose answers the run the way Giovanni's fanfare answers a win: it OWNS the mixer from
@@ -332,7 +496,10 @@ function loseRun({ abandoned = false } = {}) {
 function startBattle(kind, wild = null) {
   const run = state.run;
   let enemies, title;
-  if (kind === 'giovanni') { enemies = generateGiovanniTeam(); title = 'Giovanni'; }
+  if (kind === 'giovanni') {
+    enemies = generateGiovanniTeam(giovanniEncounter(run, run.floorIndex + 1));
+    title = 'Giovanni';
+  }
   else if (kind === 'grunt') { enemies = generateGruntTeam(run.floorIndex + 1); title = 'Team Rocket Grunt'; }
   else { enemies = wildEnemyTeam(wild.dex, run.floorIndex + 1, wild.aggressive); title = `Wild ${CATALOG_BY_DEX.get(wild.dex).name}`; }
 
@@ -419,8 +586,15 @@ function finishBattle(result) {
     // locks every later playMusic out, so the win screen and anything the player opens on the way
     // through it stay on this track. releaseMusicLock() runs when they leave the win screen.
     playMusicExclusive('victory-boss');
-    ui.battleLog('Giovanni is beaten. The dungeon is yours.');
-    ui.showBattleContinue('Finish the run');
+    // In Endless he is a checkpoint, not the capstone: there is no run to finish, so both the line
+    // and the button say what actually happens next.
+    if (state.run?.runMode === 'endless') {
+      ui.battleLog('Giovanni falls back. The dungeon goes deeper.');
+      ui.showBattleContinue('Take the stairs');
+    } else {
+      ui.battleLog('Giovanni is beaten. The dungeon is yours.');
+      ui.showBattleContinue('Finish the run');
+    }
   }
 }
 
@@ -443,7 +617,17 @@ function onBattleContinue() {
     advanceFloor();
     return;
   }
+  // Giovanni. Counted here rather than in winRun() because Endless beats him over and over without
+  // ever "winning" a run, and the lifetime tally should say how many times he has actually gone
+  // down. winRun() keeps `runsWon`, which is the classic-only figure.
+  state.stats.giovanniDefeats++;
+  saveStats();
   knockOutBoss();
+  if (state.run?.runMode === 'endless') {
+    setMode('playing');
+    advanceFloor();
+    return;
+  }
   winRun();
 }
 
@@ -833,7 +1017,12 @@ window.addEventListener('keydown', unlock, { once: true });
 
 // ---- UI callbacks -----------------------------------------------------------------------------
 Object.assign(uiHooks, {
-  startRun: () => setMode('starter'),
+  // Start Run no longer goes straight to starter select: it goes to the mode cards, and picking one
+  // is what decides which run is being set up. That is also the only place pendingRunMode is
+  // written, so a Back out of starter select cannot leave a stale mode behind.
+  startRun: () => setMode('mode'),
+  chooseMode: (runMode) => { pendingRunMode = runMode; setMode('starter'); },
+  continueRun: (runMode) => continueRun(runMode),
   chooseStarter: (dex) => beginRun(dex),
   // Leaving the win screen is what ends Giovanni's fanfare's hold on the mixer, by either door:
   // the title screen has its own theme and a new run needs a floor theme.
@@ -1021,7 +1210,11 @@ Object.assign(uiHooks, {
     syncPlayerModel();
     setMode('playing');
   },
-  newRun: () => { releaseMusicLock(); setMode('starter'); },
+  // Play Again goes back to the mode CARDS rather than straight to starter select. The run that
+  // just ended took its save with it, so the cards are the honest place to land: they show what
+  // that run did to the headline numbers and let the player switch modes without a trip via the
+  // title screen.
+  newRun: () => { releaseMusicLock(); setMode('mode'); },
 });
 
 // ---- Boot -------------------------------------------------------------------------------------

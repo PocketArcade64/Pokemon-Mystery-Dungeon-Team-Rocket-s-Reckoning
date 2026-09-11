@@ -126,7 +126,10 @@ export const THEMES = [
     fog: 0x2a4a55, sky: 0xbfe9ff, ground: 0x6b5a34, light: 0xfff4d8, prop: 'palm' },
 ];
 
-// Pick 5 distinct themes for a run (no repeats), in a random order.
+export const THEME_BY_ID = new Map(THEMES.map(t => [t.id, t]));
+
+// Pick 5 distinct themes for a run (no repeats), in a random order. Classic mode only — Endless
+// runs past the end of the theme list and uses pickEndlessCycle below.
 export function pickRunThemes(count = 5) {
   const pool = THEMES.slice();
   for (let i = pool.length - 1; i > 0; i--) {
@@ -134,6 +137,49 @@ export function pickRunThemes(count = 5) {
     [pool[i], pool[j]] = [pool[j], pool[i]];
   }
   return pool.slice(0, count);
+}
+
+// ---- Endless mode's theme sequence -------------------------------------------------------------
+// Two rules, and the second is the one that needs the work:
+//
+//   1. EVERY theme is visited once before any of them comes back. So the sequence is built in
+//      CYCLES of all eleven, shuffled per cycle — not eleven independent rolls, which would happily
+//      give you the Verdant Forest three times in fifteen floors and never show you the beach.
+//   2. No theme appears within ENDLESS_MIN_GAP floors of itself. Inside one cycle that is free;
+//      rule 1 already spaces repeats eleven floors apart. It is the SEAM between two cycles that
+//      can break it — a theme last in cycle N and first in cycle N+1 is one floor apart — so the
+//      head of each new cycle is drawn knowing the tail of the one before it.
+//
+// The gap is stated the way the design does: "if you have the forest on floor 20 you cannot see it
+// again until at least floor 25", i.e. floor numbers must differ by 5 or more, i.e. at least four
+// other floors in between.
+export const ENDLESS_MIN_GAP = 5;
+
+// `recentIds[0]` is the theme on the floor just played, `[1]` the one before that, and so on —
+// most recent FIRST, which is what makes the distance arithmetic below read directly.
+//
+// Slots are filled left to right, each from the themes still unused that are legal at that slot.
+// A theme `d` floors back and one placed at slot `i` end up `d + i` floors apart, so slot `i`
+// blocks the `ENDLESS_MIN_GAP - 1 - i` most recent themes and nothing else. By slot 4 the blocked
+// list is empty and the rest of the cycle is a plain shuffle.
+//
+// It cannot deadlock: at slot `i` there are `THEMES.length - i` themes left and at most 4 blocked,
+// so with eleven themes the pool is non-empty at every slot that has any blocking at all. The
+// fallback below is unreachable insurance, kept because a future edit that shortened THEMES to
+// four or fewer would otherwise hang the game rather than repeat a floor.
+export function pickEndlessCycle(recentIds = []) {
+  const remaining = THEMES.slice();
+  const cycle = [];
+  for (let i = 0; i < THEMES.length; i++) {
+    const blockDepth = Math.max(0, ENDLESS_MIN_GAP - 1 - i);
+    const blocked = new Set(recentIds.slice(0, blockDepth));
+    let pool = remaining.filter(t => !blocked.has(t.id));
+    if (!pool.length) pool = remaining;
+    const chosen = pool[Math.floor(Math.random() * pool.length)];
+    cycle.push(chosen);
+    remaining.splice(remaining.indexOf(chosen), 1);
+  }
+  return cycle;
 }
 
 const rnd = (a, b) => a + Math.random() * (b - a);
@@ -155,6 +201,31 @@ export function pickShopFloors(total = 5, guaranteed = 4, chance = 0.35) {
     if (Math.random() < chance) { shops.add(f); lastRandom = f; }
   }
   return shops;
+}
+
+// Endless cannot precompute that set — there is no `total` to loop to — so it rolls ONE floor at a
+// time and the run carries the `lastRandom` the loop above kept in a local. Same two rules, same
+// 0.35, and the same exemption: the guaranteed stall neither blocks a later random one nor is
+// blocked by an earlier one.
+//
+// Which floor is guaranteed differs, and follows the design: Kecleon is on every floor BEFORE
+// Giovanni, so on floor 4, 9, 14, 19... — the floor whose next one is a boss floor. That is the
+// stall that matters most in Endless, since it is the last chance to spend coins and top up balls
+// before the hardest fight in the mode, and unlike classic's floor-4 stall it recurs forever.
+//
+// Returns `{ shop, lastRandom }` rather than mutating, so the caller decides whether the roll
+// counts — the run stores `lastRandom` back only when a floor is actually entered.
+export function rollEndlessShop(floorNumber, lastRandom = -10, bossEvery = 5, chance = 0.35) {
+  if (isEndlessShopGuaranteed(floorNumber, bossEvery)) return { shop: true, lastRandom };
+  if (floorNumber - lastRandom < 2) return { shop: false, lastRandom };
+  if (Math.random() < chance) return { shop: true, lastRandom: floorNumber };
+  return { shop: false, lastRandom };
+}
+
+// The floor immediately before a boss floor. Boss floors are the multiples of `bossEvery`, so this
+// is every floor one short of one — and floor 0 does not exist, so `bossEvery - 1` is the first.
+export function isEndlessShopGuaranteed(floorNumber, bossEvery = 5) {
+  return (floorNumber + 1) % bossEvery === 0;
 }
 
 // ---- Room shapes -------------------------------------------------------------------------------

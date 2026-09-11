@@ -13,16 +13,31 @@ import { makeMon } from './state.js';
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
 // ---- Enemy team generation ---------------------------------------------------------------------
-// Floors 1-4: a Team Rocket Grunt. One fixed "Rocket flavor" species (Arbok, Weezing, Muk...)
-// plus random fill, with team size and HP both scaling on floor number. Floors 1-2 stay
-// deliberately forgiving: one or two Basic-stage Pokemon at close to base HP.
+// The HP ceiling a Grunt team can reach, and it exists for ENDLESS MODE.
+//
+// The ramp below is linear in floor number, which is right over classic's four Grunt floors (0.75
+// up to 1.20) and falls apart when the floors do not stop: Endless floor 47 would ask for 7.65x
+// base HP. Damage in this game is FIXED by evolution stage — there is no attack stat to grow
+// against it — so a 7.65x wall is not a hard fight, it is an arithmetic one nobody can win, and
+// the battle has no turn limit to end it either.
+//
+// 2.5 is reached at floor 13 and holds from there, which makes deep Endless an attrition test — of
+// your party's total HP, your items and your coins — rather than a wall. CLASSIC IS UNTOUCHED BY
+// THIS: it tops out at 1.20 on floor 4 and floor 5 is Giovanni, so the clamp never binds there.
+// This is the one number in Endless that the design brief does not specify; tune it here.
+const GRUNT_HP_SCALE_MAX = 2.5;
+
+// Floors 1-4 in classic, every non-boss floor in Endless: a Team Rocket Grunt. One fixed "Rocket
+// flavor" species (Arbok, Weezing, Muk...) plus random fill, with team size and HP both scaling on
+// floor number. Floors 1-2 stay deliberately forgiving: one or two Basic-stage Pokemon at close to
+// base HP.
 export function generateGruntTeam(floorNumber) {
   const size = Math.min(4, floorNumber);
   // Under 1.0 on floor 1 on purpose. The fixed Rocket-flavour species are mostly Stage 1 (Arbok,
   // Weezing, Muk, Golbat...), so at full HP the very first grunt would out-stat a lone Basic
   // starter outright. Scaled down, floor 1 is beatable with a small caught team and still teaches
   // that you need to catch Pokemon before taking the stairs.
-  const hpScale = 0.75 + (floorNumber - 1) * 0.15;
+  const hpScale = Math.min(GRUNT_HP_SCALE_MAX, 0.75 + (floorNumber - 1) * 0.15);
   const team = [];
 
   const flavour = makeMon(pick(ROCKET_FLAVOR_DEX), { hpScale });
@@ -38,16 +53,25 @@ export function generateGruntTeam(floorNumber) {
   return team;
 }
 
-// Final floor: Giovanni. Fixed six-strong team per the design brief §11 —
-// Mewtwo + 1 random legendary + 1 random legendary bird + 3 random fully-evolved Pokemon.
-export function generateGiovanniTeam() {
+// Final floor in classic, every fifth floor in Endless: Giovanni. Fixed six-strong team per the
+// design brief §11 — Mewtwo + 1 random legendary + 1 random legendary bird + 3 random
+// fully-evolved Pokemon.
+//
+// `encounter` is which Giovanni this is: 1 for the first (classic's only one, and Endless floor 5),
+// 2 for Endless floor 10, and so on. It adds 8% HP per encounter after the first, capped, so that
+// boss floors keep pace with the Grunt floors around them — without it a floor-50 Giovanni would be
+// identical to a floor-5 one while the Grunts in between had doubled, and the boss would read as
+// the easy floor. The FIRST encounter is exactly the brief's fight, unscaled, in both modes.
+const GIOVANNI_HP_SCALE_MAX = 1.0;
+
+export function generateGiovanniTeam(encounter = 1) {
   // COMPOSITION is fixed by the brief and is not tuned here. HP is, and it has to be under 1.0.
   // Combat is sequential 1v1 with damage fixed by stage, so a 6v6 comes down to (total HP x
   // damage) on each side. At full HP Giovanni's six — three Legendaries at 20 damage plus three
   // fully-evolved — outweigh ANY reachable player team by roughly 2x, making him not merely hard
   // but literally unbeatable. At this scale a party of six evolved Pokemon wins with a couple
   // standing, and a weaker or unevolved party loses. That is the capstone the brief asks for.
-  const hpScale = 0.62;
+  const hpScale = Math.min(GIOVANNI_HP_SCALE_MAX, 0.62 * (1 + 0.08 * Math.max(0, encounter - 1)));
   const team = [];
   team.push(makeMon(MEWTWO_DEX, { hpScale }));
 

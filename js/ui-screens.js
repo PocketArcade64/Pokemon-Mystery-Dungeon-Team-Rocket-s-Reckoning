@@ -21,6 +21,10 @@ const $ = (id) => document.getElementById(id);
 // Callbacks main.js fills in. Keeping them in one object avoids a circular import.
 export const uiHooks = {
   startRun: () => {},
+  // The mode cards. chooseMode starts a FRESH run in that mode (and discards its save on the way
+  // through starter select); continueRun picks the saved one back up.
+  chooseMode: (_runMode) => {},
+  continueRun: (_runMode) => {},
   chooseStarter: (_dex) => {},
   resume: () => {},
   quitRun: () => {},
@@ -66,6 +70,7 @@ export const uiHooks = {
 
 const SCREEN_FOR_MODE = {
   title: 'screen-title',
+  mode: 'screen-mode',
   starter: 'screen-starter',
   pause: 'screen-pause',
   bag: 'screen-bag',
@@ -235,14 +240,116 @@ export function updatePreviews(dt, mode) {
   }
 }
 
+// ---- Mode select -------------------------------------------------------------------------------
+// Two cards, Classic on the left and Endless on the right, each one: a name, what the mode
+// actually does, whatever saved run is waiting in it, and a headline number along the bottom.
+//
+// The rules are spelled out rather than summarised. Endless is not "Classic but longer" — the
+// floor order, the boss cadence and Kecleon's schedule are all different, and a player who reads
+// "endless" and nothing else will not know that Giovanni is coming on floor 5 either. Each line is
+// one rule, in the order they are met.
+//
+// The headline number is what the mode is measured in, and they are different questions on purpose:
+// Classic can be WON, so it counts wins; Endless cannot, so it records how deep you got.
+const MODE_CARDS = [
+  {
+    runMode: 'classic',
+    name: 'Classic Run',
+    tagline: 'The five-floor descent.',
+    rules: [
+      '5 floors, all different',
+      'A Grunt on every stairwell',
+      'Giovanni on B5F - beat him to win',
+    ],
+  },
+  {
+    runMode: 'endless',
+    name: 'Endless Run',
+    tagline: 'Down until your team falls.',
+    rules: [
+      'No last floor - go until you wipe',
+      'All 11 dungeons before any repeat',
+      'Never the same one within 4 floors',
+      'Giovanni every 5th floor, forever',
+      'Kecleon guaranteed the floor before him',
+    ],
+  },
+];
+
+// The saved party, as a row of model portraits with the floor it was saved on. This is the whole
+// reason the card is the place the Continue offer lives rather than a button on the title screen:
+// "you were on B14F with these six" is the question a player actually needs answered before
+// deciding whether to pick the run back up, and a title-screen button cannot answer it.
+//
+// Portraits are the flat cached PNGs from portraits.js, not live 3D — six of those would be six
+// WebGL contexts, and the page has a budget of about two (see modelstage.js). A portrait that has
+// not rendered yet leaves an empty frame and the whole screen redraws when it lands.
+function savedTeamStrip(saved) {
+  const cells = saved.party.map(m => {
+    const art = portraitFor(m.dex);
+    const name = CATALOG_BY_DEX.get(m.dex)?.name || '?';
+    return `<div class="ms-mon ${m.hp <= 0 ? 'fainted' : ''}" title="${name}">
+      ${art ? `<img src="${art}" alt="${name}" />` : '<div class="ms-mon-art"></div>'}
+    </div>`;
+  }).join('');
+  return `<div class="ms-saved">
+    <div class="ms-saved-head">Run in progress &mdash; B${saved.floorNumber}F</div>
+    <div class="ms-team">${cells}</div>
+  </div>`;
+}
+
+export function renderModeSelect(saves = {}) {
+  const wrap = $('mode-cards');
+  wrap.innerHTML = MODE_CARDS.map(card => {
+    const saved = saves[card.runMode] || null;
+    const stat = card.runMode === 'classic'
+      ? ['Wins', state.stats.runsWon || 0]
+      : ['Deepest Floor', 'B' + (state.stats.endlessBestFloor || 1) + 'F'];
+    // With a run waiting, the primary button continues it and starting fresh is the secondary one
+    // — and it says what it costs, because it throws that run away.
+    const buttons = saved
+      ? `<button class="btn small" data-continue="${card.runMode}">Continue</button>
+         <button class="btn secondary small" data-new="${card.runMode}">New Run</button>`
+      : `<button class="btn small" data-new="${card.runMode}">Start</button>`;
+    return `<div class="mode-card" data-mode="${card.runMode}">
+      <div class="mc-name">${card.name}</div>
+      <div class="mc-tagline">${card.tagline}</div>
+      <ul class="mc-rules">${card.rules.map(r => `<li>${r}</li>`).join('')}</ul>
+      ${saved ? savedTeamStrip(saved) : ''}
+      <div class="mc-actions">${buttons}</div>
+      <div class="mc-stat"><span class="mcs-label">${stat[0]}</span><span class="mcs-value">${stat[1]}</span></div>
+    </div>`;
+  }).join('');
+
+  wrap.querySelectorAll('[data-new]').forEach(el => {
+    el.addEventListener('click', () => { sfx('confirm'); uiHooks.chooseMode(el.dataset.new); });
+  });
+  wrap.querySelectorAll('[data-continue]').forEach(el => {
+    el.addEventListener('click', () => { sfx('confirm'); uiHooks.continueRun(el.dataset.continue); });
+  });
+
+  // Kick off any portraits the saved parties still need and redraw once each lands. Guarded on the
+  // screen still being the one on show, so a player who has already walked off to starter select
+  // does not have this stamping over a screen they left.
+  const dexes = Object.values(saves).filter(Boolean).flatMap(s => s.party.map(m => m.dex));
+  if (dexes.length) {
+    preloadPortraits(dexes, () => {
+      if ($('screen-mode').classList.contains('visible')) renderModeSelect(saves);
+    });
+  }
+}
+
 // ---- Starter select ----------------------------------------------------------------------------
 let starterOffer = [];
 let starterPick = null;
 
-export function renderStarterSelect(offer) {
+export function renderStarterSelect(offer, { runMode = 'classic' } = {}) {
   ensurePreviews();
   starterOffer = offer;
   starterPick = null;
+  // Which run this partner is being picked for. Two screens back is a long way to carry a mode
+  // silently, and Endless and Classic want different Pokemon out of the same three.
+  $('starter-mode').textContent = runMode === 'endless' ? 'Endless Run' : 'Classic Run';
   const row = $('starter-row');
   row.innerHTML = offer.map((dex, i) => {
     const c = CATALOG_BY_DEX.get(dex);
@@ -618,8 +725,12 @@ let dexSelected = null;
 export function renderDex() {
   ensurePreviews();
   const s = state.stats;
+  // Seven tiles now, not six: the two modes' depth records are separate figures (see enterFloor)
+  // and a lifetime record that showed only one of them would be hiding half the game.
   $('dex-stats').innerHTML = [
-    ['Runs', s.runsPlayed], ['Wins', s.runsWon], ['Best Floor', s.bestFloor ? 'B' + s.bestFloor + 'F' : '-'],
+    ['Runs', s.runsPlayed], ['Wins', s.runsWon],
+    ['Best Floor', s.bestFloor ? 'B' + s.bestFloor + 'F' : '-'],
+    ['Endless Best', s.endlessBestFloor ? 'B' + s.endlessBestFloor + 'F' : '-'],
     ['Giovanni KOs', s.giovanniDefeats], ['Grunts KOd', s.gruntsDefeated], ['Caught', s.pokemonCaught],
   ].map(([label, val]) => `<div class="stat-tile"><div class="sv">${val}</div><div class="sl">${label}</div></div>`).join('');
 
@@ -1049,7 +1160,9 @@ export function renderSwap(newMon) {
 export function swapSelection() { return swapSelected; }
 
 // ---- End of run -------------------------------------------------------------------------------
-export function renderEnd({ won, floorReached, caught, partyNames, abandoned = false }) {
+export function renderEnd({ won, floorReached, caught, partyNames, abandoned = false,
+                           runMode = 'classic' }) {
+  const endless = runMode === 'endless';
   $('end-kicker').textContent = won ? 'Run Complete' : 'Run Over';
   $('end-kicker').style.color = won ? 'var(--gold)' : 'var(--danger)';
   $('end-title').textContent = won ? 'Giovanni Falls' : abandoned ? 'Run Abandoned' : 'Wiped Out';
@@ -1058,10 +1171,15 @@ export function renderEnd({ won, floorReached, caught, partyNames, abandoned = f
     : abandoned
       ? `You walked away on B${floorReached}F. Your team and everything you were carrying stay down there - that is the deal.`
       : `Your team fell on B${floorReached}F. Everything you were carrying is gone - that is the deal down here.`;
+  // "Best Ever" asks a different question in each mode, and answering it with the wrong record
+  // would read as a bug: classic's depth tops out at 5, so measuring an Endless run against it
+  // would declare a new record on every single run.
   $('end-stats').innerHTML = [
     ['Floor', 'B' + floorReached + 'F'],
     ['Caught', caught],
-    ['Best Ever', state.stats.bestFloor ? 'B' + state.stats.bestFloor + 'F' : '-'],
+    endless
+      ? ['Deepest', state.stats.endlessBestFloor ? 'B' + state.stats.endlessBestFloor + 'F' : '-']
+      : ['Best Ever', state.stats.bestFloor ? 'B' + state.stats.bestFloor + 'F' : '-'],
   ].map(([l, v]) => `<div class="stat-tile"><div class="sv">${v}</div><div class="sl">${l}</div></div>`).join('');
 }
 
@@ -1328,7 +1446,10 @@ export function bindUI() {
     sfx('confirm');
     uiHooks.chooseStarter(starterPick);
   });
-  click('btn-starter-back', () => { sfx('back'); uiHooks.goTitle(); });
+  // Back out of starter select goes to the mode CARDS, not to the title: the cards are the screen
+  // it was reached from, and a run has not been created yet, so nothing is lost by going back one.
+  click('btn-mode-back', () => { sfx('back'); uiHooks.goTitle(); });
+  click('btn-starter-back', () => { sfx('back'); uiHooks.startRun(); });
 
   click('btn-bag', () => { sfx('select'); uiHooks.openBag(); });
   click('btn-pause', () => { sfx('select'); uiHooks.openPause(); });

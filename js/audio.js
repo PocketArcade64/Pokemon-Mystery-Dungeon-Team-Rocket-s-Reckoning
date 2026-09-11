@@ -283,6 +283,7 @@ window.addEventListener('pagehide', () => { if (ctx && ctx.state === 'running') 
 export function musicForMode(mode, { themeId = null, battleKind = null } = {}) {
   switch (mode) {
     case 'title':
+    case 'mode':
     case 'starter':
       return 'menu';
     case 'playing':
