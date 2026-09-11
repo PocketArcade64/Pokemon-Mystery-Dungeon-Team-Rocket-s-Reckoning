@@ -224,7 +224,6 @@ function winRun() {
 function loseRun({ abandoned = false } = {}) {
   const run = state.run;
   saveStats();
-  sfx('defeat');
   ui.renderEnd({
     won: false,
     abandoned,
@@ -233,7 +232,15 @@ function loseRun({ abandoned = false } = {}) {
     partyNames: [],
   });
   setMode('end');
-  playMusic(null);          // the game-over screen is silent
+  // You Lose answers the run the way Giovanni's fanfare answers a win: it OWNS the mixer from
+  // here. playMusicExclusive stops whatever floor or battle theme was running and locks every
+  // later playMusic() out, so the game-over screen stays on this one track until the player
+  // leaves it (goTitle / newRun both call releaseMusicLock).
+  //
+  // Called INSTEAD of the synthesized 'defeat' sting, not alongside it — the sting is a
+  // descending sawtooth run and it played straight over the front of the jingle. The win screen
+  // has worked this way from the start: the track is the sound of the run ending.
+  playMusicExclusive('lose');
 }
 
 // ---- Battles ----------------------------------------------------------------------------------
@@ -287,7 +294,7 @@ function updateBattleFrame(dtMs) {
       ui.updateBattleRows(battle);
       ui.battleLog(`${ev.mon.name} was pulled back from the brink by a Revive!`);
       state.run.revives = battle.revives;
-      sfx('evolve');
+      sfx('revive');
     } else if (ev.type === 'switch') {
       ui.updateBattleRows(battle);
       ui.battleLog(`${ev.mon.name} steps up!`);
@@ -482,9 +489,10 @@ function onCatchResult(res) {
       } else {
         syncPlayerModel();
         setMode('playing');
-        const bonus = [res.curve ? 'Curveball' : null, res.grade && res.grade !== 'hit' ? res.grade : null]
-          .filter(Boolean).join(' + ');
-        ui.toast(bonus ? `${res.msg} (${bonus})` : `${res.msg} Added to your team.`);
+        // No toast. The catch screen has already said "<Name> was caught!" in 3D above the ball,
+        // and repeating it along the bottom of the dungeon a second later is the same sentence
+        // twice. The jingle is what marks the new team member on the way back out.
+        sfx('join');
       }
     }, 1500);
     return;
@@ -728,6 +736,9 @@ Object.assign(uiHooks, {
       ui.toast(res.released
         ? `${res.mon.name} was released back into the dungeon.`
         : `${res.replaced.name} was swapped out for ${res.mon.name}.`);
+      // Swapping one in is the other door a Pokemon joins the team by, so it gets the same jingle
+      // the straight-into-an-empty-slot path gets. Releasing is not joining, and gets nothing.
+      if (!res.released) sfx('join');
     }
     catchCtx = null;
     syncPlayerModel();

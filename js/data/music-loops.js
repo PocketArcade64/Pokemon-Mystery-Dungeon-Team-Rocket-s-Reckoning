@@ -25,6 +25,7 @@ export const MUSIC_LOOPS = {
   '12. Drenched Bluff.mp3':                  { loopStart: 0,    loopEnd: 81.2803,  loopLen: 81.2803 },
   '15. Battle! (Wild Pokémon).mp3':          { loopStart: 12.5, loopEnd: 69.9072,  loopLen: 57.4072 },
   '27. Victory! (Trainer Battle).mp3':       { oneShot: true },
+  'You Lose.mp3':                            { oneShot: true },
   '29. Apple Woods.mp3':                     { loopStart: 0,    loopEnd: 85.9950,  loopLen: 85.9950 },
   '34. Steam Cave.mp3':                      { loopStart: 0,    loopEnd: 107.2293, loopLen: 107.2293 },
   '41. Quicksand Cave.mp3':                  { loopStart: 0,    loopEnd: 66.2037,  loopLen: 66.2037 },
@@ -41,10 +42,15 @@ export const MUSIC_LOOPS = {
 
 // Per-track notes, worth reading before changing any number above:
 //
-// The two Victory! fanfares are the one-shots. Both resolve and fade on their own, so they are
-//   played once and left to end rather than looped. Victory! (Trainer Battle) answers a Grunt;
-//   Victory! (Team Galactic) answers Giovanni and is the only track that locks the mixer (see
-//   playMusicExclusive in js/audio.js).
+// The two Victory! fanfares and You Lose are the one-shots. All three resolve and fade on their
+//   own, so they are played once and left to end rather than looped. Victory! (Trainer Battle)
+//   answers a Grunt; Victory! (Team Galactic) answers Giovanni, and You Lose answers a party
+//   wipe — those last two are the tracks that LOCK the mixer (see playMusicExclusive in
+//   js/audio.js).
+//
+// You Lose is not an OST rip of the same shape as the rest: 6.075 s long with the jingle itself
+//   finishing at 2.92 s and the remainder silence. There is nothing to loop and nothing to trim,
+//   which is the whole reason it is a one-shot. Do not go looking for loop points in it.
 //
 // Hidden Land is the one low-confidence loop length. Its envelope autocorrelation only reaches
 //   0.602 (the rest run 0.75-0.97) because the track is sparse and ambient, and no clean

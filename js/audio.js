@@ -1,7 +1,7 @@
 // Two independent audio systems with independent volume sliders in Settings:
 //
 //   SFX   — synthesized with WebAudio by default, with a SAMPLE overriding the synth wherever one
-//           of the .wav files in SFX_FILES exists (currently just the stairs).
+//           of the files in SFX_FILES exists (the stairs, evolving, and a Pokemon joining).
 //   MUSIC — the user-supplied Explorers of Sky mp3s named in TRACKS below.
 //
 // A MISSING MUSIC FILE IS SILENCE, NOT AN ERROR. The mp3s are dropped in later; every track is
@@ -34,6 +34,10 @@ const TRACKS = {
   // moment on: playMusicExclusive() locks every later playMusic() out until the lock is released
   // when the player leaves the win screen. See the lock below.
   'victory-boss': { file: '61. Victory! (Team Galactic).mp3' },
+  // The game-over screen. Like Giovanni's fanfare this one OWNS the mixer — loseRun() plays it
+  // through playMusicExclusive(), so the floor or battle theme that was running when the party
+  // went down is stopped and nothing can start again until the player leaves the end screen.
+  lose:      { file: 'You Lose.mp3' },                             // any run ending in defeat
   // Floor themes, by theme id
   verdant:   { file: '29. Apple Woods.mp3', resume: true },              // Verdant Forest
   rocky:     { file: '90. Aegis Cave.mp3', resume: true },               // Rocky Cavern
@@ -177,8 +181,10 @@ export function unlockAudio() {
   } catch { ctx = null; }
   if (currentKey) playMusic(currentKey, true);
   // A wild encounter is seconds away at any moment and its theme has to land on contact, so warm
-  // the two tracks that get triggered mid-play rather than by walking into a screen.
-  prefetchMusic('wild', 'victory');
+  // the tracks that get triggered mid-play rather than by walking into a screen. `lose` is one of
+  // them: a party wipe lands in the middle of a battle, and it is a 263 KB jingle, not a floor
+  // theme, so holding it decoded costs nothing.
+  prefetchMusic('wild', 'victory', 'lose');
   // The samples are tiny next to a track, and the first stairs descent must not miss its sound
   // waiting on a decode.
   prefetchSfx();
@@ -190,9 +196,11 @@ export function applyVolumes() {
 }
 
 // ---- Music -------------------------------------------------------------------------------------
-// The lock exists for exactly one moment in the game: Giovanni going down. His fanfare has to run
-// uninterrupted, and setMode() calls playMusic() on EVERY screen change, so suppressing it needs
-// to happen here rather than by hunting down each caller.
+// The lock exists for the two moments that END a run: Giovanni going down, and the party going
+// down. Each of those tracks has to run uninterrupted on the end screen, and setMode() calls
+// playMusic() on EVERY screen change, so suppressing it needs to happen here rather than by
+// hunting down each caller. Both locks are released by leaving the end screen (goTitle / newRun
+// in main.js).
 let musicLocked = false;
 
 // Play `key` and then bar everything else from the speakers until releaseMusicLock().
@@ -250,8 +258,8 @@ window.addEventListener('pagehide', () => { if (ctx && ctx.state === 'running') 
 
 // Which track belongs to which screen. Floors play their own theme's track, so the music changes
 // with the scenery; anything not listed here (glossary, settings, dex, the end screen) keeps
-// whatever was already playing — which is what puts the victory fanfare on the win screen and
-// leaves loseRun() to silence the game-over screen itself.
+// whatever was already playing — which is what lets the end screen carry whichever run-ending
+// track already holds the lock: the victory fanfare on a win, You Lose on a defeat.
 export function musicForMode(mode, { themeId = null, battleKind = null } = {}) {
   switch (mode) {
     case 'title':
@@ -277,8 +285,13 @@ export function musicForMode(mode, { themeId = null, battleKind = null } = {}) {
 // A handful of effects have a real recording sitting next to the music. Where one exists it
 // REPLACES the synthesized version of the same name; where it does not, the synth still plays, so
 // no effect is ever silent. Same folder as the music — these are game rips, not generated assets.
+// The two jingles are mp3s rather than wavs and that changes nothing — decodeAudioData takes
+// either. Both are short enough to be effects rather than music (Evolution 1.28 s, Pokemon Joins
+// 1.53 s), which is why they live here and ride the SFX slider instead of the music one.
 const SFX_FILES = {
   stairs: 'SE_ACT_STAIRS_DOWN.wav',
+  evolve: '213. Evolution.mp3',
+  join:   '208. Pokémon Joins.mp3',
 };
 
 const sfxBuffers = new Map();     // name -> AudioBuffer once decoded
@@ -408,8 +421,18 @@ export function sfx(name) {
     case 'caught':   [523, 659, 784, 1047].forEach((f, i) =>
                        tone({ freq: f, dur: 0.13, type: 'triangle', gain: 0.22, delay: 0.42 + i * 0.1 })); break;
     case 'broke':    tone({ freq: 500, endFreq: 180, dur: 0.3, type: 'square', gain: 0.2 }); break;
+    // A new team member. Only the fallback: '208. Pokémon Joins.mp3' is what actually plays.
+    case 'join':     [659, 880, 1047, 1319].forEach((f, i) =>
+                       tone({ freq: f, dur: 0.14, type: 'triangle', gain: 0.2, delay: i * 0.11 })); break;
+    // Only the fallback: '213. Evolution.mp3' in SFX_FILES is what actually plays.
     case 'evolve':   [392, 523, 659, 784, 1047].forEach((f, i) =>
                        tone({ freq: f, dur: 0.16, type: 'sine', gain: 0.2, delay: i * 0.12 })); break;
+    // A Revive used to borrow 'evolve'. It cannot any more: 'evolve' is now the real Evolution
+    // jingle, and hearing a Pokemon evolve every time one is pulled back from the brink is a lie
+    // about what just happened. This is the rising arpeggio the old synth evolve used to be,
+    // three notes instead of five so it stays an in-battle beat rather than a fanfare.
+    case 'revive':   [523, 659, 880].forEach((f, i) =>
+                       tone({ freq: f, dur: 0.15, type: 'sine', gain: 0.2, delay: i * 0.1 })); break;
     case 'stairs':   [659, 880].forEach((f, i) =>
                        tone({ freq: f, dur: 0.18, type: 'triangle', gain: 0.22, delay: i * 0.14 })); break;
     case 'victory':  [523, 659, 784, 1047, 1319].forEach((f, i) =>
