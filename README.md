@@ -95,6 +95,8 @@ If you run away from a Pokemon encounter, instead of saying “(Pokemon) slipped
 
 Move the Abandon Run button in the pause menu to the top left. Then you have to shift the text saying “B3F - Scorched Desert” to the right a little more, for example. Also in that line under Paused, remove the  “- 6/6 standing text”
 
+In the battle screen, where it currently says Basic, stage 1, stage 2, etc instead show the type icon pngs with a minimal space between them
+
 After you beat a team rocket grunt, do you advise that the player is given a choice of 3 reward items? ❌
 And should your team be fully healed after beating a rocket grunt? ❌
 
