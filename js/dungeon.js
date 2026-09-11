@@ -14,7 +14,7 @@ import {
   GIFT_BOX_MODEL, KECLEON_MODEL, COIN_MODEL_PATHS,
 } from './models.js';
 import { randomFieldItemId, randomBallId, randomCoinId, COIN_BY_ID } from './data/items.js';
-import { CATALOG_BY_DEX, POKEMON_CATALOG } from './data/pokemon-catalog.js';
+import { CATALOG_BY_DEX, POKEMON_CATALOG, LEGENDARY_DEX } from './data/pokemon-catalog.js';
 import { TYPE_COLOR } from './data/type-chart.js';
 import { hemiLight, dirLight, scene } from './three-setup.js';
 import { makeAura, spinAura } from './aura.js';
@@ -69,21 +69,38 @@ const BALLS_PER_FLOOR = 15;
 // keep-clear radius the props and rock already respect around the stairs.
 const STAIR_PIT_R = 1;
 
+// Chance that any one wild spawn is a Legendary instead of a draw from the floor's pool. The full
+// reasoning is at the spawn loop in generateFloor; the number itself is per SPAWN, not per floor,
+// and a run rolls it about 100 times.
+const LEGENDARY_WILD_CHANCE = 0.01;
+
 // ---- The eleven floor themes (design brief §10, plus a beach) -----------------------------------
 // `types` drives which species can spawn as wild Pokemon on that floor. Colors are all we have to
 // build atmosphere with: there are no themed environment assets, so every floor is Three.js
 // primitives tinted per theme with light prop dressing.
+//
+// Between them these lists have to COVER all eighteen types, and that is a hard requirement rather
+// than a nicety: the wild pool below is `themed` unless it comes up short, so a type named by no
+// theme belongs to no floor, and every species carrying only such types is uncatchable. Four types
+// have no theme of their own — there is no sky, dojo, plain or dragon's den in the brief's ten —
+// so they are lodged with their nearest neighbour: Fighting in the Rocky Cavern, Dragon in the
+// Molten Caldera and the Frozen Grotto (a fire-and-ice pair of dens, and it thickens the thinnest
+// pool in the set), Flying and Normal on the Sunlit Shore, whose gulls and ordinary shoreline
+// critters are the closest thing to open country the dungeon has. Before that, the Pidgey, Rattata,
+// Meowth, Machop and Dratini lines reached a floor ONLY through the `themed.length >= 6` fallback,
+// which only ever fired on the Ice floor — so they were catchable in roughly one run in five, by
+// accident. Add a type here whenever a species would otherwise have nowhere to stand.
 export const THEMES = [
   { id: 'verdant',  name: 'Verdant Forest',  types: ['Grass', 'Bug'],
     floorA: 0x4e7a3a, floorB: 0x456f33, wall: 0x2f4a25, wallTop: 0x3d5f2e,
     fog: 0x16240f, sky: 0xbfe0a0, ground: 0x2d4020, light: 0xfff3d0, prop: 'tree' },
-  { id: 'rocky',    name: 'Rocky Cavern',    types: ['Rock', 'Ground'],
+  { id: 'rocky',    name: 'Rocky Cavern',    types: ['Rock', 'Ground', 'Fighting'],
     floorA: 0x6d6152, floorB: 0x625748, wall: 0x413a32, wallTop: 0x554c41,
     fog: 0x1d1a16, sky: 0x9d9384, ground: 0x3a342c, light: 0xffeecc, prop: 'boulder' },
-  { id: 'molten',   name: 'Molten Caldera',  types: ['Fire'],
+  { id: 'molten',   name: 'Molten Caldera',  types: ['Fire', 'Dragon'],
     floorA: 0x59322a, floorB: 0x4d2a23, wall: 0x331914, wallTop: 0x6b2f1f,
     fog: 0x1c0906, sky: 0xff9a4a, ground: 0x4a1a10, light: 0xffd0a0, prop: 'lava' },
-  { id: 'frozen',   name: 'Frozen Grotto',   types: ['Ice'],
+  { id: 'frozen',   name: 'Frozen Grotto',   types: ['Ice', 'Dragon'],
     floorA: 0x9fc4d8, floorB: 0x92b9d0, wall: 0x5f8298, wallTop: 0x7ea6bd,
     fog: 0x2b4453, sky: 0xdff2ff, ground: 0x5a7d92, light: 0xeaf6ff, prop: 'icespike' },
   { id: 'tidepool', name: 'Tidepool Grotto', types: ['Water'],
@@ -104,7 +121,7 @@ export const THEMES = [
   { id: 'crystal',  name: 'Crystal Caverns', types: ['Fairy', 'Rock'],
     floorA: 0x5c4f6b, floorB: 0x53475f, wall: 0x392f47, wallTop: 0x8f6fb0,
     fog: 0x1a1322, sky: 0xd9b8ef, ground: 0x33283f, light: 0xf6e6ff, prop: 'crystal' },
-  { id: 'beach',    name: 'Sunlit Shore',    types: ['Water', 'Ground'],
+  { id: 'beach',    name: 'Sunlit Shore',    types: ['Water', 'Ground', 'Flying', 'Normal'],
     floorA: 0xe0cb95, floorB: 0xd3bd85, wall: 0x9c7f4f, wallTop: 0x3f9fbf,
     fog: 0x2a4a55, sky: 0xbfe9ff, ground: 0x6b5a34, light: 0xfff4d8, prop: 'palm' },
 ];
@@ -284,7 +301,7 @@ function keepLargestComponent(m, w, h) {
 //     shape can break
 //   - the landmark pass (scatterOutcrops) enforces SIGHT_RADIUS, which is what keeps the camera
 //     where it is
-export function generateFloor(floorNumber, theme, { shop = false } = {}) {
+export function generateFloor(floorNumber, theme, { shop = false, chansey = false } = {}) {
   // sqrt(5) per side is exactly 5x the area: 78, 89, 101, 112, 123 against the old 35..55.
   const W = Math.round((30 + floorNumber * 5) * Math.sqrt(5));
   const H = W;
@@ -448,6 +465,8 @@ export function generateFloor(floorNumber, theme, { shop = false } = {}) {
 
   // 5. Kecleon's stall, BEFORE props and pickups so it can claim its patch of floor first.
   if (shop) floor.shop = placeShop(floor, startRoom, stairsRoom);
+  // Chansey goes down AFTER the stall, because placeChansey reads floor.shop to keep clear of it.
+  if (chansey) floor.chansey = placeChansey(floor, startRoom, stairsRoom);
 
   // 6. The landmark pass. This is what enforces SIGHT_RADIUS.
   scatterOutcrops(floor);
@@ -463,7 +482,9 @@ export function generateFloor(floorNumber, theme, { shop = false } = {}) {
   const farFrom = (c, x, y, d) => !c || Math.abs(c.x - x) > d || Math.abs(c.y - y) > d;
   const clearOfFixtures = (x, y) =>
     farFrom(startCell, x, y, 3) && farFrom(stairsCell, x, y, 3)
-    && (!floor.shop || Math.abs(floor.shop.cx - x) > 4 || Math.abs(floor.shop.cy - y) > 4);
+    && (!floor.shop || Math.abs(floor.shop.cx - x) > 4 || Math.abs(floor.shop.cy - y) > 4)
+    && (!floor.chansey || Math.abs(floor.chansey.cx - x) > CHANSEY_HALF + 1
+        || Math.abs(floor.chansey.cy - y) > CHANSEY_HALF + 1);
   const propTarget = 18 + floorNumber * 8;
   // Props are biased to stand NEXT TO an outcrop. An outcrop is only half a cell tall, so on its
   // own it is a landmark you can see over rather than one you can see; a tree or a crystal on its
@@ -507,6 +528,8 @@ export function generateFloor(floorNumber, theme, { shop = false } = {}) {
       // triggers the ascent).
       if (Math.abs(x - stairsCell.x) <= STAIR_PIT_R && Math.abs(y - stairsCell.y) <= STAIR_PIT_R) continue;
       if (floor.shop && Math.abs(floor.shop.cx - x) <= 3 && Math.abs(floor.shop.cy - y) <= 3) continue;
+      if (floor.chansey && Math.abs(floor.chansey.cx - x) <= CHANSEY_HALF
+        && Math.abs(floor.chansey.cy - y) <= CHANSEY_HALF) continue;
       taken.add(i);
       return { x, y };
     }
@@ -558,7 +581,8 @@ export function generateFloor(floorNumber, theme, { shop = false } = {}) {
   // 5 dmg) is not a hard fight, it is an arithmetically impossible one — and aggressive wilds
   // chase, so it cannot even be walked away from. Floors 1-2 are therefore Basic-only, which is
   // what "stays forgiving early on" (design brief §4) has to mean in practice.
-  // Legendaries never wander at all; they are Giovanni's, not the floor's.
+  //
+  // Legendaries sit OUTSIDE both gates — see LEGENDARY_WILD_CHANCE below.
   const allowedStages = floorNumber <= 2 ? ['Basic']
     : floorNumber === 3 ? ['Basic', 'Stage1']
     : ['Stage1', 'Stage2'];
@@ -577,10 +601,29 @@ export function generateFloor(floorNumber, theme, { shop = false } = {}) {
   for (let i = 0; i < wildCount; i++) {
     const c = freeCell(6);
     if (!c) continue;
-    const species = pick(wildPool);
+    // Every spawn rolls for a Legendary first, and one in a hundred becomes one instead of drawing
+    // from the pool. This is the ONLY way a Legendary can be caught: they are otherwise Giovanni's
+    // alone, which left 46 of the catalog's 386 species permanently unobtainable and a hole in the
+    // Questdex that nothing could fill. The roll ignores the theme and the stage gate both — a
+    // Legendary belongs to no floor's typing, and gating it by depth would mean the rarest thing in
+    // the game could only appear where the player is already strong.
+    //
+    // A floor scatters 12-28 wilds, so a full five-floor run rolls 100 times: one Legendary per run
+    // in expectation, and about a 63% chance of meeting at least one. Rare enough to be an event,
+    // common enough that a player who finishes runs will see them.
+    const legendary = Math.random() < LEGENDARY_WILD_CHANCE;
+    const species = legendary ? CATALOG_BY_DEX.get(pick(LEGENDARY_DEX)) : pick(wildPool);
     floor.wilds.push({
       dex: species.dex,
-      aggressive: Math.random() < aggroChance,
+      // A Legendary is NEVER aggressive, and this is the same arithmetic that gates the stage pool
+      // above rather than a separate decision. An aggressive wild forces a battle before the catch
+      // minigame opens and re-homes onto the player every frame, so it cannot be walked away from;
+      // a Legendary brings 90 HP and 20 damage, which even at the floor-1 wild scale of 0.6 is 54
+      // HP against a lone 30 HP starter dealing 5. That is not a hard fight, it is a run ended by
+      // a 1-in-100 coin flip. Peaceful, it is what it should be: something you walk up to, with
+      // the whole encounter riding on the balls in your bag and the throw.
+      aggressive: legendary ? false : Math.random() < aggroChance,
+      legendary,
       homeX: c.x, homeY: c.y,
       x: c.x - W / 2 + 0.5, z: c.y - H / 2 + 0.5,
       dirX: 0, dirZ: 0, retarget: 0,
@@ -676,16 +719,18 @@ function scatterOutcrops(floor) {
   exposed.sort((a, b) => d2[b] - d2[a]);        // worst-lit first
 
   const covered = new Uint8Array(n);
-  // Where rock may NOT be built. The stairs plinth is 2.2 units across and the shop blanket is a
-  // 5-unit patch, so an outcrop inside either reads as level geometry gone wrong; the start tile
-  // has no geometry at all but the player spawns standing on it, so it needs just enough room not
-  // to spawn them inside a wall — 2 cells, where this was 3 for no reason.
+  // Where rock may NOT be built. The stairwell is a 3-unit pit, the shop blanket a 5-unit patch
+  // and Chansey's mat a 3-unit one, so an outcrop inside any of them reads as level geometry gone
+  // wrong; the start tile has no geometry at all but the player spawns standing on it, so it needs
+  // just enough room not to spawn them inside a wall — 2 cells, where this was 3 for no reason.
   const canBuild = (x, y) => {
     if (x < 1 || y < 1 || x >= W - 1 || y >= H - 1) return false;
     if (cells[y * W + x] !== FLOOR) return false;
     if (Math.abs(floor.startCell.x - x) <= 2 && Math.abs(floor.startCell.y - y) <= 2) return false;
     if (Math.abs(floor.stairsCell.x - x) <= 3 && Math.abs(floor.stairsCell.y - y) <= 3) return false;
     if (floor.shop && Math.abs(floor.shop.cx - x) <= 4 && Math.abs(floor.shop.cy - y) <= 4) return false;
+    if (floor.chansey && Math.abs(floor.chansey.cx - x) <= CHANSEY_HALF + 1
+      && Math.abs(floor.chansey.cy - y) <= CHANSEY_HALF + 1) return false;
     return true;
   };
 
@@ -807,6 +852,68 @@ function placeShop(floor, startRoom, stairsRoom) {
       const x = i % W, y = (i - x) / W;
       if (!clearAround(x, y)) continue;
       return { cx: x, cy: y, room: r, stock: null, obj: null, playerInside: false };
+    }
+  }
+  return null;
+}
+
+// ---- Chansey's rest stop ------------------------------------------------------------------------
+// The other friendly NPC on a floor, and the counterweight to Kecleon: he takes coins for things,
+// she takes nothing and heals the party. Straight out of Mystery Dungeon, and it earns its place
+// here for the same reason the stall does — a floor this size needs landmarks, and something worth
+// walking to is the best kind (see the SIGHT_RADIUS note at the top of this file).
+//
+// ONE USE PER FLOOR, and that is the whole of the balance. Unbounded healing would be strictly
+// stronger than a full heal after every Grunt: it would delete the attrition that makes a run a
+// run, and make every medicine in the bag dead weight. Bounded, it is a reward for exploring.
+//
+// CHANSEY IS STILL A CATCHABLE WILD, deliberately, and this is the opposite call from the one made
+// for Kecleon. He is kept out of POKEMON_CATALOG precisely so he cannot turn up in a wild pool —
+// but he is a shopkeeper, a one-of-a-kind character. Chansey is an ordinary species that happens
+// to be running a rest stop, so meeting a wild one elsewhere on the floor reads as fine rather
+// than as a bug, and there is no reason to cost the player a catchable species for it. Nothing
+// here touches the wild pools.
+const CHANSEY_HALF = 2;                   // the clear patch is (2 * CHANSEY_HALF + 1) square
+export const CHANSEY_PAD_HALF = 1.5;      // world half-extent of the mat, for the trigger radius
+const CHANSEY_DEX = 113;
+
+// Which floors carry one. Unlike the shop there is no guaranteed floor: the stall is load-bearing
+// for the economy (it is where a run's coins are meant to go), while a rest stop is a piece of
+// luck. A flat chance per floor comes out at two or three across a five-floor run.
+export function pickChanseyFloors(total = 5, chance = 0.5) {
+  const floors = new Set();
+  for (let f = 1; f <= total; f++) if (Math.random() < chance) floors.add(f);
+  return floors;
+}
+
+// Same search as placeShop, with a smaller patch and one more thing to avoid: the stall. Two
+// friendly NPCs on one floor must not land on top of each other.
+function placeChansey(floor, startRoom, stairsRoom) {
+  const { W, cells } = floor;
+  const clearAround = (x, y) => {
+    for (let dy = -CHANSEY_HALF; dy <= CHANSEY_HALF; dy++) {
+      for (let dx = -CHANSEY_HALF; dx <= CHANSEY_HALF; dx++) {
+        const nx = x + dx, ny = y + dy;
+        if (nx < 1 || ny < 1 || nx >= floor.W - 1 || ny >= floor.H - 1) return false;
+        if (cells[ny * W + nx] !== FLOOR) return false;
+      }
+    }
+    return true;
+  };
+  // Far enough from the stall that their trigger radii cannot overlap, and off the stairs pit.
+  const clearOfFixtures = (x, y) =>
+    (!floor.shop || Math.abs(floor.shop.cx - x) > 7 || Math.abs(floor.shop.cy - y) > 7)
+    && (Math.abs(floor.stairsCell.x - x) > 4 || Math.abs(floor.stairsCell.y - y) > 4);
+
+  const candidates = floor.rooms
+    .filter(r => r !== startRoom && r !== stairsRoom && r.cells.length >= 50)
+    .sort((a, b) => b.cells.length - a.cells.length);
+  const pools = candidates.length ? candidates : floor.rooms.filter(r => r !== startRoom);
+  for (const r of pools) {
+    for (const i of [r.cy * W + r.cx, ...shuffled(r.cells)]) {
+      const x = i % W, y = (i - x) / W;
+      if (!clearAround(x, y) || !clearOfFixtures(x, y)) continue;
+      return { cx: x, cy: y, room: r, used: false, obj: null, playerInside: false };
     }
   }
   return null;
@@ -1391,6 +1498,89 @@ function makeShopStall() {
   return g;
 }
 
+// Chansey's rest stop: a soft round mat, Chansey standing on it, and a warm pink pool of light.
+// Deliberately built to read as the stall's opposite number from across a room — the stall is a
+// square blanket under gold light, this is a circle under pink — so at a glance you know which one
+// you are walking toward and whether you need coins for it.
+function makeChanseyStation() {
+  const g = new THREE.Group();
+
+  // A disc rather than the stall's square: round says "stop and rest", square says "goods laid
+  // out". CircleGeometry is flat, so it is laid down and lifted clear of the floor tiles.
+  const mat = new THREE.Mesh(
+    new THREE.CircleGeometry(CHANSEY_PAD_HALF, 28),
+    new THREE.MeshStandardMaterial({ color: 0xf7c9d8, roughness: 0.85 }),
+  );
+  mat.rotation.x = -Math.PI / 2;
+  mat.position.y = 0.03;
+  mat.receiveShadow = true;
+  g.add(mat);
+
+  // A ring just inside the rim, the same trick the pickups use: it reads as the edge of somewhere
+  // you can stand rather than as a decal on the floor.
+  const ring = new THREE.Mesh(
+    new THREE.RingGeometry(CHANSEY_PAD_HALF * 0.82, CHANSEY_PAD_HALF * 0.94, 28),
+    new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5 }),
+  );
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.y = 0.05;
+  g.add(ring);
+
+  // 1.05 tall — shorter than Kecleon's 1.35, because she is not presiding over anything, and about
+  // the height of a wild Pokemon so she reads as one of them rather than as a fixture.
+  const mon = createMonObject(CHANSEY_DEX, { height: 1.05 });
+  mon.position.y = 0.05;
+  mon.rotation.y = Math.PI * 1.25;        // facing back down the diagonal, toward the camera
+  g.add(mon);
+  g.userData.mon = mon;
+
+  const light = new THREE.PointLight(0xffb7cd, 1.1, 8);
+  light.position.set(0, 2.0, 0);
+  g.add(light);
+  g.userData.light = light;
+
+  return g;
+}
+
+// Walking onto Chansey's mat. Same enter-latched shape as atShop and for the same reason: the
+// prompt is a screen, so a plain "am I close" test would reopen it the instant it was closed.
+// Returns false once she is spent, so a used station is simply inert to walk over.
+export function atChansey(floor, player) {
+  const c = floor.chansey;
+  if (!c) return false;
+  const w = cellToWorld(floor, c.cx, c.cy);
+  const inside = Math.hypot(w.x - player.x, w.z - player.z) < CHANSEY_PAD_HALF + 0.4;
+  const entered = inside && !c.playerInside;
+  c.playerInside = inside;
+  return entered && !c.used;
+}
+
+// True on the frame the player steps back onto a station they have already used, which main.js
+// turns into a one-line toast rather than a screen with nothing on it to press.
+export function atUsedChansey(floor, player) {
+  const c = floor.chansey;
+  if (!c || !c.used) return false;
+  const w = cellToWorld(floor, c.cx, c.cy);
+  const inside = Math.hypot(w.x - player.x, w.z - player.z) < CHANSEY_PAD_HALF + 0.4;
+  const entered = inside && !c.playerInside;
+  c.playerInside = inside;
+  return entered;
+}
+
+// Spend the station. The light drops and the ring goes out, so a spent stop reads as spent from
+// across the room instead of luring you back to a prompt that will not open.
+export function spendChansey(floor) {
+  const c = floor.chansey;
+  if (!c) return;
+  c.used = true;
+  const obj = c.obj;
+  if (!obj) return;
+  if (obj.userData.light) obj.userData.light.intensity = 0.3;
+  obj.traverse(o => {
+    if (o.isMesh && o.material?.transparent) o.material.opacity = 0.12;
+  });
+}
+
 export function applyThemeLighting(theme) {
   scene.background = new THREE.Color(theme.fog);
   // Fog starts well past the camera's own framing: pulled in any tighter and the far half of a
@@ -1569,6 +1759,17 @@ export function buildFloor(floor) {
     floor.shop.obj = stall;
   }
 
+  if (floor.chansey) {
+    const station = makeChanseyStation();
+    const w = cellToWorld(floor, floor.chansey.cx, floor.chansey.cy);
+    station.position.set(w.x, 0, w.z);
+    group.add(station);
+    floor.chansey.obj = station;
+    // A floor re-entered after its station was used (there is no such path today, but disposeFloor
+    // and buildFloor are not the only callers this could ever have) must come back spent.
+    if (floor.chansey.used) spendChansey(floor);
+  }
+
   for (const it of floor.items) {
     const marker = makeFloorPickup(it);
     const w = cellToWorld(floor, it.x, it.y);
@@ -1579,7 +1780,13 @@ export function buildFloor(floor) {
 
   for (const wild of floor.wilds) {
     const c = CATALOG_BY_DEX.get(wild.dex);
-    const height = c && c.stage === 'Stage2' ? 1.15 : c && c.stage === 'Stage1' ? 1.0 : 0.85;
+    // Legendary is FIRST, not last. The chain used to end in a bare 0.85 default, which caught
+    // 'Basic' and 'Legendary' alike — harmless while Legendaries never wandered, and wrong the
+    // moment they could: the rarest thing on the floor would have stood there as the smallest.
+    const height = !c ? 0.85
+      : c.stage === 'Legendary' ? 1.45
+      : c.stage === 'Stage2' ? 1.15
+      : c.stage === 'Stage1' ? 1.0 : 0.85;
     const obj = createMonObject(wild.dex, { height, tint: TYPE_COLOR[c?.types?.[0]] || 0x888888 });
     obj.position.set(wild.x, 0, wild.z);
     group.add(obj);
@@ -1746,6 +1953,14 @@ export function updateFloorDecor(floor, dt, elapsed) {
   // spinning pickups.
   const presents = floor.shop?.obj?.userData?.presents;
   if (presents) for (const p of presents) p.rotation.y += dt * 0.5;
+
+  // Chansey BOBS rather than spins, for the same reason Kecleon does neither: she is somebody you
+  // walk up to, not merchandise. A slow breath is enough to stop her reading as scenery — and it
+  // stops when she is spent, which is half of how a used station announces itself.
+  const chansey = floor.chansey;
+  if (chansey?.obj?.userData?.mon && !chansey.used) {
+    chansey.obj.userData.mon.position.y = 0.05 + Math.sin(elapsed * 2.1) * 0.045;
+  }
 }
 
 // ---- Minimap / pause map rendering -------------------------------------------------------------
@@ -1963,6 +2178,32 @@ export function drawMap(ctx, floor, player, {
     ctx.fillRect(-s / 2, -s / 2, s, s);
     ctx.fillStyle = '#4a3208';
     ctx.fillRect(-s / 6, -s / 6, s / 3, s / 3);
+    ctx.restore();
+  }
+
+  // Chansey's rest stop. A PLATE like the stall's, because it is the other place worth walking to,
+  // but pink and round against the stall's gold square so the two never have to be told apart by
+  // position. A spent one goes hollow — the ring stays so you remember it was there and do not
+  // walk back, which is the same job the dimmed light does in 3D.
+  if (floor.chansey && (floor.entitiesRevealed || isSeen(floor, floor.chansey.cx, floor.chansey.cy))) {
+    const [px, py] = project(floor.chansey.cx, floor.chansey.cy);
+    const rr = Math.max(3.5, scale * 1.6);
+    ctx.save();
+    ctx.translate(px, py);
+    ctx.beginPath();
+    ctx.arc(0, 0, rr + 1, 0, Math.PI * 2);
+    ctx.fillStyle = '#5c2036';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(0, 0, rr, 0, Math.PI * 2);
+    if (floor.chansey.used) {
+      ctx.strokeStyle = '#a86a80';
+      ctx.lineWidth = Math.max(1, rr * 0.34);
+      ctx.stroke();
+    } else {
+      ctx.fillStyle = '#ff9ec0';
+      ctx.fill();
+    }
     ctx.restore();
   }
 

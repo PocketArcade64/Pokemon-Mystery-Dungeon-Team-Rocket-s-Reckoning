@@ -54,6 +54,9 @@ export const uiHooks = {
   // Kecleon's shop
   shopBuy: (_itemId) => {},
   shopLeave: () => {},
+  // Chansey's rest stop
+  chanseyHeal: () => {},
+  chanseyLeave: () => {},
   // The pause map's gestures. There is no reset hook: the map has no Reset button any more, and
   // main.js resets the view every time the pause screen opens.
   mapRotate: (_delta) => {},
@@ -75,6 +78,7 @@ const SCREEN_FOR_MODE = {
   swap: 'screen-swap',
   switch: 'screen-switch',
   shop: 'screen-shop',
+  chansey: 'screen-chansey',
   end: 'screen-end',
 };
 
@@ -192,18 +196,24 @@ export function pickupPopup({ icon, name, qty = '' }, ms = 1500) {
 // ---- 3D previews (starter select + Pokedex) ----------------------------------------------------
 let starterPreview = null, dexPreview = null;
 
+// Both of these are `draggable`: they are display pieces you are inspecting, so you can turn them
+// with a finger exactly as Rumble Run's Pokedex does, and the idle spin below pauses while you do.
+// Kecleon and the two battle fighters are deliberately NOT draggable — a shopkeeper you are talking
+// to and a Pokemon mid-fight are not exhibits.
 function ensurePreviews() {
-  if (!starterPreview) starterPreview = createModelView($('starter-preview'), { frustum: 1.25 });
-  if (!dexPreview) dexPreview = createModelView($('dex-preview'), { frustum: 1.25 });
+  if (!starterPreview) starterPreview = createModelView($('starter-preview'), { frustum: 1.25, draggable: true });
+  if (!dexPreview) dexPreview = createModelView($('dex-preview'), { frustum: 1.25, draggable: true });
 }
 
 // Called from the main loop so every screen that owns a 3D canvas keeps rendering while it is up.
 export function updatePreviews(dt, mode) {
   if (mode === 'starter' && starterPreview) {
-    starterPreview.holder.rotation.y += dt * 0.7;
+    // The idle spin yields to the finger and resumes from wherever the drag left the yaw — the
+    // model is never snapped back, which is what makes turning it feel like holding the thing.
+    if (!starterPreview.dragging) starterPreview.holder.rotation.y += dt * 0.7;
     starterPreview.render();
   } else if (mode === 'dex' && dexPreview) {
-    dexPreview.holder.rotation.y += dt * 0.7;
+    if (!dexPreview.dragging) dexPreview.holder.rotation.y += dt * 0.7;
     dexPreview.render();
   } else if (mode === 'shop' && shopPreview) {
     // Kecleon does NOT spin. The starter and Pokedex previews turn because they are display
@@ -211,6 +221,10 @@ export function updatePreviews(dt, mode) {
     // revolves reads as merchandise. His yaw is set once in renderShop and left alone. Still
     // rendered every frame, because the model arrives a load after the screen opens.
     shopPreview.render();
+  } else if (mode === 'chansey' && chanseyPreview) {
+    // Same as Kecleon: no spin, but still rendered every frame because the model lands a load
+    // after the screen opens.
+    chanseyPreview.render();
   } else if (mode === 'battle') {
     updateBattleField(dt);
   }
@@ -1030,6 +1044,60 @@ export function renderEnd({ won, floorReached, caught, partyNames, abandoned = f
   ].map(([l, v]) => `<div class="stat-tile"><div class="sv">${v}</div><div class="sl">${l}</div></div>`).join('');
 }
 
+// ---- Chansey's rest stop -----------------------------------------------------------------------
+// The prompt that opens when you walk onto her mat. Like Kecleon's screen it renders her through
+// createModelView (see the WebGL-context note below), and like him she does not spin — she is
+// somebody you are talking to.
+//
+// The screen's job is to show you WHAT THE HEAL IS WORTH before you spend the floor's one use, so
+// it lists the party with their current HP. Walking away costs nothing, which is the whole reason
+// the numbers are here: finding her at full health early in a floor is information, not a decision.
+const CHANSEY_DEX = 113;
+let chanseyPreview = null;
+let chanseyModelShown = false;
+
+function ensureChanseyPreview() {
+  if (chanseyPreview) return chanseyPreview;
+  chanseyPreview = createModelView($('chansey-canvas'), { frustum: 0.95, camY: 0.72, camZ: 2.6, lookY: 0.6 });
+  return chanseyPreview;
+}
+
+export function renderChansey() {
+  const view = ensureChanseyPreview();
+  if (!chanseyModelShown) {
+    setPreviewModel(view.holder, CHANSEY_DEX, 1.15);
+    view.holder.rotation.y = 0.28;      // a slight turn, so she is not a flat front elevation
+    chanseyModelShown = true;
+  }
+
+  const p = inv.party();
+  const hurt = p.filter(m => m.hp < m.maxHp).length;
+  const fainted = p.filter(m => m.hp <= 0).length;
+
+  $('chansey-line').textContent = hurt === 0
+    ? 'Your team is already in perfect shape.'
+    : fainted > 0
+      ? `Chansey can bring your whole team back to full — including ${fainted === 1 ? 'the one who has' : `the ${fainted} who have`} fainted.`
+      : 'Chansey can restore your whole team to full HP.';
+
+  $('chansey-rows').innerHTML = p.map(m => {
+    const pct = Math.max(0, Math.round((m.hp / m.maxHp) * 100));
+    const cls = m.hp <= 0 ? ' fainted' : m.hp / m.maxHp <= 0.35 ? ' low' : '';
+    return `<div class="chansey-row${cls}">
+      <span class="cr-name">${m.name}</span>
+      <span class="cr-bar"><i style="width:${pct}%"></i></span>
+      <span class="cr-hp">${m.hp <= 0 ? 'FNT' : `${m.hp}/${m.maxHp}`}</span>
+    </div>`;
+  }).join('');
+
+  // Nothing to heal still leaves the button live, and deliberately: it spends the stop for nothing,
+  // which is the player's call to make. What it must not do is look pressable-by-default, so it
+  // drops to the secondary style and the copy stops promising anything.
+  const btn = $('btn-chansey-heal');
+  btn.textContent = hurt === 0 ? 'Rest Anyway' : 'Rest Here';
+  btn.classList.toggle('secondary', hurt === 0);
+}
+
 // ---- Kecleon's shop ----------------------------------------------------------------------------
 // Kecleon himself is rendered through createModelView, NOT a new WebGLRenderer: the page is
 // allowed exactly two live WebGL contexts (the dungeon's and modelstage's shared offscreen one),
@@ -1250,6 +1318,11 @@ export function bindUI() {
   bindFloorMapGestures();
 
   click('btn-shop-leave', () => { sfx('back'); uiHooks.shopLeave(); });
+
+  // Chansey's rest stop. The heal's own sound is played by the hook, not here, because the hook is
+  // what knows whether anything actually happened.
+  click('btn-chansey-heal', () => uiHooks.chanseyHeal());
+  click('btn-chansey-leave', () => uiHooks.chanseyLeave());
   click('btn-pause-bag', () => { sfx('select'); uiHooks.openBag(); });
   click('btn-pause-glossary', () => { sfx('select'); uiHooks.openGlossary(); });
   click('btn-pause-settings', () => { sfx('select'); uiHooks.openSettings(); });

@@ -463,6 +463,11 @@ export function sfx(name) {
     // three notes instead of five so it stays an in-battle beat rather than a fanfare.
     case 'revive':   [523, 659, 880].forEach((f, i) =>
                        tone({ freq: f, dur: 0.15, type: 'sine', gain: 0.2, delay: i * 0.1 })); break;
+    // Chansey's rest stop. Deliberately NOT 'revive' or 'victory': it is a whole party coming back
+    // to full at once, so it wants to be broader than a single Pokemon's arpeggio and softer than
+    // a fanfare — a rising major triad plus its octave, on sine, overlapping rather than stepped.
+    case 'heal':     [523, 659, 784, 1047].forEach((f, i) =>
+                       tone({ freq: f, dur: 0.42, type: 'sine', gain: 0.16, delay: i * 0.07 })); break;
     case 'stairs':   [659, 880].forEach((f, i) =>
                        tone({ freq: f, dur: 0.18, type: 'triangle', gain: 0.22, delay: i * 0.14 })); break;
     case 'victory':  [523, 659, 784, 1047, 1319].forEach((f, i) =>

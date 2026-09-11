@@ -7,7 +7,8 @@ import { createMonObject, disposeObject, preloadDex, preloadPickupModels } from 
 import { STARTER_DEX, CATALOG_BY_DEX } from './data/pokemon-catalog.js';
 import { ITEM_BY_ID, COIN_BY_ID } from './data/items.js';
 import {
-  generateFloor, buildFloor, disposeFloor, pickRunThemes, pickShopFloors, cellToWorld, cellValue,
+  generateFloor, buildFloor, disposeFloor, pickRunThemes, pickShopFloors, pickChanseyFloors,
+  atChansey, atUsedChansey, spendChansey, cellToWorld, cellValue,
   FLOOR, moveWithCollision, revealAround, revealWholeFloor, updateWilds, updateFloorDecor,
   itemAtPlayer, wildAtPlayer, atStairs, atShop, drawMap, makeTrainerFigure, STAIR_TOP, MINIMAP_CELLS,
 } from './dungeon.js';
@@ -76,6 +77,9 @@ function setMode(next, { returnTo = null } = {}) {
       break;
     case 'shop':
       ui.renderShop(shopCtx);
+      break;
+    case 'chansey':
+      ui.renderChansey();
       break;
     case 'bag':
       ui.renderBag();
@@ -149,6 +153,9 @@ function beginRun(starterDex) {
     // Which floors carry Kecleon's stall is decided ONCE, here, rather than per floor: the
     // no-two-random-stalls-in-a-row rule needs to see the whole run at once.
     shopFloors: pickShopFloors(FLOORS_PER_RUN),
+    // Chansey's rest stops, decided up front for the same reason: it is a property of the RUN, and
+    // deciding per floor would make it impossible to reason about how many a run can hold.
+    chanseyFloors: pickChanseyFloors(FLOORS_PER_RUN),
     floorIndex: -1,
     floor: null,
     party: [makeMon(starterDex)],
@@ -194,7 +201,10 @@ function enterFloor(index) {
   if (run.floor) disposeFloor(run.floor);
 
   const theme = run.themes[index];
-  const floor = generateFloor(index + 1, theme, { shop: run.shopFloors.has(index + 1) });
+  const floor = generateFloor(index + 1, theme, {
+    shop: run.shopFloors.has(index + 1),
+    chansey: run.chanseyFloors.has(index + 1),
+  });
   run.floor = floor;
   run.floorIndex = index;
   scene.add(buildFloor(floor));
@@ -665,6 +675,17 @@ function updatePlaying(dt) {
     return;
   }
 
+  // Chansey's rest stop, checked alongside the stall and for the same reason. A SPENT one takes no
+  // turn and opens nothing: it just says so, because a prompt whose only button is dead is worse
+  // than no prompt.
+  if (atChansey(floor, player)) {
+    openChansey();
+    return;
+  }
+  if (atUsedChansey(floor, player)) {
+    ui.toast('Chansey has already done all she can on this floor.');
+  }
+
   // The up-stairs, and whoever is standing on them.
   if (atStairs(floor, player)) {
     if (!floor.boss.defeated) {
@@ -724,6 +745,11 @@ function closeShop() {
   // Stepping off the blanket is what re-arms the trigger (see atShop), and closing the screen
   // leaves the player standing ON it — so the latch is left set and walking away clears it.
   setMode('playing');
+}
+
+function openChansey() {
+  if (!state.run?.floor?.chansey) return;
+  setMode('chansey', { returnTo: 'playing' });
 }
 
 // ---- Item hooks that need main's state --------------------------------------------------------
@@ -838,6 +864,36 @@ Object.assign(uiHooks, {
     if (res.ok) ui.renderShop(shopCtx);
   },
   shopLeave: closeShop,
+  // Chansey's rest stop. Heals every party member to FULL — including the fainted ones, which is
+  // the one thing medicines no longer do (see inventory.heal) and a large part of why the stop is
+  // worth walking to. It is not a Revive: a Revive is a thing you carry, and this is a place.
+  chanseyHeal: () => {
+    const floor = state.run?.floor;
+    if (!floor?.chansey || floor.chansey.used) return;
+    let healed = 0, revived = 0;
+    for (const mon of inv.party()) {
+      if (mon.hp >= mon.maxHp) continue;
+      if (mon.hp <= 0) revived++;
+      healed++;
+      mon.hp = mon.maxHp;
+    }
+    spendChansey(floor);
+    sfx('heal');
+    syncPlayerModel();            // a revived slot 0 changes who you are walking around as
+    ui.updateHUD();
+    setMode('playing');
+    ui.toast(healed === 0
+      ? 'Your team was already in perfect shape. Chansey saw you off anyway.'
+      : revived > 0
+        ? `Chansey healed your whole team — and brought ${revived} back on their feet!`
+        : 'Chansey healed your whole team to full!');
+  },
+  chanseyLeave: () => {
+    // Leaving does NOT spend her: you can walk away and come back later in the floor, which is
+    // what makes finding her early worth remembering rather than worth using on the spot.
+    sfx('back');
+    setMode('playing');
+  },
   openBag: () => setMode('bag', { returnTo: state.mode === 'pause' ? 'pause' : 'playing' }),
   closeBag: () => setMode(state.returnTo === 'pause' ? 'pause' : 'playing'),
   openGlossary: () => setMode('glossary', { returnTo: state.mode }),

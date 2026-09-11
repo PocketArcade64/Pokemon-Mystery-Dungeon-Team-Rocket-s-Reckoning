@@ -834,6 +834,37 @@
     border: 1px solid var(--edge);
     border-radius: 14px;
   }
+  /* ---- Chansey's rest stop ------------------------------------------------------------------
+     Shares .shop-head and #shop-canvas's box with Kecleon's screen: both are "an NPC's portrait
+     beside a line of their own", and they should not drift apart. */
+  #chansey-canvas {
+    width: 96px; height: 96px; flex: 0 0 auto; display: block;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid var(--edge);
+    border-radius: 14px;
+  }
+  .chansey-blurb { font-size: 1.04rem; color: var(--ink-dim); line-height: 1.45; }
+  /* One row per party member: name, HP bar, numbers. Same three-part shape as the battle boxes so
+     a glance reads the same way on both screens. */
+  .chansey-row {
+    display: flex; align-items: center; gap: 9px;
+    padding: 7px 2px;
+    border-bottom: 1px solid var(--edge);
+  }
+  .chansey-row:last-child { border-bottom: 0; }
+  .chansey-row .cr-name { flex: 1 1 auto; font-weight: 700; font-size: 1.04rem; min-width: 0; }
+  .chansey-row .cr-bar {
+    flex: 0 0 84px; height: 10px;
+    background: var(--void-2);
+    border: var(--px) solid var(--outline);
+    overflow: hidden;
+  }
+  .chansey-row .cr-bar i { display: block; height: 100%; background: var(--teal); }
+  .chansey-row.low .cr-bar i { background: var(--gold); }
+  .chansey-row.fainted .cr-bar i { background: transparent; }
+  .chansey-row .cr-hp { flex: 0 0 64px; text-align: right; font-size: 0.975rem; color: var(--ink-dim); }
+  .chansey-row.fainted .cr-name, .chansey-row.fainted .cr-hp { color: #c2566f; }
+
   .shop-purse {
     flex: 1 1 auto;
     display: flex; align-items: center; justify-content: flex-end; gap: 8px;
@@ -1877,6 +1908,29 @@
     </div>
     <div class="btn-col" style="margin-top:12px">
       <button class="btn secondary" id="btn-shop-leave">Leave</button>
+    </div>
+  </div>
+
+  <!-- ============ CHANSEY'S REST STOP ============
+       The prompt that opens on walking onto her mat. ONE use per floor, free, whole party to full
+       including fainted members — the only thing in the game that undoes a faint without a Revive.
+       Leaving costs nothing, which is why the party's HP is listed: seeing what the heal is worth
+       is the decision, and at full health the right answer is to walk away and come back.
+       Rendered by renderChansey() in ui-screens.js.
+  -->
+  <div class="screen sheet" id="screen-chansey">
+    <h2 class="screen-title">Chansey</h2>
+    <div class="shop-head">
+      <canvas id="chansey-canvas"></canvas>
+      <div class="chansey-blurb" id="chansey-line"></div>
+    </div>
+    <div class="scroll" style="min-height:0">
+      <div id="chansey-rows"></div>
+    </div>
+    <div class="setting-note">She can only do this once per floor.</div>
+    <div class="btn-col" style="margin-top:12px">
+      <button class="btn" id="btn-chansey-heal">Rest Here</button>
+      <button class="btn secondary" id="btn-chansey-leave">Not Now</button>
     </div>
   </div>
 

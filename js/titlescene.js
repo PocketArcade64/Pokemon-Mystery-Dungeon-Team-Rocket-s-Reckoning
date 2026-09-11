@@ -212,11 +212,23 @@ const BACK_Z = -8.9;
 const GAP_NDC = 0.15;       // half-width of the tunnel mouth in the back wall
 
 // Loose rubble, also placed in screen space so it stays in frame: [ndcX (portrait, wide), z,
-// width, height]. The four pieces in FRONT of the trio carry a portrait value of their own and are
-// pushed right out to the frame's edge there — a boulder that reads as foreground dressing on a
-// desktop screen stands squarely in front of Piplup's feet on a phone.
+// width, height]. The two pieces nearest the trio carry a portrait value of their own and are
+// pushed right out to the frame's edge there — a boulder that reads as dressing beside Piplup on a
+// desktop screen stands squarely in front of his feet on a phone.
+// NOTHING GOES IN FRONT OF THE TRIO (z > TRIO_Z). There used to be two pieces there, at z 1.40 and
+// 0.90, and they are what the "diagonal line above the Start Run button" turned out to be.
+//
+// The camera sits at a starter's eye line, 0.55 up, so a boulder on that strip of floor is seen
+// almost edge-on: what reaches the screen is its flat inner FACE, and at a measured luminance of
+// ~20 against a floor of ~47 that face reads as a hole rather than as a rock. One at each side of
+// the frame, both flat-topped, put a dark bar across the bottom of the shot — and because the
+// right-hand one was nearer (0.90 vs 1.40) and taller (0.40 vs 0.34), its top edge landed higher,
+// which is why the bar slanted up to the right.
+//
+// That strip is also the worst place in the frame to put dressing: it is the apron the UI's buttons
+// sit over, so anything there is either hidden by a button or fighting one. The eight pieces below
+// are all behind the trio, in the room, where the light reaches their tops.
 const RUBBLE = [
-  [[-1.02, -0.62], 1.40, 0.52, 0.34], [[1.04, 0.66], 0.90, 0.60, 0.40],
   [[-1.06, -0.78], -0.60, 0.66, 0.44], [[1.06, 0.74], -1.30, 0.54, 0.36],
   [[-0.34, -0.34], -1.80, 0.34, 0.22], [[0.36, 0.36], -2.20, 0.40, 0.26],
   [[-0.52, -0.52], -4.60, 0.62, 0.42], [[0.56, 0.56], -5.40, 0.70, 0.48],

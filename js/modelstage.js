@@ -81,8 +81,14 @@ export function renderToStage(holder, camera, aspect) {
 // A model view backed by a plain 2D canvas in the DOM. Drop-in for what createPreview used to
 // return — `.holder` to put a model in and spin, `.render()` to draw a frame — but it costs no
 // WebGL context of its own.
+// Radians of yaw per CSS pixel of drag. Straight from Rumble Run's Pokedex preview, which is the
+// feel this is meant to match: about 57 px of travel for a quarter turn, so a thumb-width flick
+// turns a model far enough to see its side and a full sweep of the screen goes most of the way
+// round.
+const DRAG_RADIANS_PER_PX = 0.013;
+
 export function createModelView(targetCanvas, {
-  frustum = 1.5, camY = 1.7, camZ = 4.4, lookY = 0.75,
+  frustum = 1.5, camY = 1.7, camZ = 4.4, lookY = 0.75, draggable = false,
 } = {}) {
   const ctx = targetCanvas.getContext('2d');
   const holder = new THREE.Group();
@@ -108,5 +114,47 @@ export function createModelView(targetCanvas, {
     ctx.drawImage(r.canvas, r.sx, r.sy, r.sw, r.sh, 0, 0, bw, bh);
   }
 
-  return { holder, camera, render, resize: render };
+  const view = { holder, camera, render, resize: render, dragging: false };
+
+  // DRAG TO SPIN, as Rumble Run's Pokedex does it: while a finger is down the yaw follows it, and
+  // on release the caller's idle spin picks up from wherever it was left. There is no snap-back
+  // and no inertia — `holder.rotation.y` is the only state, so releasing mid-turn simply leaves it
+  // there. The caller owns the idle spin and is responsible for pausing it on `view.dragging`
+  // (see updatePreviews); doing it here would mean this module knowing each view's spin rate.
+  //
+  // The delta is tracked from `clientX` rather than read off `e.movementX`. Rumble Run used
+  // movementX, but this game is built for a phone first, and movementX is a MouseEvent property
+  // that touch-derived pointer events do not reliably populate on iOS Safari — there it reads 0
+  // and the model never turns. A tracked delta behaves identically under a mouse.
+  if (draggable) {
+    // The page is `touch-action: none` globally, but say it here too: this is the one element whose
+    // behaviour depends on it, and it must not start a scroll or a pinch instead of a drag.
+    targetCanvas.style.touchAction = 'none';
+    targetCanvas.style.cursor = 'grab';
+    let lastX = 0;
+    targetCanvas.addEventListener('pointerdown', (e) => {
+      view.dragging = true;
+      lastX = e.clientX;
+      targetCanvas.style.cursor = 'grabbing';
+      // Capture, so a drag that wanders off the small canvas keeps turning the model instead of
+      // stopping dead at the edge.
+      try { targetCanvas.setPointerCapture(e.pointerId); } catch { /* not capturable: no matter */ }
+    });
+    targetCanvas.addEventListener('pointermove', (e) => {
+      if (!view.dragging) return;
+      holder.rotation.y += (e.clientX - lastX) * DRAG_RADIANS_PER_PX;
+      lastX = e.clientX;
+    });
+    const endDrag = () => {
+      view.dragging = false;
+      targetCanvas.style.cursor = 'grab';
+    };
+    targetCanvas.addEventListener('pointerup', endDrag);
+    targetCanvas.addEventListener('pointercancel', endDrag);
+    // A pointerup that lands outside the canvas after capture was lost would otherwise leave the
+    // view stuck in `dragging` and the idle spin switched off for good.
+    targetCanvas.addEventListener('lostpointercapture', endDrag);
+  }
+
+  return view;
 }
