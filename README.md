@@ -40,7 +40,7 @@ Please change the Pokédex to be exactly like Pokemon Rumble Run. Please just lo
 
 ______________________________
 
-Please enhance the title screen to show a POV of the camera eye level with piplup, turtwig, and Chimchar looking towards the camera in a cave and behind them is Weezing, Arbok, and meowth peeking from around 3 different corners in the cave. Piplup, turtwig, and Chimchar turn around one by one which causes Weezing, Arbok, and meowth to hide behind the objects in the cave but they reemerge again once Piplup, turtwig, and Chimchar turn around again to face the camera.
+✅ Please enhance the title screen to show a POV of the camera eye level with piplup, turtwig, and Chimchar looking towards the camera in a cave and behind them is Weezing, Arbok, and meowth peeking from around 3 different corners in the cave. Piplup, turtwig, and Chimchar turn around one by one which causes Weezing, Arbok, and meowth to hide behind the objects in the cave but they reemerge again once Piplup, turtwig, and Chimchar turn around again to face the camera.
 
 ___________________________
 
@@ -81,11 +81,11 @@ When the poke ball releases from your throw, the shrinking circle around the pok
 
 __________________
 
-🟨 When you click on your bag and you can see your pokemon team, make their models be angled 45 degrees facing towards the left. Also keep all the current pokemon info but make all 6 pokemon in your be able to fit on one row.
+✅ When you click on your bag and you can see your pokemon team, make their models be angled 45 degrees facing towards the left. Also keep all the current pokemon info but make all 6 pokemon in your be able to fit on one row.
 
-🟨 Below the map, make the floor and dungeon name all fit on one line and be centered underneath the map (decrease the font if necessary) - for example: “B1F, Cavern”
+✅ Below the map, make the floor and dungeon name all fit on one line and be centered underneath the map (decrease the font if necessary) - for example: “B1F, Cavern”
 
-🟨 When transitioning between floors (and also after you select you starter), you already show exactly the same format as Pokemon Mystery Dungeon - Dungeon name on first line then below that is the floor number. - I want you to now make the text fade in then fade out to cleanly transition into the new floor. This should all be on a completely black screen while the text is shown on screen just like in Pokemon Mystery Dungeon.
+✅ When transitioning between floors (and also after you select you starter), you already show exactly the same format as Pokemon Mystery Dungeon - Dungeon name on first line then below that is the floor number. - I want you to now make the text fade in then fade out to cleanly transition into the new floor. This should all be on a completely black screen while the text is shown on screen just like in Pokemon Mystery Dungeon.
 
 _____________________
 
@@ -95,9 +95,9 @@ After you beat a team rocket grunt, do you advise that the player is given a cho
 
 _________________
 
-In the pause menu, change “Config” to Settings.
+✅ In the pause menu, change “Config” to Settings.
 
-As part of the Tap Move controls, also allow the user to hold in a direction and your pokemon follows your finger.
+✅ As part of the Tap Move controls, also allow the user to hold in a direction and your pokemon follows your finger.
 
 
 
