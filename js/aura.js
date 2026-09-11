@@ -22,7 +22,15 @@ export const AURA_COLOR = 0xc264f5;
 // at full width the ring runs off both sides and gets clipped mid-arc, which reads as a rendering
 // fault rather than as an aura. Squeezing width rather than scaling the whole group keeps the
 // puffs rising past the creature's shoulders, which is the part that reads as smoke.
-export function makeAura(height = 0.85, { spread = 1 } = {}) {
+//
+// `ring` draws the flat disc on the ground. It earns its place in the dungeon — from a diagonal
+// overhead camera it is the one part of the aura that is never hidden behind the creature, which
+// is why it exists at all — and on the battle field it sits under a fighter that has no real
+// ground, so it reads as part of the cloud. The catch scene is the one place it does NOT work:
+// that camera is almost at eye level on a lit ground plane, so the disc flattens into a painted
+// purple circle lying on the grass under the Pokemon rather than anything belonging to it, and it
+// is drawn right where the capture and target rings land. Passed `false` there.
+export function makeAura(height = 0.85, { spread = 1, ring = true } = {}) {
   const g = new THREE.Group();
   const s = height / 0.85;
   const w = s * spread;
@@ -37,15 +45,17 @@ export function makeAura(height = 0.85, { spread = 1 } = {}) {
     puff.position.set(Math.cos(a) * orbit, height * (0.5 + Math.sin(a * 2) * 0.22), Math.sin(a) * orbit);
     g.add(puff);
   }
-  const ring = new THREE.Mesh(
-    new THREE.RingGeometry(0.55 * w, 0.88 * w, 24),
-    new THREE.MeshBasicMaterial({
-      color: AURA_COLOR, transparent: true, opacity: 0.6, side: THREE.DoubleSide, depthWrite: false,
-    }),
-  );
-  ring.rotation.x = -Math.PI / 2;
-  ring.position.y = 0.05;
-  g.add(ring);
+  if (ring) {
+    const disc = new THREE.Mesh(
+      new THREE.RingGeometry(0.55 * w, 0.88 * w, 24),
+      new THREE.MeshBasicMaterial({
+        color: AURA_COLOR, transparent: true, opacity: 0.6, side: THREE.DoubleSide, depthWrite: false,
+      }),
+    );
+    disc.rotation.x = -Math.PI / 2;
+    disc.position.y = 0.05;
+    g.add(disc);
+  }
   return g;
 }
 

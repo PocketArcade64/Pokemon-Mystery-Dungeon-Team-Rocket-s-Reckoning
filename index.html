@@ -150,11 +150,21 @@
     background: rgba(8,10,20,0.72);
   }
 
+  /* ONE tight hard drop, and no blur. This used to be
+     `0 3px 0 var(--gold-dark), 0 4px 8px rgba(0,0,0,0.4)` — a hard gold-dark copy of the glyph and
+     a soft black blur at almost the same offset, stacked. At this size (up to 2.21rem) on a pixel
+     font whose strokes are a few pixels wide, gold-dark is close enough in luminance to gold that
+     the hard copy read as a SECOND set of letters rather than as a shadow, and the blur then filled
+     in the counters — the enclosed gaps inside e, o, p, S — so the title came out muddy and
+     genuinely hard to read. Worst on the longest one, "Kecleon's Shop".
+     `0 2px 0 rgba(0,0,0,0.5)` is what .starter-name below already uses for gold-on-dark heading
+     text, so this makes the two consistent instead of introducing a third treatment. Keep any
+     replacement HARD (no blur) and clearly darker than --gold. */
   .screen-title {
     font-weight: 700;
     font-size: clamp(1.495rem, 6.24vw, 2.21rem); line-height: 1.35;
     color: var(--gold);
-    text-shadow: 0 3px 0 var(--gold-dark), 0 4px 8px rgba(0,0,0,0.4);
+    text-shadow: 0 2px 0 rgba(0,0,0,0.5);
     margin: 4px 0 12px; text-align: center; flex: 0 0 auto;
   }
   .screen-sub { color: var(--ink-dim); font-size: 1.105rem; text-align: center; margin: -4px 0 12px; }
@@ -576,11 +586,21 @@
   .team-slot .type-badges img { height: 17px; }
 
   /* ---- Pause screen ---------------------------------------------------------------------------
-     Abandon Run lives in the top-right CORNER, absolutely placed against #screen-pause's own box.
-     The title is pushed down clear of it rather than sharing its line: "Paused" is centred and the
-     floor summary under it is a full line of text, so a corner button on the same row would either
-     push the title off-centre or overlap the end of that line. The map panel is `flex: 1 1 auto`
-     and simply gives up the 46px, which the removed zoom-button row more than paid for. */
+     Abandon Run lives in the top-right CORNER, absolutely placed against #screen-pause's own box,
+     and its label is stacked on TWO lines ("Abandon" / "Run"). Two lines is what lets "Paused" sit
+     at the very top of the screen: on one line the button was 148px wide, and the only way to keep
+     the centred title off it was to push the title down past it (this section used to carry
+     `#screen-pause .screen-title { margin-top: 46px }`). Stacked it is 92px wide, and a centred
+     "Paused" clears it by 28px even at 320px, the narrowest phone.
+
+     --quit-w / --quit-h are the box the corner button occupies, declared together because that is
+     one measurement. Both are FIXED, and safely so: the button's size comes from .btn.small's
+     1.17rem, the line-height and padding below, and rem is the browser default here (no
+     `html { font-size }` override, nothing viewport-derived), so it does not change with screen
+     width. --quit-w has ~10px of slack over the widest label ("Confirm?" / "End Run" measures
+     82px); do not shrink it to the natural width, since that is what stops arming from resizing
+     the button under the finger. --quit-h keeps the floor summary below the button, see below. */
+  #screen-pause { --quit-w: 92px; --quit-h: 63px; }
   #btn-quit {
     position: absolute;
     top: calc(var(--sat) + 10px); right: calc(var(--sar) + 12px);
@@ -588,16 +608,35 @@
        containing block — so without this the "corner" button stretched the full width of the
        screen. `width: auto` lets it size to its label instead. */
     width: auto;
-    /* ...and a fixed width on top, so arming it (label "Abandon Run" -> "Confirm?") does not
-       resize the button under the finger that is about to press it again. */
-    min-width: 148px;
+    /* ...and a fixed width on top, so arming it does not resize the button under the finger that
+       is about to press it again. Both labels are two lines for the same reason — the armed one is
+       "Confirm?" / "End Run", not a one-line "Confirm?", so the HEIGHT is stable too. */
+    min-width: var(--quit-w);
+    text-align: center;
+    /* Tighter than .btn's 1.4: two stacked lines at 1.4 make the corner button taller than the
+       title beside it. */
+    line-height: 1.2;
+    padding: 0.45rem 0.7rem;
+    /* The armed state adds a 2px gold border and .btn declares `border: 0`, so arming it used to
+       grow the button by 4px in both axes — the one thing the fixed min-width above exists to
+       prevent, reintroduced on the other axis. Reserve the border now and only recolour it later. */
+    border: 2px solid transparent;
+    box-sizing: border-box;
   }
-  #screen-pause .screen-title { margin-top: 46px; }
+  /* The title needs nothing: "Paused" is one short word, so at full width and centred on the SCREEN
+     it clears the button on its own. The floor summary under it does not — it is a full line of
+     text at 1.105rem and reserving the button's column would only wrap it onto two or three lines
+     — so it starts BELOW the button instead. This replaces .screen-sub's own -4px margin: clear the
+     button's bottom edge, less the ~42px the title already occupies above this line. */
+  #screen-pause .screen-sub {
+    margin-top: calc(var(--sat) + var(--quit-h) - 42px);
+  }
   /* Armed: one press in, one press from ending the run. Gold-edged and brighter, so the state is
      not carried by the label alone. */
   #btn-quit.armed {
     background: linear-gradient(180deg, #ffb4a8, #ff3b30);
-    border: 2px solid var(--gold);
+    /* Colour only — the 2px is already reserved above, so arming does not resize the button. */
+    border-color: var(--gold);
     box-shadow: 0 4px 0 var(--danger-dark);
   }
 
@@ -1292,7 +1331,9 @@
     <!-- Top-right corner, diagonally opposite Resume, and it takes TWO presses: the first arms it
          and swaps the label to "Confirm?", the second ends the run. renderPause() disarms it every
          time the screen opens, and it disarms itself after a few seconds. -->
-    <button class="btn danger small" id="btn-quit">Abandon Run</button>
+    <!-- The label is stacked on two lines. ui-screens.js rewrites it with innerHTML, not
+         textContent, for the same reason — see disarmQuit. -->
+    <button class="btn danger small" id="btn-quit">Abandon<br>Run</button>
     <h2 class="screen-title">Paused</h2>
     <div class="screen-sub" id="pause-sub">-</div>
     <!-- The canvas is absolutely positioned inside the panel on purpose. As a normal grid item

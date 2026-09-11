@@ -765,6 +765,22 @@ export function flashCatchGrade(label) {
   el.classList.add('pop');
 }
 
+// Wipe the grade, called by main.js when a NEW encounter starts.
+//
+// This is not housekeeping, it fixes a real bug: the last throw's award flashed up again over the
+// next Pokemon you met and then vanished. `gradePop` ends at opacity 0 and holds there with
+// `forwards`, so leaving `.pop` on the element looks harmless — but a CSS animation inside a
+// `display: none` subtree is CANCELLED, and the catch screen is hidden between encounters. Showing
+// it again therefore RESTARTED the animation from 0% and replayed the whole pop, stale text and
+// all. Clearing the class is what actually matters; emptying the text is belt and braces for any
+// future path that shows the screen without an animation to restart.
+export function resetCatchGrade() {
+  const el = $('catch-grade');
+  if (!el) return;
+  el.classList.remove('pop');
+  el.innerHTML = '';
+}
+
 // ---- Swap or release --------------------------------------------------------------------------
 let swapSelected = null;
 
@@ -878,12 +894,20 @@ const QUIT_ARM_MS = 4000;
 let quitArmed = false;
 let quitTimer = null;
 
+// Both labels are two lines, and both are set with innerHTML rather than textContent: the button
+// sits in the screen's top-right corner and is kept narrow so the title can sit at the very top
+// beside it (see --quit-w), which only works with the words stacked. The ARMED label is two lines
+// as well — "Confirm?" over "End Run" rather than a bare "Confirm?" — so arming does not change
+// the button's height under the finger that is about to press it again.
+const QUIT_LABEL = 'Abandon<br>Run';
+const QUIT_LABEL_ARMED = 'Confirm?<br>End Run';
+
 function disarmQuit() {
   quitArmed = false;
   clearTimeout(quitTimer);
   const b = $('btn-quit');
   if (!b) return;
-  b.textContent = 'Abandon Run';
+  b.innerHTML = QUIT_LABEL;
   b.classList.remove('armed');
 }
 
@@ -1018,7 +1042,7 @@ export function bindUI() {
     if (!quitArmed) {
       quitArmed = true;
       const b = $('btn-quit');
-      b.textContent = 'Confirm?';
+      b.innerHTML = QUIT_LABEL_ARMED;
       b.classList.add('armed');
       sfx('select');
       quitTimer = setTimeout(disarmQuit, QUIT_ARM_MS);

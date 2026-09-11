@@ -795,15 +795,21 @@ function fitMonToFrame(group) {
   // its own aura — and then shrink the aura with it, every encounter, compounding nothing but a
   // smaller Pokemon.
   //
-  // Width: it is solved FROM that measurement. makeAura's ring is 2.07 * height across at
+  // Width: it is solved FROM that measurement. makeAura's cloud spans roughly 2.07 * height at
   // spread 1, which is sized for a creature standing on an open dungeon floor; here it has to land
   // about a quarter wider than the actual body, whatever shape the species turned out to be, or a
-  // wide one (Kabuto, Wailmer) wears its aura inside itself and a tall thin one is lost in a disc.
+  // wide one (Kabuto, Wailmer) wears its aura inside itself and a tall thin one is lost in it.
   // It is a child of the group, so monFit and every scale updateMon applies — the dodge, the
   // attack lunge, the shrink into the ball — carry it along without any code of their own.
+  //
+  // `ring: false`: no ground disc here, unlike the dungeon and the battle field. This camera is
+  // almost at eye level over a lit ground plane, so the disc flattened into a purple circle
+  // painted on the grass under the Pokemon rather than anything attached to it — and it landed in
+  // the same place as the capture and target rings, which are what the throw is aimed at. The
+  // puffs alone carry the marker here.
   if (s.shadow && !s.monAura) {
     const spread = THREE.MathUtils.clamp(1.25 * Math.max(0.2, _fitSize.x) / (2.07 * s.monHeight), 0.4, 1);
-    s.monAura = makeAura(s.monHeight, { spread });
+    s.monAura = makeAura(s.monHeight, { spread, ring: false });
     group.add(s.monAura);
   }
 }

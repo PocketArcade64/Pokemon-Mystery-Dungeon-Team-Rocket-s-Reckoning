@@ -458,6 +458,10 @@ function beginCatch(wild) {
     return;
   }
   catchCtx = { wild };
+  // Wipe the LAST encounter's throw grade before this one opens. Done here and not in
+  // renderCatchUI, which also runs mid-encounter (every throw, every ball swap) and would cut a
+  // live grade short. See resetCatchGrade for why a finished animation still needs clearing.
+  ui.resetCatchGrade();
   startCatch({
     dex: wild.dex,
     ballId,
