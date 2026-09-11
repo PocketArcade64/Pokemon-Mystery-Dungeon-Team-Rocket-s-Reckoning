@@ -10,7 +10,7 @@ import { ITEMS, ITEM_BY_ID, BALL_IDS } from './data/items.js';
 import { CATALOG_BY_DEX } from './data/pokemon-catalog.js';
 import { typeIconPath } from './data/type-chart.js';
 import { createModelView } from './modelstage.js';
-import { setPreviewModel, hasModelForDex } from './models.js';
+import { setPreviewModel, hasModelForDex, KECLEON_MODEL } from './models.js';
 import { portraitFor, preloadPortraits } from './portraits.js';
 import * as inv from './inventory.js';
 import { sfx, applyVolumes } from './audio.js';
@@ -40,6 +40,15 @@ export const uiHooks = {
   openSwitch: () => {},
   chooseSwitch: (_index) => {},
   newRun: () => {},
+  // Kecleon's shop
+  shopBuy: (_itemId) => {},
+  shopLeave: () => {},
+  // The pause map's view controls
+  mapRotate: (_delta) => {},
+  mapZoom: (_factor, _originX, _originY) => {},
+  mapPan: (_dx, _dy) => {},
+  mapReset: () => {},
+  mapRedraw: () => {},
 };
 
 const SCREEN_FOR_MODE = {
@@ -54,6 +63,7 @@ const SCREEN_FOR_MODE = {
   catch: 'screen-catch',
   swap: 'screen-swap',
   switch: 'screen-switch',
+  shop: 'screen-shop',
   end: 'screen-end',
 };
 
@@ -105,6 +115,32 @@ export function hideBanner() {
   $('banner').classList.remove('visible');
 }
 
+// ---- Pickup popup ------------------------------------------------------------------------------
+// What you picked up, shown as its own PIXEL SPRITE rather than as a line of toast text.
+//
+// This exists because of the present. Every non-ball pickup on the floor is now a wrapped gift box,
+// which deliberately gives nothing away about what is inside it — so the moment of picking it up
+// is the moment you find out, and a sprite is how the game says it everywhere else (the bag, the
+// glossary, the ball picker). `qty` carries the count for a ball lot ("x4") or a coin's value
+// ("+40"), and is blank for a single item.
+//
+// It floats above the toast slot rather than replacing it: toast is still what reports things the
+// player DID (used an item, a Pokemon got away), and the two can legitimately land together.
+let pickupTimer = null;
+export function pickupPopup({ svg, name, qty = '' }, ms = 1500) {
+  const el = $('pickup-pop');
+  el.innerHTML = `<div class="pickup-icon">${svg}</div>`
+    + `<div class="pickup-text"><span class="pickup-name">${name}</span>`
+    + (qty ? `<span class="pickup-qty">${qty}</span>` : '') + '</div>';
+  // Restart the rise-and-fade animation even when one is already running: two pickups a few
+  // hundred ms apart (walking through a cluster of coins) must not leave the second one static.
+  el.classList.remove('show');
+  void el.offsetWidth;
+  el.classList.add('show');
+  clearTimeout(pickupTimer);
+  pickupTimer = setTimeout(() => el.classList.remove('show'), ms);
+}
+
 // ---- 3D previews (starter select + Pokedex) ----------------------------------------------------
 let starterPreview = null, dexPreview = null;
 
@@ -121,6 +157,9 @@ export function updatePreviews(dt, mode) {
   } else if (mode === 'dex' && dexPreview) {
     dexPreview.holder.rotation.y += dt * 0.7;
     dexPreview.render();
+  } else if (mode === 'shop' && shopPreview) {
+    shopPreview.holder.rotation.y += dt * 0.5;
+    shopPreview.render();
   } else if (mode === 'battle') {
     updateBattleField(dt);
   }
@@ -178,6 +217,7 @@ export function updateHUD() {
 
   const total = Object.values(run.bag).reduce((s, n) => s + n, 0);
   $('bag-count').textContent = String(total);
+  $('coin-count').textContent = String(inv.coins());
 
   const lead = inv.partyAlive()[0] || inv.party()[0];
   if (lead) {
@@ -689,12 +729,148 @@ export function renderEnd({ won, floorReached, caught, partyNames, abandoned = f
   ].map(([l, v]) => `<div class="stat-tile"><div class="sv">${v}</div><div class="sl">${l}</div></div>`).join('');
 }
 
+// ---- Kecleon's shop ----------------------------------------------------------------------------
+// Kecleon himself is rendered through createModelView, NOT a new WebGLRenderer: the page is
+// allowed exactly two live WebGL contexts (the dungeon's and modelstage's shared offscreen one),
+// and a third gets the dungeon's killed by the browser. See js/modelstage.js.
+let shopPreview = null;
+let shopModelShown = false;
+
+function ensureShopPreview() {
+  if (shopPreview) return shopPreview;
+  shopPreview = createModelView($('shop-canvas'), { frustum: 0.95, camY: 0.72, camZ: 2.6, lookY: 0.6 });
+  return shopPreview;
+}
+
+export function renderShop(ctx) {
+  if (!ctx) return;
+  const view = ensureShopPreview();
+  if (!shopModelShown) {
+    // Loaded straight from its path rather than through a dex lookup: Kecleon is not in the Quest
+    // roster or POKEMON_CATALOG, he is an NPC.
+    setPreviewModel(view.holder, null, 1.15, KECLEON_MODEL);
+    shopModelShown = true;
+  }
+  $('shop-coins').textContent = String(inv.coins());
+
+  // SOLD OUT and CAN'T AFFORD are different states and must not look the same. Sold out is gone,
+  // so it is greyed right out; too expensive is still on the shelf, so the row stays in full colour
+  // with its price in red and the shortfall spelled out under the name. Both are disabled — but
+  // greyscaling an unaffordable row would wash the red price out, which is the one thing on it that
+  // explains why it cannot be pressed.
+  const rows = ctx.stock.map(line => {
+    const item = ITEM_BY_ID.get(line.itemId);
+    const sold = line.stock <= 0;
+    const short = !sold && inv.coins() < line.price;
+    const cls = sold ? ' sold' : short ? ' short' : '';
+    const note = sold ? 'Sold out'
+      : short ? `${line.price - inv.coins()} coins short` : `${line.stock} left`;
+    return `<button class="shop-row${cls}" data-item="${item.id}" ${sold || short ? 'disabled' : ''}>
+      <span class="shop-ico">${item.svg}</span>
+      <span class="shop-body">
+        <span class="shop-name">${item.name}</span>
+        <span class="shop-stock">${note}</span>
+      </span>
+      <span class="shop-price">${line.price}</span>
+    </button>`;
+  }).join('');
+  const grid = $('shop-rows');
+  grid.innerHTML = rows;
+  for (const btn of grid.querySelectorAll('.shop-row')) {
+    btn.addEventListener('click', () => uiHooks.shopBuy(btn.dataset.item));
+  }
+}
+
 // ---- Pause ------------------------------------------------------------------------------------
 export function renderPause() {
   const run = state.run;
   $('pause-sub').textContent = run
     ? `B${run.floorIndex + 1}F - ${run.floor.theme.name} - ${inv.partyAlive().length}/${inv.party().length} standing`
     : '';
+}
+
+// ---- The pause map's rotate / zoom / pan gestures ----------------------------------------------
+// One-finger drag pans, two-finger pinch zooms and twists, and the buttons under the map do the
+// same things discoverably — the gestures alone would be invisible to anyone who did not try them,
+// and the buttons alone would feel stiff on a phone.
+function bindFloorMapGestures() {
+  const el = $('floormap');
+  const pointers = new Map();
+  let lastMid = null, lastSpread = 0, lastAngle = 0;
+
+  const mid = () => {
+    const pts = [...pointers.values()];
+    return {
+      x: pts.reduce((s, p) => s + p.x, 0) / pts.length,
+      y: pts.reduce((s, p) => s + p.y, 0) / pts.length,
+    };
+  };
+  // The canvas is 620 backing pixels inside a CSS box of whatever size the panel resolved to, and
+  // object-fit:contain letterboxes it. Gesture deltas have to be converted into canvas pixels or a
+  // drag moves the map by the wrong amount on every screen size.
+  const toCanvas = (d) => {
+    const r = el.getBoundingClientRect();
+    const shown = Math.min(r.width, r.height) || 1;
+    return d * (el.width / shown);
+  };
+
+  el.addEventListener('pointerdown', (e) => {
+    // Capture so a drag that leaves the canvas keeps panning instead of stopping dead at the edge.
+    // Guarded because it throws on a pointer id the element does not actually own, and losing the
+    // capture is survivable while losing the whole gesture handler is not.
+    try { el.setPointerCapture(e.pointerId); } catch { /* drag still works, just not off-canvas */ }
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    lastMid = mid();
+    if (pointers.size === 2) {
+      const [a, b] = [...pointers.values()];
+      lastSpread = Math.hypot(a.x - b.x, a.y - b.y);
+      lastAngle = Math.atan2(b.y - a.y, b.x - a.x);
+    }
+  });
+
+  el.addEventListener('pointermove', (e) => {
+    if (!pointers.has(e.pointerId)) return;
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const m = mid();
+    if (pointers.size >= 2) {
+      const [a, b] = [...pointers.values()];
+      const spread = Math.hypot(a.x - b.x, a.y - b.y);
+      const angle = Math.atan2(b.y - a.y, b.x - a.x);
+      if (lastSpread > 8 && spread > 8) {
+        const r = el.getBoundingClientRect();
+        // Zoom about the pinch's own midpoint, expressed relative to the canvas centre — the same
+        // frame uiHooks.mapZoom treats its origin in.
+        uiHooks.mapZoom(spread / lastSpread,
+          toCanvas(m.x - (r.left + r.width / 2)), toCanvas(m.y - (r.top + r.height / 2)));
+        // A twist of the two fingers rotates. Unwrapped through atan2's +-PI seam, or a small
+        // twist across it spins the map most of the way round.
+        let d = angle - lastAngle;
+        while (d > Math.PI) d -= Math.PI * 2;
+        while (d < -Math.PI) d += Math.PI * 2;
+        uiHooks.mapRotate(d);
+      }
+      lastSpread = spread;
+      lastAngle = angle;
+    } else if (lastMid) {
+      uiHooks.mapPan(toCanvas(m.x - lastMid.x), toCanvas(m.y - lastMid.y));
+    }
+    lastMid = m;
+  });
+
+  const release = (e) => {
+    pointers.delete(e.pointerId);
+    lastMid = pointers.size ? mid() : null;
+    if (pointers.size < 2) lastSpread = 0;
+  };
+  el.addEventListener('pointerup', release);
+  el.addEventListener('pointercancel', release);
+
+  el.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const r = el.getBoundingClientRect();
+    uiHooks.mapZoom(e.deltaY < 0 ? 1.12 : 1 / 1.12,
+      toCanvas(e.clientX - (r.left + r.width / 2)), toCanvas(e.clientY - (r.top + r.height / 2)));
+  }, { passive: false });
 }
 
 export function boot(hide = true) { $('boot').classList.toggle('hidden', hide); }
@@ -717,8 +893,20 @@ export function bindUI() {
 
   click('btn-bag', () => { sfx('select'); uiHooks.openBag(); });
   click('btn-pause', () => { sfx('select'); uiHooks.openPause(); });
+  // Tapping the minimap opens the pause screen, which is where the full floor map lives. The
+  // minimap only shows a 34-cell window, so "I want to see the rest of it" is the obvious thing
+  // to want when you look at it.
+  click('minimap-wrap', () => { sfx('select'); uiHooks.openPause(); });
 
   click('btn-resume', () => { sfx('confirm'); uiHooks.resume(); });
+  click('btn-map-rot-l', () => { sfx('select'); uiHooks.mapRotate(-Math.PI / 8); });
+  click('btn-map-rot-r', () => { sfx('select'); uiHooks.mapRotate(Math.PI / 8); });
+  click('btn-map-zoom-in', () => { sfx('select'); uiHooks.mapZoom(1.35); });
+  click('btn-map-zoom-out', () => { sfx('select'); uiHooks.mapZoom(1 / 1.35); });
+  click('btn-map-reset', () => { sfx('back'); uiHooks.mapReset(); });
+  bindFloorMapGestures();
+
+  click('btn-shop-leave', () => { sfx('back'); uiHooks.shopLeave(); });
   click('btn-pause-bag', () => { sfx('select'); uiHooks.openBag(); });
   click('btn-pause-glossary', () => { sfx('select'); uiHooks.openGlossary(); });
   click('btn-pause-settings', () => { sfx('select'); uiHooks.openSettings(); });

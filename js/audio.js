@@ -38,6 +38,11 @@ const TRACKS = {
   // through playMusicExclusive(), so the floor or battle theme that was running when the party
   // went down is stopped and nothing can start again until the player leaves the end screen.
   lose:      { file: 'You Lose.mp3' },                             // any run ending in defeat
+  // Kecleon's stall. Deliberately NOT `resume`: the shop is a place you step into, and its theme
+  // is meant to start at the top every time you walk up to him, the way a shop's music does in
+  // Mystery Dungeon. It is also the only track that interrupts a floor theme without a fight, so
+  // the floor theme's own `resume` is what puts you back where you were on the way out.
+  kecleon:   { file: "25. Kecleon's Shop.mp3" },
   // Floor themes, by theme id
   verdant:   { file: '29. Apple Woods.mp3', resume: true },              // Verdant Forest
   rocky:     { file: '90. Aegis Cave.mp3', resume: true },               // Rocky Cavern
@@ -276,6 +281,8 @@ export function musicForMode(mode, { themeId = null, battleKind = null } = {}) {
       return 'wild';
     case 'catch':
       return 'wild';                    // the minigame follows straight on from a wild encounter
+    case 'shop':
+      return 'kecleon';
     default:
       return currentKey;
   }
@@ -292,6 +299,7 @@ const SFX_FILES = {
   stairs: 'SE_ACT_STAIRS_DOWN.wav',
   evolve: '213. Evolution.mp3',
   join:   '208. Pokémon Joins.mp3',
+  money:  'SE_ACT_MONEY.wav',
 };
 
 const sfxBuffers = new Map();     // name -> AudioBuffer once decoded
@@ -378,6 +386,13 @@ export function sfx(name) {
     case 'back':     tone({ freq: 400, endFreq: 240, dur: 0.12, type: 'triangle', gain: 0.2 }); break;
     case 'pickup':   tone({ freq: 880, dur: 0.07, gain: 0.2 });
                      tone({ freq: 1320, dur: 0.1, gain: 0.18, delay: 0.07 }); break;
+    // Only the fallback: SE_ACT_MONEY.wav in SFX_FILES is what actually plays on a coin. Two
+    // bright metallic pings a hair apart, so a coin never sounds like a plain 'pickup'.
+    case 'money':    tone({ freq: 1560, dur: 0.06, type: 'triangle', gain: 0.2 });
+                     tone({ freq: 2340, dur: 0.09, type: 'triangle', gain: 0.16, delay: 0.05 }); break;
+    // Buying something from Kecleon: the money ping is the sample, this is the till closing after.
+    case 'buy':      tone({ freq: 700, endFreq: 1400, dur: 0.12, type: 'triangle', gain: 0.22 });
+                     tone({ freq: 1050, dur: 0.14, type: 'triangle', gain: 0.18, delay: 0.1 }); break;
     case 'hit':      noise({ dur: 0.14, gain: 0.22, filterHz: 900 });
                      tone({ freq: 220, endFreq: 110, dur: 0.12, gain: 0.16 }); break;
     case 'superhit': noise({ dur: 0.2, gain: 0.28, filterHz: 1800 });

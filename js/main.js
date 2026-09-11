@@ -3,13 +3,13 @@
 import * as THREE from 'three';
 import { state, makeMon, saveSettings, saveStats, recordDex, FLOORS_PER_RUN, MAX_PARTY } from './state.js';
 import { renderer, scene, camera, canvas, followCamera, resetCameraFollow, onViewportChange } from './three-setup.js';
-import { createMonObject, disposeObject, preloadDex } from './models.js';
+import { createMonObject, disposeObject, preloadDex, preloadPickupModels } from './models.js';
 import { STARTER_DEX, CATALOG_BY_DEX } from './data/pokemon-catalog.js';
-import { ITEM_BY_ID } from './data/items.js';
+import { ITEM_BY_ID, COIN_BY_ID } from './data/items.js';
 import {
-  generateFloor, buildFloor, disposeFloor, pickRunThemes, cellToWorld, cellValue, FLOOR,
-  moveWithCollision, revealAround, updateWilds, updateFloorDecor, itemAtPlayer, wildAtPlayer,
-  atStairs, drawMap, makeTrainerFigure,
+  generateFloor, buildFloor, disposeFloor, pickRunThemes, pickShopFloors, cellToWorld, cellValue,
+  FLOOR, moveWithCollision, revealAround, revealWholeFloor, updateWilds, updateFloorDecor,
+  itemAtPlayer, wildAtPlayer, atStairs, atShop, drawMap, makeTrainerFigure, MINIMAP_CELLS,
 } from './dungeon.js';
 import { createInput } from './movement.js';
 import { createBattle, generateGruntTeam, generateGiovanniTeam, wildEnemyTeam } from './battle.js';
@@ -23,11 +23,21 @@ import { unlockAudio, playMusic, playMusicExclusive, releaseMusicLock, musicForM
 
 const PLAYER_SPEED = 4.7;
 const player = { x: 0, z: 0 };
+// The last direction the player actually moved in, in the same angle convention the player model's
+// rotation.y uses (atan2(dirX, dirZ)). The minimap's green arrow is drawn from this, so it has to
+// PERSIST when movement stops — an arrow that snapped back to north the moment you let go of the
+// joystick would be worse than no arrow at all.
+let playerHeading = 0;
 let playerObj = null, playerObjDex = null;
 let elapsed = 0;
 let battle = null;
 let battleCtx = null;      // { kind, wild }
 let catchCtx = null;       // { wild }
+
+// The pause map's own view controls: rotation on top of the fixed view orientation, zoom, and pan.
+// Reset every time the pause screen opens, so it always starts framed the same way the minimap is.
+const mapView = { rot: 0, zoom: 1, panX: 0, panY: 0 };
+export function resetMapView() { mapView.rot = 0; mapView.zoom = 1; mapView.panX = 0; mapView.panY = 0; }
 
 // ---- Mode switching ---------------------------------------------------------------------------
 function setMode(next, { returnTo = null } = {}) {
@@ -59,8 +69,12 @@ function setMode(next, { returnTo = null } = {}) {
       });
       break;
     case 'pause':
+      resetMapView();
       ui.renderPause();
       drawFloorMap();
+      break;
+    case 'shop':
+      ui.renderShop(shopCtx);
       break;
     case 'bag':
       ui.renderBag();
@@ -100,10 +114,14 @@ function offerStarters() {
 function beginRun(starterDex) {
   state.run = {
     themes: pickRunThemes(FLOORS_PER_RUN),
+    // Which floors carry Kecleon's stall is decided ONCE, here, rather than per floor: the
+    // no-two-random-stalls-in-a-row rule needs to see the whole run at once.
+    shopFloors: pickShopFloors(FLOORS_PER_RUN),
     floorIndex: -1,
     floor: null,
     party: [makeMon(starterDex)],
     bag: inv.startingBag(),
+    coins: 0,
     activeBall: null,
     attackBonus: 0,
     attackBonusUntil: 0,
@@ -112,6 +130,10 @@ function beginRun(starterDex) {
     caught: 0,
     pendingCatch: null,
   };
+  // The floor pickup models (balls, the present, the three coins) are wanted in bulk the instant
+  // the first floor builds, so warm them on the way in rather than watching a field of
+  // placeholder blocks resolve.
+  preloadPickupModels();
   state.stats.runsPlayed++;
   recordDex('seenDex', starterDex);
   recordDex('caughtDex', starterDex);   // your partner counts as one you have had
@@ -137,10 +159,15 @@ function enterFloor(index) {
   if (run.floor) disposeFloor(run.floor);
 
   const theme = run.themes[index];
-  const floor = generateFloor(index + 1, theme);
+  const floor = generateFloor(index + 1, theme, { shop: run.shopFloors.has(index + 1) });
   run.floor = floor;
   run.floorIndex = index;
   scene.add(buildFloor(floor));
+  // Kecleon's theme has to be ready the moment the player walks onto the blanket, and at 78 s it
+  // is a big decode. Warmed on arrival on a stall floor, and given back on the way off one, so a
+  // run still holds about two tracks rather than three.
+  if (floor.shop) prefetchMusic('kecleon');
+  else releaseMusic('kecleon');
 
   // The floor boss stands ON the up-stairs tile, so you cannot ascend without going through them.
   const isFinal = index === FLOORS_PER_RUN - 1;
@@ -529,7 +556,8 @@ function updatePlaying(dt) {
   const dir = input.update(floor, player, dt);
   if (dir.magnitude > 0) {
     moveWithCollision(floor, player, dir.x * PLAYER_SPEED * dt, dir.z * PLAYER_SPEED * dt);
-    if (playerObj) playerObj.rotation.y = Math.atan2(dir.x, dir.z);
+    playerHeading = Math.atan2(dir.x, dir.z);
+    if (playerObj) playerObj.rotation.y = playerHeading;
   }
   if (playerObj) {
     playerObj.position.set(player.x, 0, player.z);
@@ -542,14 +570,32 @@ function updatePlaying(dt) {
   updateFloorDecor(floor, dt, elapsed);
   followCamera(player.x, player.z, dt);
 
-  // Item pickup.
+  // Pickups. Three kinds now, and each announces itself with its own SPRITE rather than a line of
+  // text — a present on the floor deliberately does not say what is in it, so the reveal at the
+  // moment you pick it up is the whole point. ui.pickupPopup draws the pixel icon from items.js.
   const it = itemAtPlayer(floor, player);
   if (it) {
     it.taken = true;
     if (it.obj) it.obj.visible = false;
-    inv.addItem(it.itemId, 1);
-    sfx('pickup');
-    ui.toast(`Found ${ITEM_BY_ID.get(it.itemId).name}!`);
+    if (it.kind === 'coin') {
+      const coin = COIN_BY_ID.get(it.coinId);
+      const got = inv.addCoinPickup(it.coinId);
+      sfx('money');
+      ui.pickupPopup({ svg: coin.svg, name: coin.name, qty: `+${got}` });
+    } else {
+      const item = ITEM_BY_ID.get(it.itemId);
+      const qty = it.qty || 1;
+      inv.addItem(it.itemId, qty);
+      sfx('pickup');
+      ui.pickupPopup({ svg: item.svg, name: item.name, qty: qty > 1 ? `x${qty}` : '' });
+    }
+  }
+
+  // Kecleon's stall. Checked before the stairs and the encounter test so walking onto the blanket
+  // always opens the shop rather than losing to whatever else happens to be in range.
+  if (atShop(floor, player)) {
+    openShop();
+    return;
   }
 
   // The up-stairs, and whoever is standing on them.
@@ -576,16 +622,45 @@ function updatePlaying(dt) {
 
   if (inv.isPartyWiped()) { loseRun(); return; }
   ui.updateHUD();
-  drawMap(ui.minimapCtx(), floor, player);
+  // Locked to the view orientation and to a window around the player: no rot/zoom/pan, so the
+  // minimap always reads the same way round as the screen does.
+  drawMap(ui.minimapCtx(), floor, player, { heading: playerHeading, cellsAcross: MINIMAP_CELLS });
 }
 
 function drawFloorMap() {
   const floor = state.run?.floor;
-  if (floor) drawMap(ui.floormapCtx(), floor, player, { detail: true });
+  if (!floor) return;
+  drawMap(ui.floormapCtx(), floor, player, {
+    detail: true, heading: playerHeading,
+    rot: mapView.rot, zoom: mapView.zoom, panX: mapView.panX, panY: mapView.panY,
+  });
+}
+
+// ---- Kecleon's shop ---------------------------------------------------------------------------
+let shopCtx = null;        // { shop, stock }
+
+function openShop() {
+  const shop = state.run?.floor?.shop;
+  if (!shop) return;
+  // The stock is rolled once per stall and then kept, so closing and reopening the screen cannot
+  // be used to re-roll what is on the shelf.
+  if (!shop.stock) shop.stock = inv.rollShopStock();
+  shopCtx = { shop, stock: shop.stock };
+  setMode('shop', { returnTo: 'playing' });
+}
+
+function closeShop() {
+  shopCtx = null;
+  // Stepping off the blanket is what re-arms the trigger (see atShop), and closing the screen
+  // leaves the player standing ON it — so the latch is left set and walking away clears it.
+  setMode('playing');
 }
 
 // ---- Item hooks that need main's state --------------------------------------------------------
-inv.hooks.revealMap = () => { if (state.run?.floor) state.run.floor.mapRevealed = true; };
+// revealWholeFloor, not a bare `mapRevealed = true`: drawMap now keeps a cached terrain canvas
+// patched from the fog-of-war dirty list, and "everything is visible now" has no dirty list — the
+// cache has to be dropped so it repaints from scratch.
+inv.hooks.revealMap = () => { if (state.run?.floor) revealWholeFloor(state.run.floor); };
 inv.hooks.revealEntities = () => { if (state.run?.floor) state.run.floor.entitiesRevealed = true; };
 inv.hooks.toast = (msg) => ui.toast(msg);
 inv.hooks.warpToStairs = () => {
@@ -668,6 +743,33 @@ Object.assign(uiHooks, {
   resume: () => setMode('playing'),
   quitRun: () => { if (state.run) loseRun({ abandoned: true }); else setMode('title'); },
   openPause: () => setMode('pause'),
+  // The pause map's rotate / zoom / pan controls. They stack on TOP of the fixed view orientation
+  // rather than replacing it, so `rot: 0` is always "the way you are looking" and the Reset button
+  // has somewhere meaningful to go back to.
+  mapRotate: (delta) => { mapView.rot += delta; drawFloorMap(); },
+  mapZoom: (factor, originX = 0, originY = 0) => {
+    const next = Math.min(6, Math.max(0.6, mapView.zoom * factor));
+    const applied = next / mapView.zoom;
+    // Zoom about the gesture's own point, not about the canvas centre: pinching on a corner of the
+    // map and having it fly away from under your fingers is the classic way this feels broken.
+    mapView.panX = originX + (mapView.panX - originX) * applied;
+    mapView.panY = originY + (mapView.panY - originY) * applied;
+    mapView.zoom = next;
+    drawFloorMap();
+  },
+  mapPan: (dx, dy) => { mapView.panX += dx; mapView.panY += dy; drawFloorMap(); },
+  mapReset: () => { resetMapView(); drawFloorMap(); },
+  mapRedraw: () => drawFloorMap(),
+  // Buying from Kecleon. The coin spend, the bag credit and the stock decrement all happen inside
+  // inv.buyFromShop so a refused purchase cannot half-apply.
+  shopBuy: (itemId) => {
+    if (!shopCtx) return;
+    const res = inv.buyFromShop(shopCtx.stock, itemId);
+    ui.toast(res.msg);
+    sfx(res.ok ? 'buy' : 'back');
+    if (res.ok) ui.renderShop(shopCtx);
+  },
+  shopLeave: closeShop,
   openBag: () => setMode('bag', { returnTo: state.mode === 'pause' ? 'pause' : 'playing' }),
   closeBag: () => setMode(state.returnTo === 'pause' ? 'pause' : 'playing'),
   openGlossary: () => setMode('glossary', { returnTo: state.mode }),

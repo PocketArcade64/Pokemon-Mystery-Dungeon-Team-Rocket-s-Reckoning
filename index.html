@@ -316,7 +316,46 @@
     overflow: hidden;
     background: rgba(11,16,32,0.8);
   }
+  /* The minimap is a BUTTON: it shows a 34-cell window around the player (floors are up to 123
+     cells across, so a whole floor here would be under 0.6px a cell), and tapping it opens the
+     pause screen, where the full floor map lives with its own rotate / zoom / pan. */
+  #minimap-wrap { cursor: pointer; }
+  #minimap-wrap:active { border-color: var(--gold); }
   #minimap { width: 100%; height: 100%; display: block; image-rendering: pixelated; }
+
+  /* The coin purse, beside the bag in the left column. Only Kecleon takes coins, so this has to be
+     visible while exploring or there is no reason to detour for one. */
+  #coin-chip {
+    top: calc(var(--sat) + 176px); left: calc(var(--sal) + 72px);
+    height: 54px; display: flex; align-items: center; gap: 5px;
+    padding: 0 0.55rem;
+    background: rgba(11,16,32,0.85);
+    border: 1px solid var(--edge);
+    border-radius: 10px;
+    font-weight: 700; font-size: 0.936rem; color: var(--gold);
+    text-shadow: 0 2px 4px rgba(0,0,0,0.6);
+  }
+  #coin-chip svg { width: 20px; height: 20px; display: block; flex: 0 0 auto; image-rendering: pixelated; }
+
+  /* What you just picked up, as its own sprite. Sits above the toast slot, not in it — toast
+     reports things the player DID and the two can legitimately be on screen together. */
+  #pickup-pop {
+    left: 50%; bottom: calc(var(--sab) + 152px); transform: translateX(-50%) translateY(10px);
+    display: flex; align-items: center; gap: 9px;
+    background: rgba(11,16,32,0.9);
+    border: 1px solid var(--edge-lt);
+    border-radius: 12px;
+    box-shadow: 0 4px 0 rgba(0,0,0,0.35);
+    padding: 0.5rem 0.85rem;
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.16s ease, transform 0.22s ease;
+  }
+  #pickup-pop.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  #pickup-pop .pickup-icon { width: 34px; height: 34px; flex: 0 0 auto; }
+  #pickup-pop .pickup-icon svg { width: 100%; height: 100%; display: block; image-rendering: pixelated; }
+  #pickup-pop .pickup-text { display: flex; align-items: baseline; gap: 7px; }
+  #pickup-pop .pickup-name { font-size: 1.001rem; font-weight: 700; color: var(--ink); }
+  #pickup-pop .pickup-qty { font-size: 1.105rem; font-weight: 700; color: var(--gold); }
 
   #btn-pause { top: calc(var(--sat) + 10px); right: calc(var(--sar) + 10px); }
 
@@ -524,6 +563,79 @@
   .team-slot .ts-hp { font-size: 0.806rem; color: var(--ink-dim); margin-top: 3px; }
   .team-slot .type-badges { margin-top: 5px; }
   .team-slot .type-badges img { height: 17px; }
+
+  /* ---- Pause map tools ------------------------------------------------------------------------
+     A single row of five short buttons under the floor map. `small` keeps them inside the pause
+     screen's height budget, which already carries Resume, three secondary buttons and Abandon. */
+  .map-tools {
+    flex: 0 0 auto;
+    display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px;
+    margin-top: 10px;
+  }
+  .map-tools .btn { margin-bottom: 8px; padding-left: 0; padding-right: 0; }
+
+  /* ---- Kecleon's shop -------------------------------------------------------------------------
+     Kecleon on the left, the purse on the right, then one row per line of stock. A row is a button
+     and disables itself when the line is sold out OR unaffordable, so the shop never lets a
+     purchase be attempted that inv.buyFromShop would refuse. */
+  .shop-head {
+    flex: 0 0 auto;
+    display: flex; align-items: center; gap: 12px;
+    margin-bottom: 10px;
+  }
+  #shop-canvas {
+    width: 96px; height: 96px; flex: 0 0 auto; display: block;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid var(--edge);
+    border-radius: 14px;
+  }
+  .shop-purse {
+    flex: 1 1 auto;
+    display: flex; align-items: center; justify-content: flex-end; gap: 8px;
+    background: var(--panel);
+    border: 1px solid var(--edge);
+    border-radius: 14px;
+    padding: 0.7rem 0.9rem;
+    font-size: 1.352rem; font-weight: 700; color: var(--gold);
+  }
+  .shop-purse svg { width: 26px; height: 26px; display: block; flex: 0 0 auto; image-rendering: pixelated; }
+
+  .shop-rows { display: flex; flex-direction: column; gap: 8px; padding: 2px 8px 8px 2px; }
+  .shop-row {
+    appearance: none; font: inherit; color: inherit; text-align: left;
+    display: flex; align-items: center; gap: 10px;
+    width: 100%; padding: 0.5rem 0.7rem;
+    background: rgba(255,255,255,0.07);
+    border: 2px solid transparent;
+    border-radius: 10px;
+    box-shadow: 0 4px 0 var(--silver-dark);
+    cursor: pointer;
+    transition: transform 0.06s ease, border-color 0.12s ease;
+  }
+  .shop-row:active:not(:disabled) { transform: translateY(3px); box-shadow: 0 1px 0 var(--silver-dark); }
+  .shop-row:disabled { cursor: default; }
+  /* SOLD OUT is gone, so it greys right out. Not a saturate() filter: on a gold-edged row that
+     lands on olive and reads as a different kind of row rather than a dead one. Same rule the
+     disabled .btn already follows. */
+  .shop-row.sold { filter: grayscale(1) brightness(0.62); }
+  /* TOO EXPENSIVE is still on the shelf, so the row keeps its colour and only the price turns red.
+     Greyscaling it would wash out exactly the thing that explains why it cannot be pressed. */
+  .shop-row.short { box-shadow: 0 4px 0 var(--danger-dark); }
+  .shop-row.short .shop-price { color: var(--danger); }
+  .shop-row.short .shop-stock { color: var(--danger); }
+  .shop-row .shop-ico { width: 36px; height: 36px; flex: 0 0 auto; }
+  .shop-row .shop-ico svg { width: 100%; height: 100%; display: block; image-rendering: pixelated; }
+  .shop-row .shop-body { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+  .shop-row .shop-name {
+    font-size: 0.988rem; font-weight: 700;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .shop-row .shop-stock { font-size: 0.754rem; color: var(--ink-dim); }
+  .shop-row .shop-price {
+    flex: 0 0 auto; font-size: 1.105rem; font-weight: 700; color: var(--gold);
+  }
+  /* Priced out rather than sold out: the number is the reason the row is dead, so it says so. */
+  .shop-row .shop-price.short { color: var(--danger); }
 
   /* Items: a scrollable grid exactly 5 columns wide (design brief §5). */
   /* The right/bottom padding is for the qty badges, which overhang their cell on purpose. An
@@ -1022,6 +1134,21 @@
       <rect x="0.6" y="5.25" width="10.8" height="1.5" fill="#14161c"/>
       <circle cx="6" cy="6" r="1.85" fill="#f2f2f4" stroke="#14161c" stroke-width="0.9"/>
     </g>
+    <!-- Coin, 10x10, for the HUD purse and the shop's balance. The same disc-and-P grid the three
+         coin icons in js/data/items.js are drawn on, so the purse and the pickup popup that fills
+         it are visibly the same object. -->
+    <g id="px-coin">
+      <rect x="3" y="0" width="4" height="1" fill="#17101f"/>
+      <rect x="1" y="1" width="2" height="1" fill="#17101f"/><rect x="3" y="1" width="4" height="1" fill="#ffd54f"/><rect x="7" y="1" width="2" height="1" fill="#17101f"/>
+      <rect x="0" y="2" width="1" height="1" fill="#17101f"/><rect x="1" y="2" width="2" height="1" fill="#ffd54f"/><rect x="3" y="2" width="3" height="1" fill="#8a5f0f"/><rect x="6" y="2" width="3" height="1" fill="#ffd54f"/><rect x="9" y="2" width="1" height="1" fill="#17101f"/>
+      <rect x="0" y="3" width="1" height="1" fill="#17101f"/><rect x="1" y="3" width="2" height="1" fill="#ffd54f"/><rect x="3" y="3" width="1" height="1" fill="#8a5f0f"/><rect x="4" y="3" width="2" height="1" fill="#ffd54f"/><rect x="6" y="3" width="1" height="1" fill="#8a5f0f"/><rect x="7" y="3" width="2" height="1" fill="#ffd54f"/><rect x="9" y="3" width="1" height="1" fill="#17101f"/>
+      <rect x="0" y="4" width="1" height="1" fill="#17101f"/><rect x="1" y="4" width="2" height="1" fill="#ffd54f"/><rect x="3" y="4" width="1" height="1" fill="#8a5f0f"/><rect x="4" y="4" width="2" height="1" fill="#ffd54f"/><rect x="6" y="4" width="1" height="1" fill="#8a5f0f"/><rect x="7" y="4" width="2" height="1" fill="#ffd54f"/><rect x="9" y="4" width="1" height="1" fill="#17101f"/>
+      <rect x="0" y="5" width="1" height="1" fill="#17101f"/><rect x="1" y="5" width="2" height="1" fill="#ffd54f"/><rect x="3" y="5" width="3" height="1" fill="#8a5f0f"/><rect x="6" y="5" width="3" height="1" fill="#ffd54f"/><rect x="9" y="5" width="1" height="1" fill="#17101f"/>
+      <rect x="0" y="6" width="1" height="1" fill="#17101f"/><rect x="1" y="6" width="2" height="1" fill="#ffd54f"/><rect x="3" y="6" width="1" height="1" fill="#8a5f0f"/><rect x="4" y="6" width="5" height="1" fill="#ffd54f"/><rect x="9" y="6" width="1" height="1" fill="#17101f"/>
+      <rect x="0" y="7" width="1" height="1" fill="#17101f"/><rect x="1" y="7" width="2" height="1" fill="#ffd54f"/><rect x="3" y="7" width="1" height="1" fill="#8a5f0f"/><rect x="4" y="7" width="5" height="1" fill="#ffd54f"/><rect x="9" y="7" width="1" height="1" fill="#17101f"/>
+      <rect x="1" y="8" width="2" height="1" fill="#17101f"/><rect x="3" y="8" width="4" height="1" fill="#ffd54f"/><rect x="7" y="8" width="2" height="1" fill="#17101f"/>
+      <rect x="3" y="9" width="4" height="1" fill="#17101f"/>
+    </g>
   </defs>
 </svg>
 
@@ -1080,7 +1207,12 @@
       </button>
       <div id="party-balls"></div>
     </div>
+    <div id="coin-chip">
+      <svg viewBox="0 0 10 10" shape-rendering="crispEdges" aria-hidden="true"><use href="#px-coin" /></svg>
+      <span id="coin-count">0</span>
+    </div>
     <div id="joystick"><div id="joystick-knob"></div></div>
+    <div id="pickup-pop"></div>
     <div id="toast"></div>
   </div>
 
@@ -1103,9 +1235,20 @@
          the bottom half of the map. Absolute + inset:0 pins it to the panel's real box, and
          object-fit keeps the map square inside it. -->
     <div class="panel" style="flex:1 1 auto; position:relative; overflow:hidden; min-height:0">
-      <canvas id="floormap" width="620" height="620" style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain;image-rendering:pixelated"></canvas>
+      <canvas id="floormap" width="620" height="620" style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain;image-rendering:pixelated;touch-action:none"></canvas>
     </div>
-    <div class="btn-col" style="margin-top:14px">
+    <!-- The map's own view controls. It opens in the SAME orientation as the HUD minimap and the
+         3D view, and these rotate / zoom on top of that, so Reset always means "face the way I am
+         facing". Drag and pinch do the same things directly on the canvas; the buttons exist
+         because a gesture nobody tries is a feature nobody has. -->
+    <div class="map-tools">
+      <button class="btn secondary small" id="btn-map-rot-l" aria-label="Rotate the map left">&lt;</button>
+      <button class="btn secondary small" id="btn-map-zoom-out" aria-label="Zoom out">-</button>
+      <button class="btn secondary small" id="btn-map-reset">Reset</button>
+      <button class="btn secondary small" id="btn-map-zoom-in" aria-label="Zoom in">+</button>
+      <button class="btn secondary small" id="btn-map-rot-r" aria-label="Rotate the map right">&gt;</button>
+    </div>
+    <div class="btn-col" style="margin-top:10px">
       <button class="btn" id="btn-resume">Resume</button>
       <div class="btn-row">
         <button class="btn secondary small" id="btn-pause-bag">Bag</button>
@@ -1125,7 +1268,7 @@
     <div class="scroll" style="min-height:0">
       <div class="team-strip" id="bag-team"></div>
       <div class="item-grid" id="bag-items"></div>
-      <div class="empty-note" id="bag-empty" style="display:none">Your bag is empty. Items are scattered across every floor - the glowing gems.</div>
+      <div class="empty-note" id="bag-empty" style="display:none">Your bag is empty. Items are scattered across every floor - the wrapped presents.</div>
     </div>
     <div class="item-detail panel" id="bag-detail">
       <div class="id-name">-</div>
@@ -1283,6 +1426,28 @@
     <div class="btn-col" style="margin-top:14px">
       <button class="btn" id="btn-swap-confirm" disabled>Swap Slot</button>
       <button class="btn secondary" id="btn-swap-release">Release New</button>
+    </div>
+  </div>
+
+  <!-- ============ KECLEON'S SHOP ============
+       Walking onto the blanket opens this. Kecleon is rendered through createModelView (a plain
+       2D canvas blitted from the ONE shared offscreen WebGL context in js/modelstage.js) — never a
+       new WebGLRenderer, which would take the page to three live contexts and get the dungeon's
+       killed by the browser. -->
+  <div class="screen sheet" id="screen-shop">
+    <h2 class="screen-title">Kecleon's Shop</h2>
+    <div class="shop-head">
+      <canvas id="shop-canvas"></canvas>
+      <div class="shop-purse">
+        <svg viewBox="0 0 10 10" shape-rendering="crispEdges" aria-hidden="true"><use href="#px-coin" /></svg>
+        <span id="shop-coins">0</span>
+      </div>
+    </div>
+    <div class="scroll" style="min-height:0">
+      <div class="shop-rows" id="shop-rows"></div>
+    </div>
+    <div class="btn-col" style="margin-top:12px">
+      <button class="btn secondary" id="btn-shop-leave">Leave</button>
     </div>
   </div>
 

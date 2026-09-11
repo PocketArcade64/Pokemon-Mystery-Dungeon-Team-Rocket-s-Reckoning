@@ -24,6 +24,7 @@ export const MUSIC_LOOPS = {
   '05. Beach Cave.mp3':                      { loopStart: 0,    loopEnd: 52.7522,  loopLen: 52.7522 },
   '12. Drenched Bluff.mp3':                  { loopStart: 0,    loopEnd: 81.2803,  loopLen: 81.2803 },
   '15. Battle! (Wild Pokémon).mp3':          { loopStart: 12.5, loopEnd: 69.9072,  loopLen: 57.4072 },
+  "25. Kecleon's Shop.mp3":                  { loopStart: 0,    loopEnd: 77.9930,  loopLen: 77.9930 },
   '27. Victory! (Trainer Battle).mp3':       { oneShot: true },
   'You Lose.mp3':                            { oneShot: true },
   '29. Apple Woods.mp3':                     { loopStart: 0,    loopEnd: 85.9950,  loopLen: 85.9950 },
@@ -51,6 +52,20 @@ export const MUSIC_LOOPS = {
 // You Lose is not an OST rip of the same shape as the rest: 6.075 s long with the jingle itself
 //   finishing at 2.92 s and the remainder silence. There is nothing to loop and nothing to trim,
 //   which is the whole reason it is a one-shot. Do not go looking for loop points in it.
+//
+// Kecleon's Shop was measured the same way as the rest and is high confidence: envelope
+//   autocorrelation 0.903 at 77.9938 s, refined against the waveform to 77.99302 s (mismatch
+//   falling 0.519 -> 0.402 -> 0.383 across the three passes). loopStart is 0 because the track has
+//   NO intro, and that was checked directly rather than assumed: the first 8 s of the file recurs
+//   most strongly at a lag of exactly 78 s (envelope mismatch 0.186, the best of every lag from
+//   1 s to 90 s), and an intro by definition never recurs.
+//   The one thing that looks wrong about it is arithmetic: loopStart + 2 * loopLen = 155.99 s while
+//   the file runs to 166.00 s, a 10 s overhang where the other tracks land within a few seconds.
+//   That overhang is a THIRD pass played under the fade, not a missed intro - per-second RMS decays
+//   monotonically from 0.082 at 157 s to 0.006 at 165 s. The quiet stretch at 152-154 s is the
+//   loop's own closing bar, one loop length on from the same quiet stretch at 74 s.
+//   Its raw seam is a 22x step against the track's average sample-to-sample motion, which is the
+//   worst of any track here - so the 80 ms crossfade is doing real work on this one.
 //
 // Hidden Land is the one low-confidence loop length. Its envelope autocorrelation only reaches
 //   0.602 (the rest run 0.75-0.97) because the track is sparse and ambient, and no clean

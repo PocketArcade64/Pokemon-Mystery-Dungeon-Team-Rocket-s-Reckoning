@@ -55,6 +55,8 @@ const DEFAULT_STATS = {
   giovanniDefeats: 0,
   gruntsDefeated: 0,
   pokemonCaught: 0,
+  coinsFound: 0,      // lifetime coin total, across every run
+  coinsSpent: 0,      // ... and how much of it went to Kecleon
   seenDex: [],      // every species encountered anywhere
   caughtDex: [],    // every species successfully caught
   winnerDex: [],    // species that were in the party for a Giovanni win

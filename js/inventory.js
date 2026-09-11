@@ -4,7 +4,7 @@
 // `itemApi` built here. Anything an item needs that lives outside inventory (warping the player,
 // revealing the map, showing a toast) comes through `hooks`, which main.js fills in on boot.
 import { state, MAX_PARTY, HP_BY_STAGE, makeMon, recordDex, saveStats } from './state.js';
-import { ITEM_BY_ID, ITEMS, BALL_IDS } from './data/items.js';
+import { ITEM_BY_ID, ITEMS, BALL_IDS, COIN_BY_ID } from './data/items.js';
 import { CATALOG_BY_DEX, DAMAGE_BY_STAGE } from './data/pokemon-catalog.js';
 
 // Filled in by main.js — everything an item needs that inventory itself does not own.
@@ -128,6 +128,64 @@ export function activeBall() {
 
 export function totalBalls() {
   return BALL_IDS.reduce((s, id) => s + countOf(id), 0);
+}
+
+// ---- Coins and Kecleon's shop -------------------------------------------------------------------
+// Coins are a single run-scoped total, not bag entries: they take no slot, cannot be used, and the
+// only thing that spends them is the shop. Like everything else in a run they are lost on death —
+// permadeath is total, and `state.stats.coinsFound` is a historical record only.
+export function coins() { return state.run?.coins || 0; }
+
+export function addCoinPickup(coinId) {
+  const coin = COIN_BY_ID.get(coinId);
+  if (!coin || !state.run) return 0;
+  state.run.coins = coins() + coin.value;
+  state.stats.coinsFound += coin.value;
+  saveStats();
+  return coin.value;
+}
+
+// Kecleon's stock, drawn once per stall and then fixed: the quantities are part of the offer, so
+// re-rolling them when the screen reopens would let a player close and reopen until they liked it.
+// Always at least one ball tier on the shelf — the shop's main job is topping up what the floor's
+// guaranteed fifteen did not cover, and a stall with no balls at all is a wasted stop.
+export function rollShopStock() {
+  const balls = ITEMS.filter(i => i.kind === 'ball');
+  const rest = ITEMS.filter(i => i.kind !== 'ball');
+  const shuffle = (a) => {
+    const c = a.slice();
+    for (let i = c.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [c[i], c[j]] = [c[j], c[i]];
+    }
+    return c;
+  };
+  const chosen = [
+    ...shuffle(balls).slice(0, 1 + Math.floor(Math.random() * 2)),
+    ...shuffle(rest).slice(0, 4),
+  ];
+  return chosen.map(item => ({
+    itemId: item.id,
+    price: item.shopPrice,
+    // A ball is sold in a small lot; everything else one at a time, as the mainline shops do.
+    stock: item.kind === 'ball' ? 2 + Math.floor(Math.random() * 4) : 1 + Math.floor(Math.random() * 2),
+  }));
+}
+
+// Buy one unit of a shop line. Returns { ok, msg } like useItem does, and only touches anything at
+// all on success, so a failed purchase cannot half-apply.
+export function buyFromShop(stock, itemId) {
+  const line = stock?.find(l => l.itemId === itemId);
+  const item = ITEM_BY_ID.get(itemId);
+  if (!line || !item) return { ok: false, msg: 'Kecleon is not selling that.' };
+  if (line.stock <= 0) return { ok: false, msg: `Kecleon is out of ${item.name}.` };
+  if (coins() < line.price) return { ok: false, msg: `You need ${line.price - coins()} more coins.` };
+  state.run.coins = coins() - line.price;
+  state.stats.coinsSpent += line.price;
+  saveStats();
+  line.stock--;
+  addItem(itemId, 1);
+  return { ok: true, msg: `Bought ${item.name} for ${line.price} coins.` };
 }
 
 // ---- The api handed to item effect functions ---------------------------------------------------

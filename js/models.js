@@ -178,6 +178,7 @@ const PLACEHOLDER_COLOR = 0x8a8fa8;
 // model is actually loaded and measured.
 export function createMonObject(dex, { height = 1.0, tint = PLACEHOLDER_COLOR, onReady = null } = {}) {
   const group = new THREE.Group();
+  group.userData.shared = true;
   const ph = new THREE.Mesh(
     new THREE.BoxGeometry(height * 0.6, height, height * 0.6),
     new THREE.MeshStandardMaterial({ color: tint }),
@@ -208,12 +209,64 @@ export const BALL_MODEL_PATHS = {
   'premier-ball': QB + 'Premier Ball Model/bdPremierBallModel.obj',
 };
 
+// ---- Models that are not part of the Quest roster ----------------------------------------------
+// These four came out of the old project's non-Quest rips and live under 'Extra 3D Models/' rather
+// than alongside the Quest set, because they are not Quest models and do not follow its naming.
+// The folder names are plain ASCII with no leading '#', unlike the Quest folders — see the
+// .nojekyll note in HANDOFF.md for why that matters on GitHub Pages.
+//
+// The gift box and the three coins shipped as .smd/.dae only, and the loader here is OBJ+MTL, so
+// they were converted to OBJ offline. Kecleon already had a clean OBJ.
+export const XB = 'Extra 3D Models/';
+
+// Every floor pickup that is not a ball is a wrapped present, exactly as in Mystery Dungeon.
+// Two materials: a cream carton (box.png) and the red ribbon and bow (obj_frame_red.png).
+export const GIFT_BOX_MODEL = XB + 'Gift Box/giftbox.obj';
+
+// The shopkeeper. Kecleon (dex 352) is NOT in the Quest roster or POKEMON_CATALOG, so he is
+// deliberately reached by path rather than through modelPathForDex() — he is an NPC, never a
+// catchable species, and giving him a catalog entry would put him in the wild spawn pools.
+export const KECLEON_MODEL = XB + 'Kecleon/Kecleon.obj';
+
+// Keyed by the coin ids in js/data/items.js, the same way BALL_MODEL_PATHS is keyed by item id.
+export const COIN_MODEL_PATHS = {
+  'coin-silver': XB + 'Poke Coin Silver/poke_coin_silver.obj',
+  'coin-gold': XB + 'Poke Coin Gold/poke_coin_gold.obj',
+  'coin-large': XB + 'Poke Coin Large/poke_coin_large.obj',
+};
+
+// Generic "load this exact path and fit it to a height" factory, for the models above. Same
+// placeholder-then-hot-swap contract as createMonObject so a caller never waits on a promise.
+export function createModelObject(path, { height = 0.5, tint = PLACEHOLDER_COLOR, onReady = null } = {}) {
+  const group = new THREE.Group();
+  group.userData.shared = true;
+  const ph = new THREE.Mesh(
+    new THREE.BoxGeometry(height * 0.7, height, height * 0.7),
+    new THREE.MeshStandardMaterial({ color: tint }),
+  );
+  ph.position.y = height / 2;
+  ph.castShadow = true;
+  group.add(ph);
+  group.userData.ready = false;
+
+  loadModelOrNull(path).then(model => {
+    if (!model || group.userData.disposed) return;
+    group.remove(ph);
+    ph.geometry.dispose(); ph.material.dispose();
+    group.add(fitModel(model, height));
+    group.userData.ready = true;
+    onReady?.(group);
+  });
+  return group;
+}
+
 // `onReady` fires once the real model has replaced the placeholder. Anything a caller sets on the
 // group's meshes — renderOrder, castShadow — is set on the PLACEHOLDER only if it is applied at
 // call time, because the swap happens a load later; the catch minigame needs both re-applied or
 // the thrown ball renders behind the depthTest-off capture rings.
 export function createBallObject(itemId, { size = 0.42, onReady = null } = {}) {
   const group = new THREE.Group();
+  group.userData.shared = true;
   const ph = new THREE.Mesh(
     new THREE.SphereGeometry(size / 2, 12, 10),
     new THREE.MeshStandardMaterial({ color: 0xe5453b }),
@@ -238,6 +291,15 @@ export function preloadDex(dexList) {
   for (const d of dexList) loadModelOrNull(modelPathForDex(d));
 }
 
+// Warm the floor-pickup models. A floor now scatters 15+ balls, a dozen presents and up to
+// seventeen coins, all created in one burst by buildFloor; without this the first second of every
+// floor is a field of placeholder blocks.
+export function preloadPickupModels() {
+  loadModelOrNull(GIFT_BOX_MODEL);
+  for (const p of Object.values(COIN_MODEL_PATHS)) loadModelOrNull(p);
+  for (const id of ['poke-ball', 'great-ball', 'ultra-ball']) loadModelOrNull(BALL_MODEL_PATHS[id]);
+}
+
 // Detach an instance from the scene. Deliberately does NOT dispose geometry or materials:
 // .clone() shares both with the cached source model, so disposing them here would blank out every
 // future instance of that species. The `disposed` flag also stops an in-flight load from
@@ -248,11 +310,14 @@ export function disposeObject(group) {
   group.parent?.remove(group);
 }
 
-// A rotating-preview helper for the starter-select / Pokedex panels: loads the model at a fixed
-// display height into the given holder Group, clearing whatever was there.
-export function setPreviewModel(holder, dex, height = 1.6) {
+// A rotating-preview helper for the starter-select / Pokedex / shop panels: loads the model at a
+// fixed display height into the given holder Group, clearing whatever was there.
+//
+// `explicitPath` bypasses the dex lookup, for the models that have no dex number to look up —
+// Kecleon in the shop is not in the Quest roster or POKEMON_CATALOG.
+export function setPreviewModel(holder, dex, height = 1.6, explicitPath = null) {
   while (holder.children.length) holder.remove(holder.children[0]);
-  const path = modelPathForDex(dex);
+  const path = explicitPath || modelPathForDex(dex);
   const token = (holder.userData.token = (holder.userData.token || 0) + 1);
   return loadModelOrNull(path).then(model => {
     if (!model || holder.userData.token !== token) return null;
