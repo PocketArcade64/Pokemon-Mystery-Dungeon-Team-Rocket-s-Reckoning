@@ -89,13 +89,13 @@ __________________
 
 _____________________
 
-Can you please redesign the bag below the party pokemon and design it to be more thematically looking like a pixel art brown satchel bag in the inventory menu with small squares where each item takes up a slot. Design this bag to look polished and fitting pixel art.
+✅Can you please redesign the bag below the party pokemon and design it to be more thematically looking like a pixel art brown satchel bag in the inventory menu with small squares where each item takes up a slot. Design this bag to look polished and fitting pixel art.
 
-If you run away from a Pokemon encounter, instead of saying “(Pokemon) slipped away” say “You fled from (Pokemon)”
+✅If you run away from a Pokemon encounter, instead of saying “(Pokemon) slipped away” say “You fled from (Pokemon)”
 
-Move the Abandon Run button in the pause menu to the top left. Then you have to shift the text saying “B3F - Scorched Desert” to the right a little more, for example. Also in that line under Paused, remove the  “- 6/6 standing text”
+✅Move the Abandon Run button in the pause menu to the top left. Then you have to shift the text saying “B3F - Scorched Desert” to the right a little more, for example. Also in that line under Paused, remove the  “- 6/6 standing text”
 
-In the battle screen, where it currently says Basic, stage 1, stage 2, etc instead show the type icon pngs with a minimal space between them
+✅In the battle screen, where it currently says Basic, stage 1, stage 2, etc instead show the type icon pngs with a minimal space between them
 
 After you beat a team rocket grunt, do you advise that the player is given a choice of 3 reward items? ❌
 And should your team be fully healed after beating a rocket grunt? ❌
@@ -121,7 +121,7 @@ After you click Start Run give 2 options - Default mode on the left and on the r
 Endless mode - you progress through all 11 floors before any of the other ones can repeat. You cannot encounter the same floor within 4 floors. (For example if you have forest on floor 20 you cannot see it again until at least floor 25). Giovanni appears every 5 floors
 At the bottom of this card shows Deepest Floor: B1F 
 
-
+Save function?
 ______________
 
 ✅ Are all pokemon able to be acquired in some way? how did you implement legendaries?
