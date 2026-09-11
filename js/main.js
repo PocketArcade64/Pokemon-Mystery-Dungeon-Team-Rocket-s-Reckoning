@@ -15,6 +15,7 @@ import { createInput } from './movement.js';
 import { createBattle, generateGruntTeam, generateGiovanniTeam, wildEnemyTeam } from './battle.js';
 import { startCatch, endCatch, updateCatch, setCatchBall, catchState, catchScene, catchCamera,
          catchPointerDown, catchPointerMove, catchPointerUp } from './catch.js';
+import { titleScene, titleCamera, updateTitle } from './titlescene.js';
 import * as inv from './inventory.js';
 import * as ui from './ui-screens.js';
 import { uiHooks } from './ui-screens.js';
@@ -934,11 +935,16 @@ function tick(dtMs) {
     case 'playing': updatePlaying(dt); break;
     case 'battle': updateBattleFrame(dtMs); break;
     case 'catch': updateCatch(dt); break;
+    case 'title': updateTitle(dt); break;
     default: break;
   }
 
   ui.updatePreviews(dt, state.mode);
+  // Three scenes share the one renderer, picked by mode: the catch minigame's, the title screen's
+  // diorama, and the dungeon itself. The title screen's `.sheet` background is a scrim rather than
+  // the full gradient precisely so this shows through it.
   if (state.mode === 'catch') renderer.render(catchScene, catchCamera);
+  else if (state.mode === 'title') renderer.render(titleScene, titleCamera);
   else renderer.render(scene, camera);
 }
 

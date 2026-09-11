@@ -246,6 +246,27 @@
     justify-content: flex-start; align-items: center;
     padding-top: max(2vh, calc(var(--sat) + 1.5vh));
   }
+  /* The title screen is the ONE sheet that does not carry `.sheet`'s flat gradient: behind it the
+     main canvas is drawing the cave diorama (js/titlescene.js), and a 94%-opaque gradient would
+     hide it completely. What replaces it is a scrim — dark at the top where the logo sits and dark
+     again at the bottom under the button column, clear through the middle third where the six
+     Pokemon stand. So the logo and the buttons keep the contrast they had, and the part of the
+     scene that matters is never covered. The stops are in % of the screen's height and are tied to
+     the two things that bracket it: the logo tops out at 30vh and the button column is ~30vh tall,
+     which is why the clear window is 34%-62%.
+
+     Any change to the logo size or the button column has to come back to these stops. */
+  #screen-title.sheet {
+    background: linear-gradient(180deg,
+      rgba(9,7,16,0.90) 0%,
+      rgba(9,7,16,0.72) 16%,
+      rgba(9,7,16,0.26) 27%,
+      rgba(9,7,16,0.00) 34%,
+      rgba(9,7,16,0.00) 62%,
+      rgba(9,7,16,0.34) 72%,
+      rgba(10,7,18,0.72) 84%,
+      rgba(10,7,18,0.88) 100%);
+  }
   .logo-wrap { text-align: center; margin-bottom: 0.3rem; }
   /* A downscaled high-res PNG, so it has to opt out of the global pixelated rendering or its
      outlines break into jaggies. The drop-shadow is what lifts it off the gradient. */
