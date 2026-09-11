@@ -1,7 +1,12 @@
 // Every item / power-up in the game (design brief §8), plus the three coin denominations. This
 // file is the SINGLE source of truth for four consumers: floor spawn logic (dungeon.js reads
 // `spawnWeight`), the bag screen and the pickup popup (both render `svg`), the Glossary screen
-// (reads `name` + `desc`), and Kecleon's shop (reads `shopPrice`).
+// (reads `name` + `desc`), and Kecleon's shop (reads `shopPrice` + `shopDesc`).
+//
+// `desc` and `shopDesc` are two different jobs and neither can do the other's. `desc` is the
+// Glossary's entry: two or three sentences with room to explain the mechanic. `shopDesc` is ONE
+// short line that has to fit a shop row under the item's name at 0.754rem beside a price — so it
+// says what the thing does and nothing else. Every item with a `shopPrice` needs one.
 //
 // Coins live here rather than in their own module because they share `pixelIcon` and exactly the
 // same consumers. They are NOT bag items and are deliberately not in ITEMS: they never occupy a
@@ -75,12 +80,14 @@ export const ITEMS = [
   {
     id: 'poke-ball', name: 'Poke Ball', kind: 'ball', ballTier: 0, catchBase: 0.42, spawnWeight: 22, shopPrice: 10,
     desc: 'The standard capture device. Used in the catch minigame - a steady base catch rate that your throw accuracy builds on.',
+    shopDesc: 'The standard ball. A steady base catch rate.',
     svg: ballArt('#e5453b', '#ff8f86'),
     use: (api) => (api.setActiveBall('poke-ball'), { ok: false, msg: 'Poke Ball set for your next throw.' }),
   },
   {
     id: 'great-ball', name: 'Great Ball', kind: 'ball', ballTier: 1, catchBase: 0.58, spawnWeight: 13, shopPrice: 20,
     desc: 'A better ball than the Poke Ball. Raises the base catch chance before your throw accuracy is added on top.',
+    shopDesc: 'A stronger ball. Better odds than a Poke Ball.',
     // The two red stripes down the blue shell.
     svg: ballArt('#3b6fd4', '#7ea6ef', '#e5453b', '.kTaTTaTk.', 'kTaTTTTaTk'),
     use: (api) => (api.setActiveBall('great-ball'), { ok: false, msg: 'Great Ball set for your next throw.' }),
@@ -88,6 +95,7 @@ export const ITEMS = [
   {
     id: 'ultra-ball', name: 'Ultra Ball', kind: 'ball', ballTier: 2, catchBase: 0.74, spawnWeight: 7, shopPrice: 40,
     desc: 'The best ball you will find down here. The highest base catch chance - a clean throw with one is close to a sure thing.',
+    shopDesc: 'The best ball down here. The highest catch rate.',
     // The two yellow blocks on the black shell.
     svg: ballArt('#2a2a33', '#565662', '#f2c12e', '.kaaTTaak.', 'kTaaTTaaTk'),
     use: (api) => (api.setActiveBall('ultra-ball'), { ok: false, msg: 'Ultra Ball set for your next throw.' }),
@@ -95,6 +103,7 @@ export const ITEMS = [
   {
     id: 'oran-berry', name: 'Oran Berry', kind: 'heal', needsTarget: true, spawnWeight: 20, shopPrice: 10,
     desc: 'A tart blue berry. Restores 20 HP to one party Pokemon.',
+    shopDesc: 'Restores 20 HP to one party Pokemon.',
     svg: pixelIcon({ k: OUTLINE, B: '#4f8ee0', h: '#bcd9ff', g: '#5fbf52' }, [
       '....gg....',
       '...gg.....',
@@ -117,6 +126,7 @@ export const ITEMS = [
   {
     id: 'full-heal', name: 'Full Heal', kind: 'heal', needsTarget: true, spawnWeight: 9, shopPrice: 30,
     desc: 'A potent medicine. Restores one party Pokemon to full HP - and it will revive a fainted one.',
+    shopDesc: 'Fully heals one Pokemon, or revives a fainted one.',
     svg: pixelIcon({ k: OUTLINE, W: '#eef2f8', R: '#e5453b', S: '#8f97a8' }, [
       '...kkk....',
       '..kSSSk...',
@@ -139,6 +149,7 @@ export const ITEMS = [
   {
     id: 'rare-candy', name: 'Rare Candy', kind: 'boost', needsTarget: true, spawnWeight: 8, shopPrice: 55,
     desc: 'Evolves one eligible party Pokemon on the spot. Has no effect on a Pokemon with nowhere left to evolve.',
+    shopDesc: 'Evolves one eligible party Pokemon on the spot.',
     svg: pixelIcon({ k: OUTLINE, P: '#f0648c', p: '#ffc0d4', C: '#7ec8f0' }, [
       '..........',
       '..........',
@@ -161,6 +172,7 @@ export const ITEMS = [
   {
     id: 'town-map', name: 'Town Map', kind: 'field', spawnWeight: 10, shopPrice: 15,
     desc: 'Reveals the current floor’s full layout on the minimap and the pause map. Does not show items or Pokemon.',
+    shopDesc: 'Reveals this floor’s full layout on your map.',
     svg: pixelIcon({ k: OUTLINE, M: '#f2e3bd', G: '#5fbf52', R: '#e5453b' }, [
       '..........',
       'kkkkkkkkkk',
@@ -178,6 +190,7 @@ export const ITEMS = [
   {
     id: 'dowsing-machine', name: 'Dowsing Machine', kind: 'field', spawnWeight: 9, shopPrice: 20,
     desc: 'Pings the floor and marks every item and every wild Pokemon on your map, wherever they are.',
+    shopDesc: 'Marks every item and wild Pokemon on your map.',
     svg: pixelIcon({ k: OUTLINE, R: '#d8452f', S: '#9be8c8' }, [
       '..k...k...',
       '...k.k....',
@@ -195,6 +208,7 @@ export const ITEMS = [
   {
     id: 'x-attack', name: 'X Attack', kind: 'boost', spawnWeight: 11, shopPrice: 25,
     desc: 'A combat stimulant. Every party Pokemon deals +5 damage per hit for the next 60 seconds.',
+    shopDesc: 'Every party Pokemon hits for +5 for 60 seconds.',
     svg: pixelIcon({ k: OUTLINE, O: '#f2933a', W: '#ffffff', S: '#8f97a8' }, [
       '...kkk....',
       '..kSSSk...',
@@ -212,6 +226,7 @@ export const ITEMS = [
   {
     id: 'max-repel', name: 'Max Repel', kind: 'field', spawnWeight: 9, shopPrice: 20,
     desc: 'Wild Pokemon keep their distance for 45 seconds - they will not close in or trigger an encounter.',
+    shopDesc: 'Wild Pokemon keep their distance for 45 seconds.',
     svg: pixelIcon({ k: OUTLINE, N: '#5fbf52', W: '#d8f5cf', S: '#8f97a8' }, [
       '...kkk....',
       '..kSSSk...',
@@ -229,6 +244,7 @@ export const ITEMS = [
   {
     id: 'escape-rope', name: 'Escape Rope', kind: 'field', spawnWeight: 8, shopPrice: 15,
     desc: 'Warps you straight to this floor’s up-stairs. The Rocket Grunt guarding them still has to be beaten.',
+    shopDesc: 'Warps you straight to this floor’s up-stairs.',
     svg: pixelIcon({ k: OUTLINE, R: '#c98a4b' }, [
       '..........',
       '..kkkkkk..',
@@ -246,6 +262,7 @@ export const ITEMS = [
   {
     id: 'revive', name: 'Revive', kind: 'boost', spawnWeight: 7, shopPrice: 45,
     desc: 'Held in reserve. The next time a party Pokemon faints in battle it is automatically brought back at half HP.',
+    shopDesc: 'Brings back the next Pokemon to faint, at half HP.',
     svg: pixelIcon({ k: OUTLINE, Y: '#f2d54e' }, [
       '....kk....',
       '...kYYk...',

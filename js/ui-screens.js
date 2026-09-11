@@ -11,6 +11,7 @@ import { CATALOG_BY_DEX } from './data/pokemon-catalog.js';
 import { typeIconPath } from './data/type-chart.js';
 import { createModelView } from './modelstage.js';
 import { setPreviewModel, hasModelForDex, KECLEON_MODEL } from './models.js';
+import { makeAura, spinAura, disposeAura } from './aura.js';
 import { portraitFor, preloadPortraits } from './portraits.js';
 import * as inv from './inventory.js';
 import { sfx, applyVolumes } from './audio.js';
@@ -194,7 +195,12 @@ function selectStarter(i) {
   sfx('select');
   const c = CATALOG_BY_DEX.get(starterPick);
   $('starter-name').textContent = c.name;
-  $('starter-meta').innerHTML = `${c.types.join(' / ')} - ${c.stage} - No. ${String(c.dex).padStart(3, '0')}`;
+  // Type ICONS only — no "Fire - Basic - No. 909". Every starter in the pool is Basic and its dex
+  // number decides nothing about the run, so that line was two facts that could not be acted on
+  // padding out the one that can: type is the whole of what this choice is. The icons also say it
+  // without reading, which is how the rest of the game says a type (the cards below, the catch
+  // screen, the team strip).
+  $('starter-meta').innerHTML = typeBadges(c.types);
   $('starter-row').querySelectorAll('.starter-card').forEach((el, idx) => {
     el.classList.toggle('selected', idx === i);
   });
@@ -472,6 +478,13 @@ export function renderBattle(battle) {
   foeShownDex = null;
   youShownDex = null;
   fieldBob = 0;
+  // The previous battle's auras, given back here rather than left to the syncFighter calls at the
+  // end of this function: those bail out early on a side with no lead, and an aura's geometry is
+  // its own rather than the loader cache's, so bailing out would strand it.
+  disposeAura(fighterAura.foe);
+  disposeAura(fighterAura.you);
+  fighterAura.foe = null;
+  fighterAura.you = null;
 
   // The trainer, standing behind their Pokemon. Wild encounters have nobody there.
   const img = $('foe-trainer'), nameEl = $('foe-trainer-name');
@@ -549,6 +562,22 @@ function fillMonBox(side, mon, { showNumbers }) {
 //   FOE   -1/4 PI  -> forward (-0.71, 0, +0.71): toward the camera and to the LEFT (down-left)
 const FACING = { you: Math.PI * 0.75, foe: -Math.PI * 0.25 };
 
+// The aura is attached to the FITTED model rather than to the holder, so it inherits both of
+// placeFighter's adjustments: the drop that stands the model on the bottom of the frame (which puts
+// the aura's ground ring at its feet) and the shrink a too-wide species gets (which keeps the aura
+// hugging the body instead of hanging off it).
+//
+// `spread` is well under 1 because a fighter frame is only FIGHTER_FRUSTUM * 2 = 1.24 units wide
+// against a model fitted to 1.0 tall — at the dungeon's full width the ring is 2.07 across and
+// runs off both sides, clipped mid-arc, which reads as a rendering fault rather than as an aura.
+// At 0.52 the ring comes out ~1.08 wide, so it surrounds the body with margin left over on both
+// sides. The frames are square (`aspect-ratio: 1`), so that arithmetic holds at every screen size.
+const FIGHTER_AURA_SPREAD = 0.52;
+// Both sides' auras, so updateBattleField can turn whichever one exists. `you` is in here for one
+// reason only: so that a side that has no aura is explicitly recorded as having none, and the last
+// fighter's cloud cannot be left spinning over its replacement.
+const fighterAura = { foe: null, you: null };
+
 function syncFighter(side, mon, preview, getShown, setShown) {
   const wrap = $(`${side}-fighter`);
   if (!mon || !preview) return;
@@ -556,7 +585,22 @@ function syncFighter(side, mon, preview, getShown, setShown) {
   if (getShown() === mon.dex) return;
   setShown(mon.dex);
   preview.holder.rotation.y = FACING[side];
-  setPreviewModel(preview.holder, mon.dex, 1.0).then(placeFighter);
+  // Dropped BEFORE the load, not when it resolves: setPreviewModel empties the holder immediately,
+  // so holding the reference past this point would spin a group that is no longer on screen. An
+  // aura's geometry is its own rather than the loader cache's, so it is disposed rather than just
+  // detached — one is built per lead, and a six-strong Giovanni team would otherwise leave five.
+  disposeAura(fighterAura[side]);
+  fighterAura[side] = null;
+  setPreviewModel(preview.holder, mon.dex, 1.0).then(fitted => {
+    placeFighter(fitted);
+    // A shadow Pokemon keeps its aura for the whole fight. Only a wild is ever flagged aggressive,
+    // and only the foe's side can hold one — a caught Pokemon is rebuilt without the flag, so
+    // your own fighters have nothing to draw (see aura.js).
+    if (!fitted || !mon.aggressive) return;
+    const aura = makeAura(1.0, { spread: FIGHTER_AURA_SPREAD });
+    fitted.add(aura);
+    fighterAura[side] = aura;
+  });
 }
 
 // Driven from the main loop so both fighters keep rendering: the models load asynchronously, so a
@@ -568,8 +612,32 @@ export function updateBattleField(dt) {
   // models on an otherwise static screen read as a frozen game.
   foePreview.holder.position.y = Math.sin(fieldBob * 1.7) * 0.022;
   youPreview.holder.position.y = Math.sin(fieldBob * 1.7 + 1.1) * 0.026;
+  // The shadow aura turns at the same rate it does in the dungeon, so it is recognisably the same
+  // effect on the same Pokemon rather than a second purple thing that happens in battles.
+  spinAura(fighterAura.foe, dt);
+  spinAura(fighterAura.you, dt);
   foePreview.render();
   youPreview.render();
+}
+
+// The attacker's step into its blow.
+//
+// Screen space, not model space: the two fighters sit in separate square canvases pinned to
+// opposite corners of the field (foe top-right, you bottom-left), and their ORTHOGRAPHIC cameras
+// make a 3D step toward the opponent — which is mostly a step along Z — almost invisible, since an
+// ortho projection does not scale with depth. A transform on the wrapper moves the whole fighter,
+// platform shadow and all, diagonally across the field toward the other one, which is the read.
+//
+// Restarted rather than guarded: the two sides alternate on a 780 ms turn slot and the lunge is
+// 260 ms, so they never overlap — but a swap or a revive can re-render mid-animation, and removing
+// the class and forcing a reflow before re-adding it is what makes the next one actually play.
+export function lungeAttacker(side) {
+  const el = $(`${side}-fighter`);
+  if (!el) return;
+  el.classList.remove('lunge');
+  void el.offsetWidth;
+  el.classList.add('lunge');
+  setTimeout(() => el.classList.remove('lunge'), 300);
 }
 
 export function battleLog(html) { $('battle-log').innerHTML = html; }
@@ -750,7 +818,9 @@ export function renderShop(ctx) {
   if (!shopModelShown) {
     // Loaded straight from its path rather than through a dex lookup: Kecleon is not in the Quest
     // roster or POKEMON_CATALOG, he is an NPC.
-    setPreviewModel(view.holder, null, 1.15, KECLEON_MODEL);
+    // `brighten`: his texture is a dark green and the shop panel gives him none of the dungeon
+    // stall's warm point light, so at rig brightness he came out as a near-black silhouette.
+    setPreviewModel(view.holder, null, 1.15, KECLEON_MODEL, { brighten: 1.5 });
     // A fixed three-quarter yaw, set once. He is standing still and facing the customer; the
     // slight turn is only so he is not a dead-flat front elevation.
     view.holder.rotation.y = -0.34;
@@ -758,9 +828,18 @@ export function renderShop(ctx) {
   }
   $('shop-coins').textContent = String(inv.coins());
 
+  // The line under each item's name is WHAT IT DOES (items.js `shopDesc`), not its stock count.
+  // It used to be the count, and that made the shop unusable for its actual purpose: the icons are
+  // 10x10 pixel art and the names are bare nouns, so anyone who had not already found that item on
+  // a floor and read it in the Glossary was buying blind. "3 left" is worth knowing but it is never
+  // the question you came to the stall with.
+  //
+  // The stock and the shortfall are not dropped, they move — into their own column under the price,
+  // which is where both belong anyway: they are facts about the OFFER, not about the item.
+  //
   // SOLD OUT and CAN'T AFFORD are different states and must not look the same. Sold out is gone,
   // so it is greyed right out; too expensive is still on the shelf, so the row stays in full colour
-  // with its price in red and the shortfall spelled out under the name. Both are disabled — but
+  // with its price in red and the shortfall spelled out under it. Both are disabled — but
   // greyscaling an unaffordable row would wash the red price out, which is the one thing on it that
   // explains why it cannot be pressed.
   const rows = ctx.stock.map(line => {
@@ -768,15 +847,19 @@ export function renderShop(ctx) {
     const sold = line.stock <= 0;
     const short = !sold && inv.coins() < line.price;
     const cls = sold ? ' sold' : short ? ' short' : '';
+    // Narrow column, so the shortfall loses the word "coins" — it sits directly under a coin price.
     const note = sold ? 'Sold out'
-      : short ? `${line.price - inv.coins()} coins short` : `${line.stock} left`;
+      : short ? `${line.price - inv.coins()} short` : `${line.stock} left`;
     return `<button class="shop-row${cls}" data-item="${item.id}" ${sold || short ? 'disabled' : ''}>
       <span class="shop-ico">${item.svg}</span>
       <span class="shop-body">
         <span class="shop-name">${item.name}</span>
+        <span class="shop-desc">${item.shopDesc || item.desc}</span>
+      </span>
+      <span class="shop-meta">
+        <span class="shop-price">${line.price}</span>
         <span class="shop-stock">${note}</span>
       </span>
-      <span class="shop-price">${line.price}</span>
     </button>`;
   }).join('');
   const grid = $('shop-rows');

@@ -100,12 +100,27 @@ function setMode(next, { returnTo = null } = {}) {
 }
 
 // ---- Run lifecycle ----------------------------------------------------------------------------
-// Three starters offered at random out of the 16-strong pool (design brief §3).
+// Three starters out of the 16-strong pool (design brief §3), one per slot: grass, then fire, then
+// water, left to right.
+//
+// The slots used to be three blind draws from the whole pool, which meant a run could open on
+// Chikorita / Treecko / Turtwig — three Grass starters, a choice between three of the same thing.
+// Every mainline game offers the triangle, and it is the triangle that makes the pick mean
+// something: whichever you take, you know what you gave up. Position is part of that too, so the
+// types are pinned to slots rather than shuffled — the row reads the same way every run, and only
+// WHICH generation's trio you are shown changes.
+//
+// Matched on the PRIMARY type (types[0]), not on "includes": Bulbasaur is Grass/Poison, and his
+// second type must not let him stand in the fire or water slot.
+const STARTER_SLOT_TYPES = ['Grass', 'Fire', 'Water'];
+
 function offerStarters() {
-  const pool = STARTER_DEX.slice();
   const offer = [];
-  while (offer.length < 3 && pool.length) {
-    offer.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
+  for (const type of STARTER_SLOT_TYPES) {
+    const pool = STARTER_DEX.filter(d => CATALOG_BY_DEX.get(d)?.types[0] === type);
+    // A slot with nothing to fill it is skipped rather than left as a hole in the row. The pool
+    // ships five Grass, five Fire and six Water, so this is only reachable if that pool is edited.
+    if (pool.length) offer.push(pool[Math.floor(Math.random() * pool.length)]);
   }
   preloadDex(offer);
   return offer;
@@ -292,7 +307,7 @@ function startBattle(kind, wild = null) {
   let enemies, title;
   if (kind === 'giovanni') { enemies = generateGiovanniTeam(); title = 'Giovanni'; }
   else if (kind === 'grunt') { enemies = generateGruntTeam(run.floorIndex + 1); title = 'Team Rocket Grunt'; }
-  else { enemies = wildEnemyTeam(wild.dex, run.floorIndex + 1); title = `Wild ${CATALOG_BY_DEX.get(wild.dex).name}`; }
+  else { enemies = wildEnemyTeam(wild.dex, run.floorIndex + 1, wild.aggressive); title = `Wild ${CATALOG_BY_DEX.get(wild.dex).name}`; }
 
   for (const e of enemies) recordDex('seenDex', e.dex);
   saveStats();
@@ -326,6 +341,9 @@ function updateBattleFrame(dtMs) {
       // every blow in text as well meant the band rewrote itself twice a second, which is what the
       // eye followed instead of the fight. Only the beats that change the situation get a line:
       // a faint, a switch, a revive, the result.
+      // Who SWUNG, before what it did to whoever took it: the attacker steps in, and the flash and
+      // the damage number land on the other one. `ev.side` is the attacking side.
+      ui.lungeAttacker(ev.side === 'party' ? 'you' : 'foe');
       ui.floatDamage(side, idx, ev.dmg, ev.superEff);
       ui.updateBattleRows(battle);
       sfx(ev.superEff ? 'superhit' : 'hit');
@@ -447,6 +465,8 @@ function beginCatch(wild) {
     floorNumber: state.run.floorIndex + 1,
     // The encounter stage is dressed as the floor you are standing on.
     theme: state.run.floor.theme,
+    // A shadow Pokemon keeps its purple aura right up to the moment the ball locks.
+    shadow: !!wild.aggressive,
     onThrow: () => {
       const id = catchState.ballId;
       if (inv.countOf(id) <= 0) return false;

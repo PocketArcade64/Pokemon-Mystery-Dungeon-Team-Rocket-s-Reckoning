@@ -17,6 +17,7 @@ import { randomFieldItemId, randomBallId, randomCoinId, COIN_BY_ID } from './dat
 import { CATALOG_BY_DEX, POKEMON_CATALOG } from './data/pokemon-catalog.js';
 import { TYPE_COLOR } from './data/type-chart.js';
 import { hemiLight, dirLight, scene } from './three-setup.js';
+import { makeAura, spinAura } from './aura.js';
 
 export const WALL = 0, FLOOR = 1, PROP = 2;   // collision grid values
 const PLAYER_RADIUS = 0.34;
@@ -1227,36 +1228,6 @@ function makeShopStall() {
   return g;
 }
 
-// The purple aura/cloud that marks an aggressive wild Pokemon (design brief §7).
-// Sized off the creature's own height: a fixed-size aura disappears INSIDE a big model like
-// Venusaur, which defeats the entire point of the marker. The ground ring does most of the work,
-// since it is the one part an overhead camera can always see.
-function makeAura(height = 0.85) {
-  const g = new THREE.Group();
-  const s = height / 0.85;
-  const puffMat = new THREE.MeshBasicMaterial({
-    color: 0xc264f5, transparent: true, opacity: 0.34, depthWrite: false,
-  });
-  const orbit = 0.62 * s;
-  for (let i = 0; i < 6; i++) {
-    const r = (0.2 + Math.random() * 0.13) * s;
-    const puff = new THREE.Mesh(new THREE.SphereGeometry(r, 7, 6), puffMat);
-    const a = (i / 6) * Math.PI * 2;
-    puff.position.set(Math.cos(a) * orbit, height * (0.5 + Math.sin(a * 2) * 0.22), Math.sin(a) * orbit);
-    g.add(puff);
-  }
-  const ring = new THREE.Mesh(
-    new THREE.RingGeometry(0.55 * s, 0.88 * s, 24),
-    new THREE.MeshBasicMaterial({
-      color: 0xc264f5, transparent: true, opacity: 0.6, side: THREE.DoubleSide, depthWrite: false,
-    }),
-  );
-  ring.rotation.x = -Math.PI / 2;
-  ring.position.y = 0.05;
-  g.add(ring);
-  return g;
-}
-
 export function applyThemeLighting(theme) {
   scene.background = new THREE.Color(theme.fog);
   // Fog starts well past the camera's own framing: pulled in any tighter and the far half of a
@@ -1533,7 +1504,7 @@ export function updateWilds(floor, dt, player, { repelled = false } = {}) {
 
     w.obj.position.set(w.x, 0, w.z);
     if (w.dirX || w.dirZ) w.obj.rotation.y = Math.atan2(w.dirX, w.dirZ);
-    if (w.aura) w.aura.rotation.y += dt * 1.6;
+    spinAura(w.aura, dt);
   }
 }
 

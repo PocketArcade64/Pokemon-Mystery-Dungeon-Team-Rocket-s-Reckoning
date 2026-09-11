@@ -175,10 +175,14 @@ export function createBattle({ party, enemies, kind = 'grunt', title = 'Team Roc
 
 // A single wild Pokemon standing in as a one-mon enemy team, for the forced battle an aggressive
 // wanderer triggers (design brief §7: win it and the catch minigame unlocks).
-export function wildEnemyTeam(dex, floorNumber) {
+// `aggressive` is carried through onto the mon rather than dropped here. It is the only thing that
+// forces this battle in the first place — a passive wild is walked around — and it is what the foe
+// fighter's purple aura is drawn from, so the Pokemon that was glowing on the floor is still
+// glowing across the table from you.
+export function wildEnemyTeam(dex, floorNumber, aggressive = false) {
   // Wilds come in softer than trainers at the same depth: bumping into one is an accident of
   // exploration, not a fight you chose, and on floor 1 it is often your starter alone.
-  const m = makeMon(dex, { hpScale: 0.6 + (floorNumber - 1) * 0.12 });
+  const m = makeMon(dex, { hpScale: 0.6 + (floorNumber - 1) * 0.12, aggressive });
   return m ? [m] : [];
 }
 
