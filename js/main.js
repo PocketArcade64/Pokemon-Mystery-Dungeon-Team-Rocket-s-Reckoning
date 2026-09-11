@@ -9,7 +9,7 @@ import { ITEM_BY_ID, COIN_BY_ID } from './data/items.js';
 import {
   generateFloor, buildFloor, disposeFloor, pickRunThemes, pickShopFloors, cellToWorld, cellValue,
   FLOOR, moveWithCollision, revealAround, revealWholeFloor, updateWilds, updateFloorDecor,
-  itemAtPlayer, wildAtPlayer, atStairs, atShop, drawMap, makeTrainerFigure, MINIMAP_CELLS,
+  itemAtPlayer, wildAtPlayer, atStairs, atShop, drawMap, makeTrainerFigure, STAIR_TOP, MINIMAP_CELLS,
 } from './dungeon.js';
 import { createInput } from './movement.js';
 import { createBattle, generateGruntTeam, generateGiovanniTeam, wildEnemyTeam } from './battle.js';
@@ -85,6 +85,9 @@ function setMode(next, { returnTo = null } = {}) {
       break;
     case 'settings':
       ui.renderSettings();
+      break;
+    case 'debug':
+      ui.renderDebug();
       break;
     case 'dex':
       ui.renderDex();
@@ -212,8 +215,13 @@ function enterFloor(index) {
     ? makeTrainerFigure({ suit: 0x23232b, accent: 0xf5a623, hair: 0x14141a, scale: 1.2 })
     : makeTrainerFigure({ suit: 0x1d1d24, accent: 0xd8202a, scale: 1.0 });
   const sw = cellToWorld(floor, floor.stairsCell.x, floor.stairsCell.y);
-  fig.position.set(sw.x, 0.54, sw.z);   // 0.54 = top of the three stair steps
-  fig.rotation.y = Math.PI * 0.75;      // face back down the diagonal, toward the camera
+  // STAIR_TOP is dungeon.js's own word on where the top of its stairwell is: the near lip of the
+  // well, at floor level, with the flight dropping away behind them. The stairs descend now, so
+  // "standing on the stairs" means standing at the head of them and not on a plinth — and because
+  // the lip is 1.35 out from the stairs tile and atStairs() fires at 1.3, you are stopped by the
+  // encounter with the Grunt filling the screen in front of the drop.
+  fig.position.set(sw.x, STAIR_TOP.y, sw.z + STAIR_TOP.z);
+  fig.rotation.y = STAIR_TOP.facing;
   floor.group.add(fig);
   floor.boss = { obj: fig, defeated: false, kind: isFinal ? 'giovanni' : 'grunt' };
 
@@ -628,7 +636,8 @@ function updatePlaying(dt) {
 
   // Pickups. Three kinds now, and each announces itself with its own SPRITE rather than a line of
   // text — a present on the floor deliberately does not say what is in it, so the reveal at the
-  // moment you pick it up is the whole point. ui.pickupPopup draws the pixel icon from items.js.
+  // moment you pick it up is the whole point. ui.pickupPopup draws the `icon` from items.js — the
+  // item's pixel-art sprite, or the coins' ASCII-grid SVG.
   const it = itemAtPlayer(floor, player);
   if (it) {
     it.taken = true;
@@ -637,13 +646,13 @@ function updatePlaying(dt) {
       const coin = COIN_BY_ID.get(it.coinId);
       const got = inv.addCoinPickup(it.coinId);
       sfx('money');
-      ui.pickupPopup({ svg: coin.svg, name: coin.name, qty: `+${got}` });
+      ui.pickupPopup({ icon: coin.icon, name: coin.name, qty: `+${got}` });
     } else {
       const item = ITEM_BY_ID.get(it.itemId);
       const qty = it.qty || 1;
       inv.addItem(it.itemId, qty);
       sfx('pickup');
-      ui.pickupPopup({ svg: item.svg, name: item.name, qty: qty > 1 ? `x${qty}` : '' });
+      ui.pickupPopup({ icon: item.icon, name: item.name, qty: qty > 1 ? `x${qty}` : '' });
     }
   }
 
@@ -832,6 +841,29 @@ Object.assign(uiHooks, {
   openGlossary: () => setMode('glossary', { returnTo: state.mode }),
   openSettings: () => setMode('settings', { returnTo: state.mode }),
   openDex: () => setMode('dex', { returnTo: state.mode }),
+  // The debug menu is a room off Settings, not a screen in its own right, so neither of these
+  // touches `returnTo`: it still points at whatever opened Settings (the title screen or the pause
+  // screen), which is where Settings' own Back has to go when the player finally gets there.
+  openDebug: () => setMode('debug'),
+  closeDebug: () => setMode('settings'),
+  // Both give-hooks are the debug menu's whole reach into a run, and both are inert without one.
+  // They deliberately go through inventory.addItem rather than writing state.run.bag: that is the
+  // function the rest of the game adds items with, so anything it does (or grows to do) happens
+  // here too and a debug-given item is indistinguishable from a found one.
+  debugGive: (itemId, n) => {
+    if (!state.run) return;
+    inv.addItem(itemId, n);
+    const item = ITEM_BY_ID.get(itemId);
+    ui.toast(`Added ${n} ${item?.name || itemId}.`);
+  },
+  // Straight onto run.coins, and NOT through addCoinPickup: that one also credits
+  // stats.coinsFound, and the lifetime record is a record of what was played. Debug money is not.
+  debugGiveCoins: (n) => {
+    if (!state.run) return;
+    state.run.coins = (state.run.coins || 0) + n;
+    ui.updateHUD();
+    ui.toast(`Added ${n} coins.`);
+  },
   back: () => setMode(state.returnTo === 'playing' && !state.run ? 'title' : state.returnTo),
   useItem: (itemId, mon) => {
     const res = inv.useItem(itemId, mon);

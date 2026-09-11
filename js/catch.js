@@ -690,9 +690,12 @@ function ringColorFor(base) {
 function refreshRingColor() {
   const item = ITEM_BY_ID.get(catchState.ballId);
   let base = item?.catchBase ?? 0.42;
-  // Later-stage species make the same ball a worse bet, and the ring colour says so up front.
+  // Later-stage species make the same ball a worse bet, and the ring colour says so up front —
+  // except with a Master Ball, where nothing about the target changes the answer, so the stage
+  // penalty is skipped and the ring stays green on a Legendary.
   const c = CATALOG_BY_DEX.get(catchState.dex);
-  if (c?.stage === 'Stage2') base -= 0.10;
+  if (item?.guaranteed) { /* certain: leave base alone */ }
+  else if (c?.stage === 'Stage2') base -= 0.10;
   else if (c?.stage === 'Stage1') base -= 0.05;
   catchState.ringColor = ringColorFor(base);
   TARGET_RING.material.color.setHex(catchState.ringColor);
@@ -1253,7 +1256,10 @@ function resolveContact(hx, hy) {
   const chance = Math.min(0.97, base + bonus);
 
   s.grade = grade;
-  s.willCatch = Math.random() < chance;
+  // A Master Ball is certain, and the 0.97 cap above is why that cannot be said in the arithmetic
+  // — it is said here instead. The grade, the accuracy and the bonus are all still computed and
+  // still shown, because EXCELLENT! is worth seeing; they just no longer decide anything.
+  s.willCatch = item?.guaranteed ? true : Math.random() < chance;
   s.accuracyPct = Math.round((1 - dist / R) * 100);
 
   const label = grade === 'hit' ? null
@@ -1510,10 +1516,50 @@ function fadeTrail(dt) {
   }
 }
 
+// A Master Ball that did not connect. Every way a throw can fail funnels through finishThrow, so
+// this is the one place that has to know the ball cannot: it takes the ball from wherever it ended
+// up — short of the target, sailing over, swatted out of the air, off the side of the stage — puts
+// it on the Pokemon, and hands the sequence to the ordinary capture from there.
+//
+// Deliberately NOT a special animation. The ball snapping to the target and the absorb and the
+// three shakes playing out exactly as they do for a clean hit is what sells the Master Ball as a
+// better ball rather than as a cutscene, and it means nothing downstream (the absorb, the camera
+// push-in, the stars, onResult) needs a branch for it.
+function masterBallHomesIn() {
+  const s = catchState;
+  s.grade = null;
+  s.curve = false;
+  s.spin = 0;
+  s.willCatch = true;
+  s.accuracyPct = 100;
+  s.wobbles = WOBBLES_CAUGHT;
+  s.shakesDone = 0;
+  hideTrail();
+  TARGET_RING.visible = false;
+  CAPTURE_RING.visible = false;
+  // Dead centre of the body, nudged toward the camera off its centre plane — the same contact
+  // point a perfect throw would have produced. See the note in resolveContact.
+  s.hitPoint.set(s.monX, s.monBodyY, TARGET_Z + 0.5);
+  s.ballObj.position.copy(s.hitPoint);
+  faceBall(s.ballObj);
+  if (s.monObj) s.monStart.copy(s.monObj.position);
+  s.phase = 'absorb';
+  s.phaseT = 0;
+  s.onSfx?.('absorb');
+}
+
 // A failed throw: report it, then let updateDeadBall re-arm when the beat is up.
 // `reason` is what main.js branches on — string-matching the message was fragile.
 function finishThrow(reason, msg) {
   const s = catchState;
+  // ... unless it was a Master Ball, in which case there is no such thing as a failed throw. The
+  // 'broke' reason is excluded because it cannot happen with one (willCatch is forced true in
+  // resolveContact, so the wobbles always run to three) and because a ball that had already
+  // captured has no business capturing a second time.
+  if (reason !== 'broke' && ITEM_BY_ID.get(s.ballId)?.guaranteed && s.ballObj) {
+    masterBallHomesIn();
+    return;
+  }
   s.resultMsg = msg;
   s.grade = null;
   s.phase = 'fail';

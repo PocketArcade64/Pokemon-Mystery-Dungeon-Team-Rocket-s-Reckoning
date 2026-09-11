@@ -297,7 +297,13 @@ export function preloadDex(dexList) {
 export function preloadPickupModels() {
   loadModelOrNull(GIFT_BOX_MODEL);
   for (const p of Object.values(COIN_MODEL_PATHS)) loadModelOrNull(p);
-  for (const id of ['poke-ball', 'great-ball', 'ultra-ball']) loadModelOrNull(BALL_MODEL_PATHS[id]);
+  // The Master Ball is in the list even though only about one floor in nine holds one. It is the
+  // rarest thing a floor can put on the ground and the one pickup a player will walk straight at,
+  // so it is the last one that should be a grey placeholder block for its first second — and the
+  // model is small enough that warming it on every floor costs nothing worth counting.
+  for (const id of ['poke-ball', 'great-ball', 'ultra-ball', 'master-ball']) {
+    loadModelOrNull(BALL_MODEL_PATHS[id]);
+  }
 }
 
 // Detach an instance from the scene. Deliberately does NOT dispose geometry or materials:

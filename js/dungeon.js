@@ -56,6 +56,19 @@ const SIGHT_RADIUS = 4.5;
 // Every floor hands out at least this many Poke Balls across its ball pickups (1-5 per pickup).
 const BALLS_PER_FLOOR = 15;
 
+// ---- The stair pit ------------------------------------------------------------------------------
+// The up-stairs is a stairwell cut DOWN into the floor (see makeStairs), so unlike every other
+// fixture it is not something standing on the ground — it is a hole in it. That hole is a
+// (2*STAIR_PIT_R+1)-cell square centred on floor.stairsCell, and three passes have to agree on it:
+//
+//   buildFloor   omits the floor tiles inside it, or they would hang in mid-air across the well.
+//   generateFloor carves the square to FLOOR, so no rock outcrop can grow into the stairwell.
+//   freeCell     refuses to put a pickup inside it, since there is no floor there to put one on.
+//
+// 1 (a 3x3 cell square, 3 world units across) is the largest that still fits inside the 3-cell
+// keep-clear radius the props and rock already respect around the stairs.
+const STAIR_PIT_R = 1;
+
 // ---- The eleven floor themes (design brief §10, plus a beach) -----------------------------------
 // `types` drives which species can spawn as wild Pokemon on that floor. Colors are all we have to
 // build atmosphere with: there are no themed environment assets, so every floor is Three.js
@@ -381,6 +394,17 @@ export function generateFloor(floorNumber, theme, { shop = false } = {}) {
   const startCell = { x: startRoom.cx, y: startRoom.cy };
   const stairsCell = { x: stairsRoom.cx, y: stairsRoom.cy };
 
+  // The stairwell's pit is carved open before anything else can claim those cells. The stairs sit
+  // at a room's CENTRE so in practice the square is already clear floor, but the stairwell is a
+  // solid 3x3 object and one outcrop or notch growing into it would have rock standing in the well
+  // — so the invariant is asserted here rather than hoped for. See STAIR_PIT_R.
+  for (let dy = -STAIR_PIT_R; dy <= STAIR_PIT_R; dy++) {
+    for (let dx = -STAIR_PIT_R; dx <= STAIR_PIT_R; dx++) {
+      const x = stairsCell.x + dx, y = stairsCell.y + dy;
+      if (inBounds(x, y)) cells[at(x, y)] = FLOOR;
+    }
+  }
+
   // 4. VERIFY connectivity rather than assuming it. The spanning tree connects room ANCHORS, and
   //    a 3-wide corridor from an anchor always reaches the rest of its own room for the convex
   //    shapes — but a cavern or a heavily notched hall can have a lobe the corridor never touches,
@@ -477,7 +501,11 @@ export function generateFloor(floorNumber, theme, { shop = false } = {}) {
       if (cells[i] !== FLOOR || taken.has(i)) continue;
       const x = i % W, y = (i - x) / W;
       if (Math.hypot(x - startCell.x, y - startCell.y) < minDistFromStart) continue;
-      if (x === stairsCell.x && y === stairsCell.y) continue;
+      // The whole STAIR_PIT_R footprint, not just the stairs tile. The up-stairs is a recessed
+      // stairwell now and buildFloor leaves a hole in the floor for it, so a pickup one cell off
+      // the stairs would be hovering over open air (and be unreachable, since walking that close
+      // triggers the ascent).
+      if (Math.abs(x - stairsCell.x) <= STAIR_PIT_R && Math.abs(y - stairsCell.y) <= STAIR_PIT_R) continue;
       if (floor.shop && Math.abs(floor.shop.cx - x) <= 3 && Math.abs(floor.shop.cy - y) <= 3) continue;
       taken.add(i);
       return { x, y };
@@ -498,10 +526,17 @@ export function generateFloor(floorNumber, theme, { shop = false } = {}) {
   // 1-5 balls of one type, so the pass keeps placing until the running total clears the floor's
   // quota — which is why randomFieldItemId() above excludes balls entirely. Placement can run out
   // of free cells on a cramped layout, so the loop is also bounded.
+  //
+  // randomBallId() can also come back with a Master Ball (MASTER_BALL_CHANCE, see items.js). That
+  // one is pinned to a single ball rather than the usual 1-5: a marker holding five guaranteed
+  // catches is not a rare find, it is the rest of the run. It still counts toward the quota, so
+  // finding one costs the floor an ordinary ball and nothing more.
   let ballTotal = 0;
   for (let guard = 0; ballTotal < BALLS_PER_FLOOR && guard < 40; guard++) {
     const itemId = randomBallId();
-    const qty = Math.min(rndInt(1, 5), BALLS_PER_FLOOR * 2 - ballTotal);
+    const qty = itemId === 'master-ball'
+      ? 1
+      : Math.min(rndInt(1, 5), BALLS_PER_FLOOR * 2 - ballTotal);
     const before = floor.items.length;
     addPickup({ kind: 'ball', itemId, qty });
     if (floor.items.length === before) break;      // nowhere left to put one
@@ -1078,28 +1113,156 @@ export function makeTrainerFigure({ suit = 0x1d1d24, accent = 0xd8202a, skin = 0
   return g;
 }
 
-// The up-stairs: a stepped plinth with a glowing lip, sized so a trainer stands on top of it.
-function makeStairs(theme) {
+// ---- The up-stairs: a cobblestone stairwell cut down into the floor -----------------------------
+//
+// Modelled on Minecraft's cobblestone stairs, and DESCENDING: the flight drops away from the
+// floor you are standing on and runs out into darkness at the bottom, because that is where it
+// goes — the next floor down. (The game calls it the "up-stairs" throughout because it is what
+// you ascend the run's difficulty by taking; the geometry is a way down into the dungeon.)
+//
+// This replaced a three-tier plinth that RAISED the exit 0.54 above the floor, which read as an
+// altar the Grunt was standing on rather than as a way out of the room.
+//
+// Built as a voxel grid, which is both what makes it read as Minecraft and what makes it cheap:
+// every cobble is one instance of a single unit-cube geometry in ONE InstancedMesh, so the whole
+// stairwell — walls, treads and apron, a few hundred blocks — is a single draw call. Cobbles with
+// all six neighbours filled are skipped, since nothing can ever see them.
+//
+// GEOMETRY, in the group's local space, origin at the centre of floor.stairsCell and y = 0 at the
+// floor surface. COBBLE is the block size and doubles as the step rise AND run, so the flight is a
+// true 45 degrees, exactly as a Minecraft staircase is:
+//
+//        -Z (camera side)                  +Z
+//     apron | flight descending ->      | back wall
+//     y= 0  |___                        |
+//           |   |___                    |     <- 8 steps, COBBLE rise and run each
+//           |       |___                |
+//           |           |___ ... -2.4   |
+//
+// The camera looks down the +X/+Z diagonal from 39.9 degrees above the horizon (see CAM_OFFSET),
+// so a flight running +Z is seen from its front-left with every tread and riser facing the camera,
+// and the sight line from the near lip clears the bottom step with room to spare. The near row of
+// apron is where the Grunt stands — see enterFloor in main.js.
+const COBBLE = 0.3;                        // one "block": also the step rise and the step run
+const STAIR_GRID = 10;                     // 10 blocks square = 3.0 units = the 3x3 cell pit
+const STAIR_DEPTH = 8;                     // blocks of wall below the floor, so the well is 2.4 deep
+
+// Minecraft cobblestone is not one grey, it is a mottle of several, and that mottle is the whole
+// of what makes it read as cobblestone rather than as stone. Picked per block off the position
+// hash below so a given cobble keeps its shade (no flicker) and no two neighbours agree.
+const COBBLE_GREYS = [0x7c7c7c, 0x949494, 0x656565, 0xa2a2a2, 0x848484, 0x717171, 0x9b9b9b];
+
+function makeStairs() {
   const g = new THREE.Group();
-  const stone = new THREE.MeshStandardMaterial({ color: theme.wallTop });
-  for (let i = 0; i < 3; i++) {
-    const s = 2.2 - i * 0.5;
-    const m = new THREE.Mesh(new THREE.BoxGeometry(s, 0.18, s), stone);
-    m.position.y = 0.09 + i * 0.18;
-    m.receiveShadow = true; m.castShadow = true;
-    g.add(m);
+
+  // Grid coordinates run 0..STAIR_GRID-1 across and 0..-STAIR_DEPTH down; gy 0 is the layer whose
+  // TOP is the floor surface. The apron is lifted 0.02 proud of the floor so its top face is not
+  // coplanar with the floor tiles it overlaps — coplanar faces z-fight.
+  const APRON_LIFT = 0.02;
+  const half = (STAIR_GRID * COBBLE) / 2;
+  const wx = (gx) => -half + (gx + 0.5) * COBBLE;
+  const wz = (gz) => -half + (gz + 0.5) * COBBLE;
+  const wy = (gy) => (gy + 0.5) * COBBLE - COBBLE + APRON_LIFT;
+
+  // Is there a cobble at this grid position? One predicate, asked twice: once to emit the blocks
+  // and once per face to decide whether a block is buried. Keeping it as a pure function of
+  // position is what makes the neighbour test trivial.
+  const last = STAIR_GRID - 1;
+  const filled = (gx, gy, gz) => {
+    if (gx < 0 || gz < 0 || gx > last || gz > last) return false;
+    if (gy > 0 || gy < -STAIR_DEPTH) return false;
+    // The outer ring is solid wall from the floor surface all the way down: it is what holds the
+    // neighbouring floor tiles' cut edges out of sight from inside the well.
+    if (gx === 0 || gx === last || gz === 0 || gz === last) return true;
+    // Interior: the flight. Step i occupies interior column gz = i + 1 and is solid from its tread
+    // down to the bottom of the well — a staircase is not hollow, and the camera can see under the
+    // lip of a flight this steep.
+    const step = gz - 1;                        // 0 .. STAIR_GRID-3, front to back
+    return gy <= -(step + 1);
+  };
+
+  // Top face of step i, which is where the glow and the light hang. gy = -(i+1) is the step's
+  // topmost block, and wy() puts a block's top COBBLE/2 above its centre.
+  const treadTopY = (step) => -(step + 1) * COBBLE + APRON_LIFT;
+  const lastStep = STAIR_GRID - 3;
+
+  const blocks = [];
+  for (let gz = 0; gz <= last; gz++) {
+    for (let gx = 0; gx <= last; gx++) {
+      for (let gy = 0; gy >= -STAIR_DEPTH; gy--) {
+        if (!filled(gx, gy, gz)) continue;
+        // Buried on all six sides: nothing can see it, so it is not worth an instance. This halves
+        // the count on a solid staircase.
+        if (filled(gx - 1, gy, gz) && filled(gx + 1, gy, gz)
+          && filled(gx, gy - 1, gz) && filled(gx, gy + 1, gz)
+          && filled(gx, gy, gz - 1) && filled(gx, gy, gz + 1)) continue;
+        blocks.push([gx, gy, gz]);
+      }
+    }
   }
-  const glow = new THREE.Mesh(
-    new THREE.BoxGeometry(1.3, 0.04, 1.3),
-    new THREE.MeshBasicMaterial({ color: 0x9ff2d0, transparent: true, opacity: 0.75 }),
+
+  const cobbles = new THREE.InstancedMesh(
+    // A hair over COBBLE so neighbours interpenetrate instead of meeting on a shared plane, which
+    // would z-fight along every seam in the wall.
+    new THREE.BoxGeometry(COBBLE * 1.04, COBBLE * 1.04, COBBLE * 1.04),
+    new THREE.MeshStandardMaterial({ roughness: 0.95, flatShading: true }),
+    blocks.length,
   );
-  glow.position.y = 0.56;
+  cobbles.castShadow = true;
+  cobbles.receiveShadow = true;
+  const m4 = new THREE.Matrix4();
+  const col = new THREE.Color();
+  blocks.forEach(([gx, gy, gz], i) => {
+    m4.makeTranslation(wx(gx), wy(gy), wz(gz));
+    cobbles.setMatrixAt(i, m4);
+    const hash = (gx * 73 + gz * 151 + gy * 31) % COBBLE_GREYS.length;
+    // Darkened with depth on top of the mottle, so the well reads as going somewhere rather than
+    // as a lit box with a floor in it, and honest to the lighting — the dirLight barely reaches
+    // past the lip. Capped at 0.52 rather than taken further: past about half, the mottle that is
+    // doing the work of making this read as COBBLESTONE goes with it, and the flight turns into
+    // one black shape with a glow at the bottom. The teal point light on the last tread is what
+    // carries the rest of the depth.
+    const sink = 1 - Math.min(0.52, (-gy) * 0.075);
+    cobbles.setColorAt(i, col.setHex(COBBLE_GREYS[(hash + COBBLE_GREYS.length) % COBBLE_GREYS.length]).multiplyScalar(sink));
+  });
+  cobbles.instanceMatrix.needsUpdate = true;
+  if (cobbles.instanceColor) cobbles.instanceColor.needsUpdate = true;
+  g.add(cobbles);
+
+  // The teal glow and its point light, kept from the plinth this replaced — it is the game's
+  // established "this is the way on" marker and the only thing that picks the stairs out from
+  // across a dark floor, on the minimap as well as here. Moved down onto the BOTTOM tread, where
+  // it lights the well from below, throws every riser above it into relief, and reads as something
+  // shining up out of the dark. The pulse in animateFloor replaced the plinth's slow spin: a
+  // rotating flight of stairs was never going to work.
+  const inner = (STAIR_GRID - 2) * COBBLE;
+  const glow = new THREE.Mesh(
+    new THREE.BoxGeometry(inner, 0.04, COBBLE * 2),
+    new THREE.MeshBasicMaterial({ color: 0x9ff2d0, transparent: true, opacity: 0.7 }),
+  );
+  glow.position.set(0, treadTopY(lastStep) + 0.03, wz(lastStep + 1));
   g.add(glow);
-  const light = new THREE.PointLight(0x7fe8c0, 1.2, 8);
-  light.position.y = 1.2;
+  g.userData.glow = glow;
+
+  const light = new THREE.PointLight(0x7fe8c0, 1.6, 7);
+  light.position.set(0, treadTopY(lastStep) + 0.9, wz(lastStep + 1));
   g.add(light);
+
   return g;
 }
+
+// Where the Grunt guarding a floor's stairs stands: on the apron at the near lip of the well,
+// facing the camera, with the flight dropping away behind them. Exported because main.js owns the
+// figure (it picks Grunt vs Giovanni) while this file owns the stairwell's dimensions.
+export const STAIR_TOP = {
+  // Centre of the near apron row. At 1.35 from the stairs tile it sits just outside atStairs()'s
+  // 1.3 trigger radius, so you are stopped by the encounter a step BEFORE you walk through them.
+  z: -((STAIR_GRID * COBBLE) / 2 - COBBLE / 2),
+  y: 0.02,                                  // the apron's top face — see APRON_LIFT
+  // Front is +Z on makeTrainerFigure (the R is on its +Z face), and the camera sits off the
+  // -X/-Z diagonal, so this is the rotation that turns the R to face it.
+  facing: Math.PI * 1.25,
+};
 
 // Floor pickups. Every one of them is a real model now rather than the generic spinning gem this
 // used to draw, and every one of them ROTATES IN PLACE:
@@ -1249,10 +1412,21 @@ export function buildFloor(floor) {
 
   const floorCells = [];
   const wallCells = [];
+  // The stairwell's footprint gets NO floor tile. It is a hole in the floor that the stairs
+  // descend into (see makeStairs), and a floor tile inside it would hang across the well in
+  // mid-air — the tiles are 0.4 thick and their tops are the walking surface, so one sitting over
+  // the flight is a slab wedged between the treads. The cells stay FLOOR in floor.cells, which is
+  // what collision and the tap-to-move pathfinder read; nothing ever stands there because
+  // atStairs() takes the ascent at 1.3 units out, half a cell short of the lip.
+  const inStairPit = (x, y) =>
+    Math.abs(x - floor.stairsCell.x) <= STAIR_PIT_R && Math.abs(y - floor.stairsCell.y) <= STAIR_PIT_R;
   for (let y = 0; y < H; y++) {
     for (let x = 0; x < W; x++) {
       const v = floor.cells[y * W + x];
-      if (v === FLOOR || v === PROP) { floorCells.push([x, y]); continue; }
+      if (v === FLOOR || v === PROP) {
+        if (!inStairPit(x, y)) floorCells.push([x, y]);
+        continue;
+      }
       // EVERY solid cell is instanced, not just the ones touching open space.
       //
       // This used to draw only the border ring "because the rock behind it is never visible from
@@ -1381,7 +1555,7 @@ export function buildFloor(floor) {
     }
   }
 
-  const stairs = makeStairs(theme);
+  const stairs = makeStairs();
   const sw = cellToWorld(floor, floor.stairsCell.x, floor.stairsCell.y);
   stairs.position.set(sw.x, 0, sw.z);
   group.add(stairs);
@@ -1563,7 +1737,11 @@ export function updateFloorDecor(floor, dt, elapsed) {
     spin.rotation.y += dt * (SPIN_SPEED[it.kind] || 1.2);
     spin.position.y = 0.34 + Math.sin(elapsed * 2 + it.bob) * (BOB_HEIGHT[it.kind] || 0.08);
   }
-  if (floor.stairsObj) floor.stairsObj.rotation.y += dt * 0.25;
+  // The stairwell itself does not move — it is a hole in the floor, and the plinth that used to
+  // stand here span slowly because it was a free-standing object. What is left of that is the teal
+  // glow on the bottom tread, which breathes instead: a light coming up out of the dark.
+  const stairGlow = floor.stairsObj?.userData?.glow;
+  if (stairGlow) stairGlow.material.opacity = 0.45 + Math.sin(elapsed * 2.2) * 0.25;
   // Kecleon's presents turn too, so the stall is not a still life next to a floor full of
   // spinning pickups.
   const presents = floor.shop?.obj?.userData?.presents;

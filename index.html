@@ -404,7 +404,7 @@
   }
   #pickup-pop.show { opacity: 1; transform: translateX(-50%) translateY(0); }
   #pickup-pop .pickup-icon { width: 34px; height: 34px; flex: 0 0 auto; }
-  #pickup-pop .pickup-icon svg { width: 100%; height: 100%; display: block; image-rendering: pixelated; }
+  #pickup-pop .pickup-icon svg, #pickup-pop .pickup-icon img { width: 100%; height: 100%; display: block; image-rendering: pixelated; }
   #pickup-pop .pickup-text { display: flex; align-items: baseline; gap: 7px; }
   #pickup-pop .pickup-name { font-size: 1.001rem; font-weight: 700; color: var(--ink); }
   #pickup-pop .pickup-qty { font-size: 1.105rem; font-weight: 700; color: var(--gold); }
@@ -869,7 +869,7 @@
   .shop-row.short .shop-price { color: var(--danger); }
   .shop-row.short .shop-stock { color: var(--danger); }
   .shop-row .shop-ico { width: 36px; height: 36px; flex: 0 0 auto; }
-  .shop-row .shop-ico svg { width: 100%; height: 100%; display: block; image-rendering: pixelated; }
+  .shop-row .shop-ico svg, .shop-row .shop-ico img { width: 100%; height: 100%; display: block; image-rendering: pixelated; }
   .shop-row .shop-body { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
   .shop-row .shop-name {
     font-size: 0.988rem; font-weight: 700;
@@ -910,7 +910,7 @@
     background: rgba(255,213,79,0.22);
     box-shadow: 0 4px 0 var(--gold-dark);
   }
-  .item-cell svg { width: 100%; height: 100%; display: block; image-rendering: pixelated; }
+  .item-cell svg, .item-cell img { width: 100%; height: 100%; display: block; image-rendering: pixelated; }
   .item-cell .qty {
     position: absolute; bottom: -6px; right: -6px;
     min-width: 24px; height: 22px; padding: 0 4px;
@@ -938,7 +938,7 @@
     flex: 0 0 40px; width: 40px; height: 40px; padding: 3px;
     background: rgba(0,0,0,0.28); border-radius: 8px;
   }
-  .gloss-icon svg { width: 100%; height: 100%; image-rendering: pixelated; }
+  .gloss-icon svg, .gloss-icon img { width: 100%; height: 100%; image-rendering: pixelated; }
   .gloss-name {
     font-weight: 700; font-size: 1.105rem; color: var(--gold); line-height: 1.4;
   }
@@ -997,14 +997,15 @@
   .setting-note { font-size: 0.975rem; color: var(--ink-dim); margin-top: 10px; }
   .setting-note b { color: var(--gold); font-weight: 700; }
 
-  /* The password gate on Erase Records. Text entry is the ONLY place this game takes typing, and
-     the field follows the slider's lead rather than the buttons': sliders are the one control
-     Rumble Run keeps chunky and outlined, and a recessed dark well with a hard fence is what an
-     input is the same argument for. `font-size` must stay at or above 16px — iOS zooms the whole
-     page in on focusing anything smaller, and this page does not scroll back. */
-  #reset-gate { margin-top: 12px; }
-  #reset-gate .setting-note { margin-top: 0; margin-bottom: 10px; }
-  #reset-pass {
+  /* The password gates — on Erase Records, and on the debug menu. Text entry is the ONLY place
+     this game takes typing, and the field follows the slider's lead rather than the buttons':
+     sliders are the one control Rumble Run keeps chunky and outlined, and a recessed dark well
+     with a hard fence is the same argument for an input. `font-size` must stay at or above 16px —
+     iOS zooms the whole page in on focusing anything smaller, and this page does not scroll back.
+     Both gates share one rule set; they are the same control doing the same job. */
+  #reset-gate, #debug-gate { margin-top: 12px; }
+  #reset-gate .setting-note, #debug-gate .setting-note { margin-top: 0; margin-bottom: 10px; }
+  #reset-pass, #debug-pass {
     -webkit-appearance: none; appearance: none;
     display: block; width: 100%; max-width: 220px;
     margin-bottom: 10px;
@@ -1017,8 +1018,30 @@
        it cannot be tapped into or corrected on a phone. */
     -webkit-user-select: text; user-select: text; touch-action: manipulation;
   }
-  #reset-pass::placeholder { color: var(--ink-dim); opacity: 0.55; }
-  #reset-pass:focus { border-color: var(--gold); }
+  #reset-pass::placeholder, #debug-pass::placeholder { color: var(--ink-dim); opacity: 0.55; }
+  #reset-pass:focus, #debug-pass:focus { border-color: var(--gold); }
+
+  /* ---- Debug menu ---------------------------------------------------------------------------
+     One row per item: its sprite, its name with what you are holding, and the two add buttons.
+     The body is a column so the Bag list can be the part that scrolls while the coin buttons stay
+     put — with the list inside the sheet's own scroll pane instead, a long list pushed the coins
+     off the top of the screen. */
+  .debug-body { display: flex; flex-direction: column; min-height: 0; flex: 1; }
+  .debug-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 7px 2px;
+    border-bottom: 1px solid var(--edge);
+  }
+  .debug-row:last-child { border-bottom: 0; }
+  .debug-ico {
+    flex: 0 0 32px; width: 32px; height: 32px; padding: 2px;
+    background: rgba(0,0,0,0.28); border-radius: 6px;
+  }
+  .debug-ico svg, .debug-ico img { width: 100%; height: 100%; display: block; image-rendering: pixelated; }
+  .debug-name { flex: 1 1 auto; font-size: 1.04rem; font-weight: 700; min-width: 0; }
+  .debug-have { color: var(--ink-dim); font-weight: 400; margin-left: 7px; }
+  .debug-btns { flex: 0 0 auto; display: flex; gap: 6px; }
+  .debug-btns .btn { margin-bottom: 0; padding: 0.3rem 0.55rem; }
 
   /* ---- Pokedex / Stats ---------------------------------------------------------------------- */
   #dex-preview {
@@ -1286,7 +1309,7 @@
     width: 62px; height: 62px;
   }
   #catch-ball-icon { display: block; width: 30px; height: 30px; line-height: 0; }
-  #catch-ball-icon svg { width: 30px; height: 30px; stroke: none; image-rendering: pixelated; }
+  #catch-ball-icon svg, #catch-ball-icon img { width: 30px; height: 30px; stroke: none; image-rendering: pixelated; }
   #catch-ball-count {
     position: absolute; bottom: 3px; right: 4px;
     font-size: 0.78rem; font-weight: 700; color: var(--gold);
@@ -1380,7 +1403,7 @@
     font-weight: 700; font-size: 0.78rem; cursor: pointer;
   }
   .ball-chip:active { transform: scale(0.92); }
-  .ball-chip svg { width: 26px; height: 26px; image-rendering: pixelated; }
+  .ball-chip svg, .ball-chip img { width: 26px; height: 26px; image-rendering: pixelated; }
   .ball-chip span {
     position: absolute; bottom: 2px; right: 4px;
     color: var(--gold); text-shadow: 0 1px 2px #000;
@@ -1665,8 +1688,53 @@
         </div>
         <div class="setting-note">Clears your lifetime record only. It never affected gameplay.</div>
       </div>
+      <!-- The debug menu's door. Gated the same way Erase Records is, for a different reason: not
+           "did you mean it" but "you are not meant to be in here" - it hands out items and money,
+           and one tap away from the volume sliders is not where that belongs. -->
+      <div class="setting">
+        <label>Testing</label>
+        <button class="btn secondary small" id="btn-debug-open">Debug Menu</button>
+        <div id="debug-gate" hidden>
+          <div class="setting-note">Password required.</div>
+          <input id="debug-pass" type="password" placeholder="Password" maxlength="24"
+                 autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
+                 aria-label="Debug menu password" />
+          <div class="btn-row">
+            <button class="btn small" id="btn-debug-go" disabled>Unlock</button>
+            <button class="btn secondary small" id="btn-debug-cancel">Cancel</button>
+          </div>
+        </div>
+      </div>
     </div>
     <button class="btn secondary" id="btn-settings-back" style="margin-top:14px">Back</button>
+  </div>
+
+  <!-- ============ DEBUG MENU ============
+       Items and money on demand, for testing whatever comes after having them. Reached only from
+       Settings, through the password gate above; it is rendered by renderDebug() in ui-screens.js
+       and everything on it needs a run in progress, which is what #debug-norun covers.
+  -->
+  <div class="screen sheet" id="screen-debug">
+    <h2 class="screen-title">Debug Menu</h2>
+    <div class="empty-note" id="debug-norun" hidden>
+      Nothing to change yet - there is no run in progress. Start one, then open this from the
+      pause screen.
+    </div>
+    <div id="debug-body" class="debug-body">
+      <div class="setting">
+        <label>Coins <span class="val" id="debug-coins">0</span></label>
+        <div class="btn-row">
+          <button class="btn small" id="btn-debug-coins-10">+10</button>
+          <button class="btn small" id="btn-debug-coins-50">+50</button>
+          <button class="btn small" id="btn-debug-coins-100">+100</button>
+        </div>
+      </div>
+      <div class="setting" style="min-height:0;display:flex;flex-direction:column">
+        <label>Bag</label>
+        <div class="scroll" style="min-height:0"><div id="debug-items"></div></div>
+      </div>
+    </div>
+    <button class="btn secondary" id="btn-debug-back" style="margin-top:14px">Back</button>
   </div>
 
   <!-- ============ POKEDEX / STATS ============ -->

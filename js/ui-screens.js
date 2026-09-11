@@ -31,6 +31,12 @@ export const uiHooks = {
   openGlossary: () => {},
   openSettings: () => {},
   openDex: () => {},
+  // The debug menu, behind the password gate in Settings. The two give hooks are no-ops without a
+  // live run — see renderDebug.
+  openDebug: () => {},
+  closeDebug: () => {},
+  debugGive: (_itemId, _n) => {},
+  debugGiveCoins: (_n) => {},
   back: () => {},
   useItem: (_itemId, _mon) => {},
   setControls: (_mode) => {},
@@ -62,6 +68,7 @@ const SCREEN_FOR_MODE = {
   bag: 'screen-bag',
   glossary: 'screen-glossary',
   settings: 'screen-settings',
+  debug: 'screen-debug',
   dex: 'screen-dex',
   battle: 'screen-battle',
   catch: 'screen-catch',
@@ -168,9 +175,9 @@ export function hideBanner() {
 // It floats above the toast slot rather than replacing it: toast is still what reports things the
 // player DID (used an item, a Pokemon got away), and the two can legitimately land together.
 let pickupTimer = null;
-export function pickupPopup({ svg, name, qty = '' }, ms = 1500) {
+export function pickupPopup({ icon, name, qty = '' }, ms = 1500) {
   const el = $('pickup-pop');
-  el.innerHTML = `<div class="pickup-icon">${svg}</div>`
+  el.innerHTML = `<div class="pickup-icon">${icon}</div>`
     + `<div class="pickup-text"><span class="pickup-name">${name}</span>`
     + (qty ? `<span class="pickup-qty">${qty}</span>` : '') + '</div>';
   // Restart the rise-and-fade animation even when one is already running: two pickups a few
@@ -427,7 +434,7 @@ function renderBagItems() {
   $('bag-empty').style.display = entries.length ? 'none' : 'block';
   grid.innerHTML = entries.map(({ item, count }) => `
     <div class="item-cell ${bagSelectedItem === item.id ? 'selected' : ''}" data-id="${item.id}" title="${item.name}">
-      ${item.svg}<span class="qty">${count}</span>
+      ${item.icon}<span class="qty">${count}</span>
     </div>`).join('');
   grid.querySelectorAll('.item-cell').forEach(el => {
     el.addEventListener('click', () => {
@@ -467,7 +474,7 @@ function renderBagDetail() {
 export function renderGlossary() {
   $('glossary-list').innerHTML = ITEMS.map(i => `
     <div class="gloss-row">
-      <div class="gloss-icon">${i.svg}</div>
+      <div class="gloss-icon">${i.icon}</div>
       <div>
         <div class="gloss-name">${i.name}</div>
         <div class="gloss-desc">${i.desc}</div>
@@ -491,16 +498,75 @@ function setResetGate(armed) {
   }
 }
 
+// ---- The debug menu's password gate ------------------------------------------------------------
+// Same shape as the Erase Records gate above and for a different reason: this one is not a "did
+// you mean it" check, it is a door. The debug menu hands out items and money, so it is not
+// something to leave one tap away in a shipped build — but it also is not a secret worth real
+// protection, which is why it is a plain string compared in the client and nothing more.
+//
+// Compared trimmed and case-insensitively: it is typed on a phone keyboard that capitalises the
+// first letter on its own, and "team rocket" should not be a wrong answer.
+const DEBUG_WORD = 'team rocket';
+
+function setDebugGate(armed) {
+  $('debug-gate').hidden = !armed;
+  $('btn-debug-open').hidden = armed;
+  if (!armed) {
+    $('debug-pass').value = '';
+    $('btn-debug-go').disabled = true;
+  }
+}
+
 export function renderSettings() {
   // Always opens closed: leaving the screen with the field half-filled and coming back to a live
-  // Erase button is exactly the accident this gate exists to prevent.
+  // Erase button is exactly the accident this gate exists to prevent. The debug gate closes for
+  // the same reason, minus the danger — an unlocked door that stays unlocked stops being a door.
   setResetGate(false);
+  setDebugGate(false);
   $('vol-music').value = Math.round(state.settings.music * 100);
   $('vol-sfx').value = Math.round(state.settings.sfx * 100);
   $('vol-music-val').textContent = Math.round(state.settings.music * 100) + '%';
   $('vol-sfx-val').textContent = Math.round(state.settings.sfx * 100) + '%';
   $('ctrl-joystick').setAttribute('aria-pressed', String(state.settings.controls === 'joystick'));
   $('ctrl-tap').setAttribute('aria-pressed', String(state.settings.controls === 'tap'));
+}
+
+// ---- Debug menu -------------------------------------------------------------------------------
+// A testing screen, reached from Settings behind the password gate above. It exists so that the
+// things a run has to EARN — a bag full of every item, a purse that can clear Kecleon's blanket —
+// can be had in one tap when what is being tested is what happens next. It is deliberately the
+// only screen in the game that reaches into a run rather than playing it.
+//
+// Everything here needs a live run: state.run is null on the title screen, and there is no bag to
+// put anything in. Rather than gate the door on that, the screen renders and says so, which is
+// also the answer to "why is nothing happening" if it is opened from the title.
+//
+// Items are listed in items.js order, which puts the four balls first — the Master Ball included,
+// making this the only place it can be had on demand. Both buttons on a row add rather than set,
+// so the quantities are the two step sizes rather than a target.
+export function renderDebug() {
+  const live = !!state.run;
+  $('debug-norun').hidden = live;
+  $('debug-body').hidden = !live;
+  $('debug-coins').textContent = live ? String(inv.coins()) : '0';
+  if (!live) { $('debug-items').innerHTML = ''; return; }
+
+  $('debug-items').innerHTML = ITEMS.map(i => `
+    <div class="debug-row">
+      <span class="debug-ico">${i.icon}</span>
+      <span class="debug-name">${i.name}<span class="debug-have">x${inv.countOf(i.id)}</span></span>
+      <span class="debug-btns">
+        <button class="btn small" data-give="${i.id}" data-n="1">+1</button>
+        <button class="btn small" data-give="${i.id}" data-n="10">+10</button>
+      </span>
+    </div>`).join('');
+  $('debug-items').querySelectorAll('button[data-give]').forEach(el => {
+    el.addEventListener('click', () => {
+      sfx('select');
+      uiHooks.debugGive(el.dataset.give, Number(el.dataset.n));
+      renderDebug();
+    });
+  });
 }
 
 // ---- Pokedex / Stats --------------------------------------------------------------------------
@@ -846,7 +912,7 @@ export function renderCatchUI({ dex, activeBall }) {
   const held = BALL_IDS.filter(id => inv.countOf(id) > 0);
   const current = activeBall && inv.countOf(activeBall) > 0 ? activeBall : held[0] || null;
   const item = current ? ITEM_BY_ID.get(current) : null;
-  $('catch-ball-icon').innerHTML = item ? item.svg : '';
+  $('catch-ball-icon').innerHTML = item ? item.icon : '';
   $('catch-ball-count').textContent = current ? `x${inv.countOf(current)}` : 'x0';
   $('btn-catch-ball').style.opacity = held.length ? '1' : '0.45';
 
@@ -856,7 +922,7 @@ export function renderCatchUI({ dex, activeBall }) {
   const menu = $('catch-ballmenu');
   menu.innerHTML = others.map(id => {
     const it = ITEM_BY_ID.get(id);
-    return `<div class="ball-chip" data-id="${id}" title="${it.name}">${it.svg}<span>x${inv.countOf(id)}</span></div>`;
+    return `<div class="ball-chip" data-id="${id}" title="${it.name}">${it.icon}<span>x${inv.countOf(id)}</span></div>`;
   }).join('');
   menu.querySelectorAll('.ball-chip[data-id]').forEach(el => {
     el.addEventListener('click', () => {
@@ -1009,7 +1075,7 @@ export function renderShop(ctx) {
     const note = sold ? 'Sold out'
       : short ? `${line.price - inv.coins()} short` : `${line.stock} left`;
     return `<button class="shop-row${cls}" data-item="${item.id}" ${sold || short ? 'disabled' : ''}>
-      <span class="shop-ico">${item.svg}</span>
+      <span class="shop-ico">${item.icon}</span>
       <span class="shop-body">
         <span class="shop-name">${item.name}</span>
         <span class="shop-desc">${item.shopDesc || item.desc}</span>
@@ -1244,6 +1310,33 @@ export function bindUI() {
     setResetGate(false);
     renderSettings();
   });
+
+  // The debug menu's door. Same shape as Erase Records above, and the same rule: the check is
+  // re-run on the Unlock press itself rather than trusted to the button's `disabled` state, so the
+  // password is what opens the menu and not merely what lights the button up.
+  const debugPassOk = () => $('debug-pass').value.trim().toLowerCase() === DEBUG_WORD;
+  click('btn-debug-open', () => { sfx('select'); setDebugGate(true); $('debug-pass').focus(); });
+  click('btn-debug-cancel', () => { sfx('back'); setDebugGate(false); });
+  $('debug-pass').addEventListener('input', () => { $('btn-debug-go').disabled = !debugPassOk(); });
+  $('debug-pass').addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    if (debugPassOk()) $('btn-debug-go').click();
+  });
+  click('btn-debug-go', () => {
+    if (!debugPassOk()) { toast('Wrong password.'); return; }
+    sfx('confirm');
+    setDebugGate(false);
+    uiHooks.openDebug();
+  });
+
+  // Back goes to Settings, through its own hook rather than openSettings(): that one re-points
+  // `returnTo` at whatever screen asked for Settings, and from here that would be the debug menu —
+  // leaving Settings' own Back button pointing back into the menu you just left.
+  click('btn-debug-back', () => { sfx('back'); uiHooks.closeDebug(); });
+  for (const [id, n] of [['btn-debug-coins-10', 10], ['btn-debug-coins-50', 50], ['btn-debug-coins-100', 100]]) {
+    click(id, () => { sfx('select'); uiHooks.debugGiveCoins(n); renderDebug(); });
+  }
 
   click('btn-battle-continue', () => { sfx('confirm'); uiHooks.battleContinue(); });
   click('btn-battle-swap', () => { sfx('select'); uiHooks.openSwitch(); });

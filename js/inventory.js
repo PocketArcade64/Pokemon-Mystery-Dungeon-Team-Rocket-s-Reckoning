@@ -15,9 +15,16 @@ export const hooks = {
   toast: (_msg) => {},
 };
 
-// Every run starts with a small ball stock; without it the first peaceful wanderer is unwinnable.
+// Every run starts with a stock of ten Poke Balls and a berry.
+//
+// Ten rather than the three this used to hand out. A floor scatters at least fifteen balls, so the
+// old three were never a budget — they were there so the first peaceful wanderer you walked into
+// was not unwinnable. In practice three meant the opening minutes went on hunting for balls before
+// the catch minigame could be played at all, which is the wrong first impression of a game whose
+// centrepiece IS the catch minigame. Ten is enough to play with from the first encounter and still
+// nowhere near enough to fill a party of six on its own.
 export function startingBag() {
-  return { 'poke-ball': 3, 'oran-berry': 1 };
+  return { 'poke-ball': 10, 'oran-berry': 1 };
 }
 
 export function countOf(itemId) {
@@ -51,7 +58,7 @@ export function partyAlive() { return party().filter(m => m.hp > 0); }
 export function isPartyWiped() { return party().length > 0 && partyAlive().length === 0; }
 
 // Heals up to `amount` HP (Infinity = full). Deliberately allowed to bring a fainted Pokemon back:
-// Full Heal is described as doing exactly that, and losing a slot for a whole run is brutal.
+// Full Restore is described as doing exactly that, and losing a slot for a whole run is brutal.
 export function heal(mon, amount) {
   if (!mon) return 0;
   const before = mon.hp;
@@ -111,8 +118,15 @@ export function resolvePendingCatch(index) {
 
 // ---- Balls ------------------------------------------------------------------------------------
 // The catch minigame defaults to the best ball on hand unless the player picked one in the bag.
+// The Master Ball is deliberately NOT eligible here, even though it is the highest tier. It is the
+// only ball in the game that cannot fail and roughly half of all runs never find one, so letting
+// it silently become the default the moment it was picked up would spend it on the next Rattata
+// that wandered into you. It has to be CHOSEN — out of the bag, or out of the catch screen's ball
+// menu, both of which list every ball you are holding and go through chooseBall/setActiveBall.
+const AUTO_BALL_IDS = BALL_IDS.filter(id => !ITEM_BY_ID.get(id).guaranteed);
+
 export function bestBall() {
-  const held = BALL_IDS.filter(id => countOf(id) > 0);
+  const held = AUTO_BALL_IDS.filter(id => countOf(id) > 0);
   if (!held.length) return null;
   return held.reduce((best, id) => {
     const a = ITEM_BY_ID.get(id), b = ITEM_BY_ID.get(best);
@@ -150,8 +164,11 @@ export function addCoinPickup(coinId) {
 // Always at least one ball tier on the shelf — the shop's main job is topping up what the floor's
 // guaranteed fifteen did not cover, and a stall with no balls at all is a wasted stop.
 export function rollShopStock() {
-  const balls = ITEMS.filter(i => i.kind === 'ball');
-  const rest = ITEMS.filter(i => i.kind !== 'ball');
+  // `shopPrice != null` is the whole of what makes an item sellable, and it is also the gate that
+  // keeps the Master Ball off the blanket: it has no price because it is not for sale at any price.
+  const forSale = ITEMS.filter(i => i.shopPrice != null);
+  const balls = forSale.filter(i => i.kind === 'ball');
+  const rest = forSale.filter(i => i.kind !== 'ball');
   const shuffle = (a) => {
     const c = a.slice();
     for (let i = c.length - 1; i > 0; i--) {
