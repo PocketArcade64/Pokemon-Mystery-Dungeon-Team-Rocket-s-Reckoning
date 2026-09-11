@@ -95,24 +95,57 @@ export function toast(msg, ms = 2200) {
   toastTimer = setTimeout(() => el.classList.remove('show'), ms);
 }
 
-let bannerTimer = null;
-export function banner({ kicker, main, sub, ms = 1700 }) {
+// The floor title card, as Mystery Dungeon does it: an opaque black screen with the dungeon's name
+// and the floor number fading up out of it, holding, fading back out, and then the black itself
+// lifting off the floor you have arrived on.
+//
+// The black does NOT fade in. enterFloor swaps the floor synchronously and puts this up in the same
+// task, so no frame is ever drawn between the two — the black therefore lands on the first frame
+// after the old floor and the cut is invisible. Fading it in would instead show the NEW floor for
+// 400ms and then hide it, which reads as a screen wipe rather than as arriving somewhere. Only the
+// last step is a reveal. See the #banner CSS for the same note from the other side.
+const BANNER_FADE_MS = 420;       // matches the two `transition: opacity` durations in the CSS
+let bannerTimers = [];
+
+function clearBannerTimers() {
+  for (const t of bannerTimers) clearTimeout(t);
+  bannerTimers = [];
+}
+const afterBanner = (fn, ms) => bannerTimers.push(setTimeout(fn, ms));
+
+// `ms` is the HOLD — how long the text stands fully lit. The two fades and the black lifting are
+// on top of it, so the whole card runs about ms + 3 * BANNER_FADE_MS.
+export function banner({ kicker, main, sub, ms = 900 }) {
+  const el = $('banner');
   $('banner-kicker').textContent = kicker;
   $('banner-main').textContent = main;
   $('banner-sub').textContent = sub || '';
-  $('banner').classList.add('visible');
-  clearTimeout(bannerTimer);
+  clearBannerTimers();
+  // Black up, text still invisible. The classes are cleared first so a card arriving while one is
+  // still running (two floors in quick succession) starts from the same state as a cold one.
+  el.classList.remove('lit', 'lifting');
+  el.classList.add('visible');
+  // Forces the style flush, so adding `lit` on the next line is a TRANSITION from opacity 0 rather
+  // than the text simply existing at opacity 1 — same reason the pickup popup reads offsetWidth.
+  void el.offsetWidth;
+  el.classList.add('lit');
   return new Promise(resolve => {
-    bannerTimer = setTimeout(() => {
-      $('banner').classList.remove('visible');
-      resolve();
-    }, ms);
+    afterBanner(() => {
+      el.classList.remove('lit');                  // text fades out
+      afterBanner(() => {
+        el.classList.add('lifting');               // then the black lifts off the new floor
+        afterBanner(() => {
+          el.classList.remove('visible', 'lifting');
+          resolve();
+        }, BANNER_FADE_MS);
+      }, BANNER_FADE_MS);
+    }, BANNER_FADE_MS + ms);
   });
 }
 
 export function hideBanner() {
-  clearTimeout(bannerTimer);
-  $('banner').classList.remove('visible');
+  clearBannerTimers();
+  $('banner').classList.remove('visible', 'lit', 'lifting');
 }
 
 // ---- Pickup popup ------------------------------------------------------------------------------

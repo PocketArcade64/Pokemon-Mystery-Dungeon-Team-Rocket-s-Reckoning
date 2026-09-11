@@ -15,6 +15,16 @@ const SIZE = 160;           // square, and comfortably above the ~64px the strip
 // touching the frame and a small one is not lost in it.
 const FRUSTUM = 0.65;
 
+// A three-quarter view, turned to face the viewer's LEFT.
+//
+// A model's forward direction at rotation.y = 0 is +Z, straight down the camera's axis, which is a
+// dead-flat front elevation — the least informative angle there is on a voxel model, since it hides
+// the depth entirely and makes a Charmander and a Charmeleon read as the same silhouette. Rotating
+// by -PI/4 puts forward at (-0.71, 0, +0.71): toward the camera and to the left, so the roster
+// shows each Pokemon's front and one flank at once. Same convention the battle field's foe uses
+// (see FACING in js/ui-screens.js).
+const PORTRAIT_YAW = -Math.PI / 4;
+
 let rig = null;
 
 function ensureRig() {
@@ -31,7 +41,10 @@ function ensureRig() {
   camera.position.set(0, 0, 4);
   camera.lookAt(0, 0, 0);
 
-  rig = { canvas, ctx, camera, holder: new THREE.Group() };
+  const holder = new THREE.Group();
+  holder.rotation.y = PORTRAIT_YAW;
+
+  rig = { canvas, ctx, camera, holder };
   return rig;
 }
 
@@ -103,6 +116,13 @@ export function requestPortrait(dex) {
     // Models are fitted by HEIGHT, so a wide flat species (Kabuto, Wailmer) comes out wider than
     // the frame. Measure what we actually got and shrink it to fit the box in both axes — the same
     // problem the catch minigame's encounter frame has.
+    //
+    // The holder's world matrix is flushed FIRST so the measurement includes PORTRAIT_YAW.
+    // Box3.setFromObject walks down from the object it is given and takes its parent's matrixWorld
+    // as it finds it, so without this the box is the model's unrotated footprint — and a turned
+    // model is wider on screen than a square-on one (up to 1.41x for a long species), which is
+    // exactly the case the shrink exists to catch.
+    r.holder.updateMatrixWorld(true);
     const box = new THREE.Box3().setFromObject(fitted);
     const w = box.max.x - box.min.x;
     const limit = FRUSTUM * 2 * 0.92;

@@ -235,7 +235,9 @@ function enterFloor(index) {
   if (leavingTheme && leavingTheme !== theme.id) releaseMusic(leavingTheme);
   // Mystery Dungeon's floor card, and nothing more than Mystery Dungeon puts on it: the dungeon's
   // NAME on the first line and the FLOOR under it. No kicker — the empty element collapses.
-  ui.banner({ kicker: '', main: theme.name, sub: `B${index + 1}F`, ms: 1800 });
+  // `ms` is the HOLD only; banner() adds the text's fade in and out and the black lifting off the
+  // new floor on top of it.
+  ui.banner({ kicker: '', main: theme.name, sub: `B${index + 1}F`, ms: 950 });
 }
 
 function advanceFloor() {

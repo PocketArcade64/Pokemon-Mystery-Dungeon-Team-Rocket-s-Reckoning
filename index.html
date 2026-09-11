@@ -342,21 +342,25 @@
      takes coins, so it has to be visible while exploring or there is no reason to detour for one —
      but it is a readout, not a control, so it sits out of the left column where every actual
      button lives. Offset is the pause button's 54px plus a 10px gap plus its own 10px inset.
-     Translucent on purpose: it is permanently on screen over live gameplay, and a solid panel up
-     there reads as another button. */
+     NO plate at all — not even a translucent one. It is a readout, not a control, and the panel it
+     used to sit on was the thing that made it read as a third button next to Bag and Pause. The
+     coin sprite plus a gold number is already unmistakably a purse; the heavy text shadow below is
+     what carries it over a pale floor. */
   #coin-chip {
     top: calc(var(--sat) + 10px); right: calc(var(--sar) + 74px);
     height: 54px; display: flex; align-items: center; gap: 5px;
     padding: 0 0.6rem;
-    background: rgba(11,16,32,0.42);
-    border: 1px solid rgba(255,255,255,0.10);
-    border-radius: 10px;
     font-weight: 700; font-size: 0.936rem; color: var(--gold);
     /* Carries the contrast the translucent ground gives up, so the number stays readable over a
        pale floor as well as a dark one. */
     text-shadow: 0 1px 3px rgba(0,0,0,0.9), 0 0 6px rgba(0,0,0,0.7);
   }
-  #coin-chip svg { width: 20px; height: 20px; display: block; flex: 0 0 auto; image-rendering: pixelated; }
+  /* The drop-shadow does for the sprite what the text-shadow does for the number: with the plate
+     gone there is nothing between a gold coin and a sand-coloured floor. */
+  #coin-chip svg {
+    width: 20px; height: 20px; display: block; flex: 0 0 auto; image-rendering: pixelated;
+    filter: drop-shadow(0 1px 2px rgba(0,0,0,0.95));
+  }
 
   /* What you just picked up, as its own sprite. Sits above the toast slot, not in it — toast
      reports things the player DID and the two can legitimately be on screen together. */
@@ -380,32 +384,33 @@
 
   #btn-pause { top: calc(var(--sat) + 10px); right: calc(var(--sar) + 10px); }
 
-  /* The floor name sits DIRECTLY BELOW THE MAP, in the same two-line order as the transition card
-     the game shows on the way down: dungeon name first, floor number under it. It used to be a
-     one-line pill centred in the band between the minimap and the pause button.
-     Its own width is free (fit-content, extending right past the 108px map) but it is capped so a
-     long theme name can never reach under the pause button. */
+  /* The floor line sits DIRECTLY BELOW THE MAP, CENTRED on it, on ONE line: "B1F, Cavern".
+     It carries no panel of its own. It used to be a bordered translucent plate holding two stacked
+     lines, which made a second box under the box the map already is — two framed things in the
+     top-left corner competing for the same glance. Bare text with a shadow heavy enough to hold
+     its own over a pale floor says the same thing and leaves the corner to the map.
+     Width is the map's width exactly (108px) so "centred under the map" is literal, and the font
+     is sized so the LONGEST theme name in js/dungeon.js THEMES still fits beside the floor number
+     on one line at that width. Check a new theme name against it before adding one. */
   #floor-chip {
-    top: calc(var(--sat) + 124px);
+    top: calc(var(--sat) + 122px);
     left: calc(var(--sal) + 10px);
-    max-width: calc(100% - var(--sal) - var(--sar) - 84px);
-    width: fit-content;
-    background: rgba(11,16,32,0.85);
-    border: 1px solid var(--edge);
-    border-radius: 8px;
-    padding: 0.3rem 0.6rem;
-    font-weight: 700; font-size: 0.754rem; line-height: 1.35;
-    text-shadow: 0 2px 4px rgba(0,0,0,0.6);
+    width: 108px;
+    text-align: center;
+    font-weight: 700; font-size: 0.72rem; line-height: 1.3;
+    white-space: nowrap;
+    /* Two stacked shadows rather than one: this is bare text over live gameplay with no plate
+       behind it any more, so it has to stay readable on a sand floor as well as a dark cave. */
+    text-shadow: 0 1px 3px rgba(0,0,0,0.95), 0 0 6px rgba(0,0,0,0.85);
   }
-  #floor-chip .theme {
-    display: block; color: var(--gold);
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  }
-  #floor-chip .fl { display: block; }
+  /* Inline, not block: the floor number and the theme name are one line now. The comma between
+     them is in the markup so it inherits the floor number's colour. */
+  #floor-chip .fl { color: var(--gold); }
+  #floor-chip .theme { color: var(--ink); }
 
-  /* The bag icon keeps its place in the left column, now under the floor chip rather than under
-     the map: chip top 124px + its two lines (~32px) + padding and border (~12px) + an 8px gap. */
-  #btn-bag { top: calc(var(--sat) + 176px); left: calc(var(--sal) + 10px); }
+  /* The bag icon keeps its place in the left column, under the floor line: chip top 122px + its
+     ONE line (~14px) + an 8px gap. It was 176px when the chip was a two-line plate. */
+  #btn-bag { top: calc(var(--sat) + 144px); left: calc(var(--sal) + 10px); }
   #bag-count {
     position: absolute; top: -8px; right: -8px;
     min-width: 26px; height: 24px; padding: 0 5px;
@@ -510,14 +515,39 @@
   }
   #toast.show { opacity: 1; }
 
-  /* ---- Banner used for floor intro / floor clear -------------------------------------------- */
+  /* ---- Banner used for the floor title card -------------------------------------------------
+     Mystery Dungeon's own transition, and the order of it matters. The black is FULLY OPAQUE and
+     arrives INSTANTLY — it does not fade in. It used to be a 72%-alpha scrim, which meant the new
+     floor was visible through the card the whole time; fading the black in instead would show the
+     new floor for a moment and then cover it up, which is backwards. So:
+
+        floor swap (synchronous, never rendered) -> black, at once
+        -> the name and floor number fade UP out of it
+        -> they hold
+        -> they fade back out
+        -> the black itself lifts, revealing the floor you have arrived on
+
+     Only the last step is a reveal, which is what makes it read as arriving somewhere rather than
+     as a screen wipe. js/ui-screens.js banner() drives the three classes in that order. */
   #banner {
     position: absolute; inset: 0; display: none;
     place-items: center; text-align: center;
-    background: rgba(8,10,20,0.72);
+    background: #000;
+    opacity: 1;
+    transition: opacity 420ms ease;
   }
-  #banner.visible { display: grid; }
-  #banner .banner-inner { padding: 22px; }
+  /* pointer-events overrides the `#banner { pointer-events: none }` further up: the card blocks
+     input while it is up. #hud's own children opt back into pointer events, so without this the
+     joystick and the tap-to-move canvas stayed live UNDER an opaque black screen and you could
+     walk the floor blind. */
+  #banner.visible { display: grid; pointer-events: auto; }
+  #banner.lifting { opacity: 0; }
+  #banner .banner-inner {
+    padding: 22px;
+    opacity: 0;
+    transition: opacity 420ms ease;
+  }
+  #banner.lit .banner-inner { opacity: 1; }
   /* Mystery Dungeon's own title card is exactly two lines — the dungeon's name, and the floor
      under it — so the kicker collapses when it is empty rather than reserving a line for itself.
      The floor line is deliberately NOT dimmed: in PMD it is as prominent as the name. */
@@ -542,16 +572,35 @@
      The team strip is a roster CARD per party member, stacked in the order the slot reads:
         the Pokemon's MODEL at the top, its NAME, its HEALTH under the name, its TYPES under the
         health bar.
-     THREE across, not six. Six columns is ~55px a cell on a phone, which is not enough for a
-     model, a name and two type icons at the body size this UI uses — at six the name ellipsised to
-     three characters. Three across gives ~110px and two rows for a full party. */
-  .team-strip { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; margin-bottom: 12px; }
+     SIX across — a whole party on one row, so the team reads as one thing at a glance instead of
+     two rows of three with the second one half empty most of the run.
+
+     Six columns is ~52px a cell at 375px, and everything in the card had to be re-sized to earn
+     its place at that width rather than anything being dropped: the name goes to 0.6rem with
+     letter-spacing pulled in (it is a proper noun, so it still ellipsises on the longest ones —
+     "Charmander" does not fit at any legible size in 52px and the model beside it is the real
+     identifier), the HP bar loses its border radius detail, the numeric HP drops to 0.6rem, and the
+     type icons go to 11px. The gap is 5px rather than 7px, which buys back 12px across the row.
+     If anything else needs to go in a slot, it needs a bigger cell — not a smaller font.
+
+     FLEX, not grid, and that is deliberate. Six fixed 1fr columns would be right for the bag, which
+     always renders all six slots (`includeEmpty: true`) — but the switch screen omits the empty
+     ones, so a three-strong party would sit in three columns hugging the left edge with the right
+     half of the row blank. A flex basis of exactly one sixth gives the bag an identical full row
+     AND centres a short party on the switch screen. */
+  .team-strip {
+    display: flex; flex-wrap: wrap; justify-content: center;
+    gap: 5px; margin-bottom: 12px;
+  }
   .team-slot {
+    /* One sixth of the row, less its share of the five 5px gaps. */
+    flex: 0 0 calc((100% - 25px) / 6);
     background: rgba(255,255,255,0.07);
     border: 2px solid transparent;
     border-radius: 10px;
     box-shadow: 0 4px 0 var(--silver-dark);
-    padding: 5px 5px 7px; text-align: center; min-width: 0; cursor: pointer;
+    padding: 4px 3px 6px; text-align: center; min-width: 0; cursor: pointer;
+    box-sizing: border-box;
   }
   /* An empty party slot is a dashed outline over a barely-there fill, the way Rumble marks an
      unfilled dex box — a solid dark fill read as a rendering fault. */
@@ -560,7 +609,7 @@
     border: 2px dashed var(--edge); color: var(--ink-dim);
     box-shadow: 0 4px 0 rgba(255,255,255,0.10);
     cursor: default;
-    display: grid; place-items: center; min-height: 96px;
+    display: grid; place-items: center; min-height: 84px;
   }
   .team-slot.fainted { border-color: var(--danger); }
   .team-slot.selected {
@@ -571,19 +620,29 @@
      six WebGL contexts in one strip would evict the dungeon's own. It is transparent, so it sits
      on a recessed well like every other model frame in the game. */
   .team-slot .ts-art {
-    width: 100%; aspect-ratio: 1; margin-bottom: 4px;
+    width: 100%; aspect-ratio: 1; margin-bottom: 3px;
     background: rgba(0,0,0,0.26);
-    border-radius: 8px;
+    border-radius: 6px;
     display: block; object-fit: contain;
     image-rendering: auto;      /* the portrait is already downscaled; pixelating it re-aliases it */
   }
   .team-slot .ts-name {
-    font-weight: 700; font-size: 0.858rem; line-height: 1.35;
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-bottom: 4px;
+    font-weight: 700; font-size: 0.6rem; line-height: 1.3; letter-spacing: -0.2px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-bottom: 3px;
   }
-  .team-slot .ts-hp { font-size: 0.806rem; color: var(--ink-dim); margin-top: 3px; }
-  .team-slot .type-badges { margin-top: 5px; }
-  .team-slot .type-badges img { height: 17px; }
+  .team-slot .ts-hp { font-size: 0.6rem; color: var(--ink-dim); margin-top: 2px; letter-spacing: -0.2px; }
+  /* WRAPPING, because two badges cannot sit side by side in a 44px cell: at a legible 11px tall a
+     type icon is 25px wide, so a dual-type pair is 52px and used to spill 4px out of each side of
+     the slot and over its neighbours. Shrinking them to fit instead would put them at 7px tall,
+     which turns "WATER" into a smudge — the icons carry words, so they have a floor below which
+     they stop being icons. So a second type drops onto its own line. `.team-strip` is a flex row
+     with the default `align-items: stretch`, so every slot in the row matches the tallest and a
+     party with one dual-type in it does not come out ragged. */
+  .team-slot .type-badges { margin-top: 3px; gap: 2px; flex-wrap: wrap; }
+  .team-slot .type-badges img { height: 11px; }
+  /* The HP bar's default height is tuned for the full-width bars in the battle boxes; in a 46px
+     slot it reads as a block rather than a bar. */
+  .team-slot .hpbar { height: 5px; }
 
   /* ---- Pause screen ---------------------------------------------------------------------------
      Abandon Run lives in the top-right CORNER, absolutely placed against #screen-pause's own box,
@@ -624,12 +683,31 @@
     box-sizing: border-box;
   }
   /* The title needs nothing: "Paused" is one short word, so at full width and centred on the SCREEN
-     it clears the button on its own. The floor summary under it does not — it is a full line of
-     text at 1.105rem and reserving the button's column would only wrap it onto two or three lines
-     — so it starts BELOW the button instead. This replaces .screen-sub's own -4px margin: clear the
-     button's bottom edge, less the ~42px the title already occupies above this line. */
+     it clears the button on its own.
+     The floor summary is the awkward one, and it gets TWO layouts.
+
+     The default, below, pushes it clear of the button's bottom edge. That is the only thing that
+     works when the screen is too narrow to fit it beside the button: the worst case,
+     "B5F - Rocket Warehouse - 6/6 standing" (longest theme name, full party), measures 232px, and
+     reserving the button's 100px column leaves only 192px at 320px — which wraps it onto THREE
+     lines and pushes the map down further than the gap ever did.
+
+     From 360px up (`vw - 28px of screen padding - 100px reserve >= 232px`), it reserves the column
+     instead and sits on its own natural line directly under the title, clearing the button by 18px.
+     That is the layout every real phone gets, and it is what reclaims the 33px of dead space this
+     rule used to put between the title and the summary — the map panel (`flex: 1 1 auto`) takes it.
+     Re-measure this breakpoint if the summary's wording or 1.105rem font size ever changes. */
   #screen-pause .screen-sub {
     margin-top: calc(var(--sat) + var(--quit-h) - 42px);
+    /* A touch more air under the summary than .screen-sub's default 12px: it separates the header
+       block from the map, which is a real boundary. */
+    margin-bottom: 16px;
+  }
+  @media (min-width: 360px) {
+    #screen-pause .screen-sub {
+      margin-top: -4px;                                   /* .screen-sub's own default */
+      padding-right: calc(var(--quit-w) + 8px);
+    }
   }
   /* Armed: one press in, one press from ending the run. Gold-edged and brighter, so the state is
      not carried by the label alone. */
@@ -1296,9 +1374,10 @@
     <button class="btn secondary icon" id="btn-pause">
       <svg viewBox="0 0 12 12" shape-rendering="crispEdges"><use href="#px-pause" /></svg>
     </button>
+    <!-- ONE line, floor number first: "B1F, Cavern". -->
     <div id="floor-chip">
+      <span class="fl">B<span id="floor-num">1</span>F,</span>
       <span class="theme" id="floor-theme">-</span>
-      <span class="fl">B<span id="floor-num">1</span>F</span>
     </div>
     <div id="buff-strip"></div>
     <div id="lead-panel">
@@ -1348,7 +1427,7 @@
          pinch zooms it and a two-finger twist rotates it, which covers everything those buttons
          did, and closing and reopening the pause screen puts the map back to the view orientation
          (main.js resets the view on the way in) so Reset had nothing left to do either. -->
-    <div class="btn-col" style="margin-top:12px">
+    <div class="btn-col" style="margin-top:14px">
       <div class="btn-row">
         <button class="btn secondary small" id="btn-pause-bag">Bag</button>
         <button class="btn secondary small" id="btn-pause-glossary">Items</button>

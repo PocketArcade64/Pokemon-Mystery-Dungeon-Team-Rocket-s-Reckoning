@@ -104,6 +104,7 @@ export function createBattle({ party, enemies, kind = 'grunt', title = 'Team Roc
     for (let i = 0; i < team.length; i++) if (team[i].hp > 0) return i;
     return -1;
   };
+  const alive = (mon) => !!mon && mon.hp > 0;
 
   b.partyLead = () => b.party[b.partyIndex] || null;
   b.enemyLead = () => b.enemies[b.enemyIndex] || null;
@@ -118,8 +119,14 @@ export function createBattle({ party, enemies, kind = 'grunt', title = 'Team Roc
     if (b.phase === 'intro') {
       b.phase = 'fighting';
       b.timer = TURN_MS;
-      b.partyIndex = Math.max(0, firstAlive(b.party));
-      b.enemyIndex = Math.max(0, firstAlive(b.enemies));
+      // ONLY when the standing lead cannot fight. This used to reset both indices to
+      // firstAlive() unconditionally, which silently threw away a swap made during the intro —
+      // and the intro is exactly when the Swap button is offered (see updateSwapButton, which
+      // deliberately enables it in this phase because it is "the one moment you most want to
+      // choose who leads"). The new lead was shown on the field, the log said it was sent out,
+      // and then the Pokemon you had swapped AWAY from took the first hit.
+      if (!alive(b.partyLead())) b.partyIndex = Math.max(0, firstAlive(b.party));
+      if (!alive(b.enemyLead())) b.enemyIndex = Math.max(0, firstAlive(b.enemies));
       return events;
     }
 
