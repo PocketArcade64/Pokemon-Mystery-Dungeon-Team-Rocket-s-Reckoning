@@ -17,8 +17,11 @@
 //   3. The ball is a plain ballistic projectile from there — launched at a fixed elevation, pulled
 //      down by gravity, never back-solved to guarantee arrival. Too slow and it bounces off the
 //      floor short; too fast and it sails clean over.
-//   4. A white CAPTURE CIRCLE sits on the Pokemon with a coloured TARGET RING shrinking inside it.
-//      Landing inside that ring is graded by how small it was: Nice / Great / Excellent.
+//   4. WHILE YOUR FINGER IS ON THE BALL, a white CAPTURE CIRCLE appears on the Pokemon with a
+//      coloured TARGET RING shrinking inside it. Let go and the ring FREEZES at the size it had
+//      at that instant and holds through the flight; landing inside that frozen ring is graded by
+//      how small it was — Nice / Great / Excellent — and each grade is worth catch chance.
+//      Nothing is drawn on the Pokemon when you are not touching the ball, as in GO.
 //   5. Swirl the ball before you flick and it throws a CURVEBALL — it spins, bends about one
 //      capture-circle in flight, and pays its own bonus, so it has to be aimed off-side.
 //   6. The Pokemon dodges and attacks. An attack swats a ball out of the air.
@@ -349,9 +352,9 @@ function makeRing(inner, outer, color, opacity, segments) {
 const CAPTURE_RING = makeRing(0.968, 1.0, 0xffffff, 0.75, 64);
 const TARGET_RING = makeRing(0.90, 1.0, 0x4ade80, 0.95, 48);
 
-// Spin halo: the only tell that the ball in your hand is going to curve.
-const SPIN_HALO = makeRing(0.62, 0.86, 0xffd95e, 0.0, 28);
-SPIN_HALO.visible = true;
+// The tell that a curveball is charged is the ball VISIBLY SPINNING in your hand, and nothing
+// else. There used to be a yellow halo ring around it as well; GO has no such ring, and it read
+// as a second target circle sitting on the ball instead of as spin.
 
 // A short trail so a curveball's bend is legible in flight.
 const TRAIL_LEN = 14;
@@ -367,6 +370,161 @@ const trail = [];
     catchScene.add(m);
     trail.push(m);
   }
+}
+
+// ---- The catch itself: the click's star burst and the banner -----------------------------------
+// Three shakes then the click, and the click IS the catch — so the click has to look like the
+// answer. Yellow stars burst off the ball and fade, and the name of what you just caught rides
+// above it. Both are sprites rather than billboards: the camera is pushed in and still damping
+// when this fires, and a sprite is the one thing that cannot end up edge-on to it.
+const CAUGHT_ORDER = 9;
+
+// One five-pointed star, drawn once and tinted per sprite.
+function starTexture() {
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = 64;
+  const g = cv.getContext('2d');
+  g.translate(32, 32);
+  g.beginPath();
+  for (let i = 0; i < 10; i++) {
+    const a = -Math.PI / 2 + (i * Math.PI) / 5;
+    const r = i % 2 ? 12 : 29;                  // alternating inner / outer vertex
+    const x = Math.cos(a) * r, y = Math.sin(a) * r;
+    if (i) g.lineTo(x, y); else g.moveTo(x, y);
+  }
+  g.closePath();
+  g.fillStyle = '#fff';
+  g.fill();
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+const STAR_COUNT = 16;
+const STAR_LIFE = 0.95;                         // seconds, well inside the 1.5 s success hold
+const STAR_GRAVITY = GRAVITY * 0.18;            // a lazy float-down: these are sparks, not pebbles
+const stars = [];
+{
+  const tex = starTexture();
+  for (let i = 0; i < STAR_COUNT; i++) {
+    const spr = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: tex, color: 0xffe14d, transparent: true, opacity: 0,
+      depthTest: false, depthWrite: false, fog: false,
+    }));
+    spr.renderOrder = CAUGHT_ORDER;
+    spr.visible = false;
+    catchScene.add(spr);
+    stars.push({ spr, vx: 0, vy: 0, vz: 0, spin: 0, t: 0, size: 0.1 });
+  }
+}
+
+// Out and slightly up in every direction from wherever the ball is actually lying. Every distance
+// is a multiple of the ball's radius, so the burst is the same size on screen on a phone as on a
+// wide desktop window — the same rule the rest of the file is built on.
+function burstStars(at, ballRadius) {
+  for (let i = 0; i < stars.length; i++) {
+    const st = stars[i];
+    // Evenly fanned with a little jitter. A purely random spread clumps, and a clump reads as one
+    // smear of yellow rather than as stars.
+    const a = (i / stars.length) * Math.PI * 2 + (Math.random() - 0.5) * 0.5;
+    const sp = ballRadius * (6.5 + Math.random() * 5);
+    st.vx = Math.cos(a) * sp;
+    st.vy = Math.sin(a) * sp + ballRadius * 4;  // biased upward, so they arc instead of raining
+    st.vz = (Math.random() - 0.5) * sp * 0.5;
+    st.spin = (Math.random() - 0.5) * 7;
+    st.size = ballRadius * (0.7 + Math.random() * 0.6);
+    st.t = 0;
+    st.spr.position.copy(at);
+    st.spr.material.rotation = Math.random() * Math.PI;
+    st.spr.material.opacity = 0;
+    st.spr.scale.setScalar(st.size);
+    st.spr.visible = true;
+  }
+}
+
+function updateStars(dt) {
+  for (const st of stars) {
+    if (!st.spr.visible) continue;
+    st.t += dt;
+    st.vy += STAR_GRAVITY * dt;
+    st.spr.position.x += st.vx * dt;
+    st.spr.position.y += st.vy * dt;
+    st.spr.position.z += st.vz * dt;
+    st.spr.material.rotation += st.spin * dt;
+    const p = st.t / STAR_LIFE;
+    if (p >= 1) { st.spr.visible = false; st.spr.material.opacity = 0; continue; }
+    // Snap in on the click, then fade and shrink the rest of the way out.
+    st.spr.material.opacity = p < 0.1 ? p / 0.1 : 1 - (p - 0.1) / 0.9;
+    st.spr.scale.setScalar(st.size * (1 - p * 0.45));
+  }
+}
+
+// "<Name> was caught!", above the ball.
+const CAUGHT_TEXT = new THREE.Sprite(new THREE.SpriteMaterial({
+  transparent: true, opacity: 0, depthTest: false, depthWrite: false, fog: false,
+}));
+CAUGHT_TEXT.renderOrder = CAUGHT_ORDER + 1;
+CAUGHT_TEXT.visible = false;
+catchScene.add(CAUGHT_TEXT);
+let caughtTex = null;
+
+function showCaughtText(msg) {
+  caughtTex?.dispose();
+  const cv = document.createElement('canvas');
+  // The game's pixel face, with the same fallback stack index.html uses. The text is MEASURED
+  // first and the canvas sized to it: the sprite is scaled by the canvas aspect, so a fixed-width
+  // canvas would pad a short name with empty space and shrink the words to fit the padding.
+  const font = '700 64px "PokemonPixel", "Silkscreen", "Trebuchet MS", system-ui, sans-serif';
+  let g = cv.getContext('2d');
+  g.font = font;
+  cv.width = Math.ceil(g.measureText(msg).width) + 40;
+  cv.height = 96;
+  g = cv.getContext('2d');
+  g.font = font;                                // resizing the canvas clears the context state
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.lineJoin = 'round';
+  g.lineWidth = 10;
+  g.strokeStyle = 'rgba(12,10,24,0.92)';        // the outline is what keeps it legible on any sky
+  g.strokeText(msg, cv.width / 2, cv.height / 2);
+  g.fillStyle = '#fff3b0';
+  g.fillText(msg, cv.width / 2, cv.height / 2);
+
+  caughtTex = new THREE.CanvasTexture(cv);
+  caughtTex.colorSpace = THREE.SRGBColorSpace;
+  CAUGHT_TEXT.material.map = caughtTex;
+  CAUGHT_TEXT.material.needsUpdate = true;
+
+  // Sized off the ball, then capped at 80% of the pushed-in frame's width so a long name cannot
+  // run off both edges.
+  const aspect = cv.width / cv.height;
+  let h = Math.max(0.22, catchState.ballRadius * 2.1);
+  let w = h * aspect;
+  const wMax = 1.6 * halfWidthAt(ZOOM_BACK);
+  if (w > wMax) { w = wMax; h = w / aspect; }
+  CAUGHT_TEXT.scale.set(w, h, 1);
+  CAUGHT_TEXT.userData.h = h;
+  CAUGHT_TEXT.material.opacity = 0;
+  CAUGHT_TEXT.visible = true;
+}
+
+// Sits above the resting ball and drifts up a touch as it fades in.
+function updateCaughtText(t) {
+  if (!CAUGHT_TEXT.visible) return;
+  const s = catchState;
+  const rise = Math.min(1, t / 0.45);
+  CAUGHT_TEXT.position.set(
+    s.hitPoint.x,
+    s.ballRadius * 2.6 + CAUGHT_TEXT.userData.h * 0.5 + rise * s.ballRadius * 1.2,
+    s.hitPoint.z,
+  );
+  CAUGHT_TEXT.material.opacity = Math.min(1, t / 0.2);
+}
+
+function hideCaught() {
+  CAUGHT_TEXT.visible = false;
+  CAUGHT_TEXT.material.opacity = 0;
+  for (const st of stars) { st.spr.visible = false; st.spr.material.opacity = 0; }
 }
 
 // ---- The red capture light -----------------------------------------------------------------------
@@ -582,8 +740,10 @@ export function startCatch({ dex, ballId, ballsLeft, onResult, onThrow, onGrade,
   TARGET_RING.scale.set(r, r, 1);
   CAPTURE_RING.position.set(0, catchState.monBodyY, TARGET_Z + 0.02);
   TARGET_RING.position.set(0, catchState.monBodyY, TARGET_Z + 0.03);
-  CAPTURE_RING.visible = true;
-  TARGET_RING.visible = true;
+  // Hidden until a finger is on the ball — updateRing owns their visibility from here.
+  CAPTURE_RING.visible = false;
+  TARGET_RING.visible = false;
+  hideCaught();
 
   spawnBall();
 }
@@ -653,18 +813,16 @@ function spawnBall() {
   catchState.spin = 0;
   catchState.spinAngle = 0;
   catchState.curve = false;
-  SPIN_HALO.material.opacity = 0;
 }
 
 export function endCatch() {
   catchState.active = false;
   catchState.phase = 'idle';
   catchState.held = null;
-  clearMon(); clearBall(); hideTrail(); hideAbsorb();
+  clearMon(); clearBall(); hideTrail(); hideAbsorb(); hideCaught();
   resetCamera();
   CAPTURE_RING.visible = false;
   TARGET_RING.visible = false;
-  SPIN_HALO.material.opacity = 0;
 }
 
 // Swap the ball in hand for a different tier. Only legal while aiming — GO will not let you swap
@@ -687,6 +845,9 @@ export function setCatchBall(ballId, ballsLeft) {
 export function catchPointerDown(x, y, canvasW, canvasH) {
   if (!catchState.active || catchState.phase !== 'aim' || !catchState.ball) return;
   if (canvasW) { catchState.canvasW = canvasW; catchState.canvasH = canvasH; }
+  // Touching the ball is what puts the circles on the Pokemon, and the shrink starts from full.
+  catchState.ringPhase = 0;
+  catchState.ringRatio = 1;
   catchState.held = {
     x0: x, y0: y, x, y,
     lastX: x, lastY: y, prevDx: 0, prevDy: 0,
@@ -789,7 +950,6 @@ export function catchPointerUp(x, y, canvasW, canvasH) {
   if (up <= 0 || flick < MIN_FLICK || Math.abs(angle) > MAX_FLICK_ANGLE) {
     // Not a throw. Let the ball settle back home so it never reads as stuck mid-drag.
     catchState.spin = 0;
-    SPIN_HALO.material.opacity = 0;
     return;
   }
 
@@ -824,6 +984,7 @@ export function updateCatch(dt) {
     updateMon(dt);
   } else {
     TARGET_RING.visible = false;
+    CAPTURE_RING.visible = false;
   }
 
   if (s.phase === 'aim') updateHeldBall(dt);
@@ -836,17 +997,42 @@ export function updateCatch(dt) {
     s.ballObj.position.y = s.ballRadius + Math.abs(Math.sin(s.phaseT * 2.4)) * s.ballRadius * 0.5;
   }
   fadeTrail(dt);
+  updateStars(dt);
+  if (s.phase === 'success') updateCaughtText(s.phaseT);
   updateCamera(dt);
 }
 
-// The shrinking target ring, on a loop. Snaps back to full the instant it bottoms out.
+// The circles, on GO's rules.
+//
+// 1. They exist only WHILE YOU ARE TOUCHING THE BALL. An untouched Pokemon is just standing there;
+//    the circles are the aiming reticle, so they belong to the hand that is aiming. They are also
+//    reset to full on every touch (catchPointerDown), so the shrink always starts from the top of
+//    its loop rather than from wherever an idle loop happened to have wandered to.
+// 2. THE RING FREEZES AT RELEASE. The ratio the ring had the instant you let go is the ratio the
+//    throw is graded against in resolveContact, and it stays on screen, frozen, for the whole
+//    flight — so the circle the ball lands in is the circle you actually threw at. It used to keep
+//    shrinking through the flight, which meant the grade was decided by where the loop happened to
+//    be ~0.6 s after you released: the ring you aimed with was not the ring you were scored on.
+// Both still track the Pokemon sideways, because a reticle that does not follow the target is not
+// a reticle.
 function updateRing(dt) {
   const s = catchState;
-  s.ringPhase += dt / s.ringPeriod;
-  while (s.ringPhase >= 1) s.ringPhase -= 1;
-  s.ringRatio = 1 - s.ringPhase * (1 - MIN_RING_RATIO);
+  const show = s.phase === 'flying' || (s.phase === 'aim' && !!s.held);
+  CAPTURE_RING.visible = show;
+  TARGET_RING.visible = show;
+
+  if (!show) {
+    // Nothing on screen and nothing in flight: park the loop at full so the next touch starts big.
+    s.ringPhase = 0;
+    s.ringRatio = 1;
+  } else if (s.phase === 'aim') {
+    s.ringPhase += dt / s.ringPeriod;
+    while (s.ringPhase >= 1) s.ringPhase -= 1;
+    s.ringRatio = 1 - s.ringPhase * (1 - MIN_RING_RATIO);
+  }
+  // 'flying' falls through with ringRatio untouched — that IS the freeze.
+
   const r = s.ringRatio * s.captureRadius;
-  TARGET_RING.visible = true;
   TARGET_RING.scale.set(r, r, 1);
   TARGET_RING.position.x = s.monX;
   CAPTURE_RING.position.x = s.monX;
@@ -933,14 +1119,9 @@ function updateHeldBall(dt) {
     // the ball visibly spinning in your hand is the tell that the swirl took.
     s.spinAngle += dt * 22 * s.spin;
     obj.rotation.set(0, BALL_FACE_Y + s.spinAngle, 0);
-    SPIN_HALO.scale.setScalar(s.ballRadius * 1.9);
-    SPIN_HALO.position.set(b.x, b.y, b.z + 0.02);
-    SPIN_HALO.rotation.z += dt * 6 * s.spin;
-    SPIN_HALO.material.opacity = Math.min(0.85, SPIN_HALO.material.opacity + dt * 4);
   } else {
     s.spinAngle = 0;
     faceBall(obj);
-    SPIN_HALO.material.opacity = Math.max(0, SPIN_HALO.material.opacity - dt * 4);
   }
 }
 
@@ -959,7 +1140,6 @@ function updateFlight(dt) {
   // the button sweeps past the camera rather than tumbling away from it.
   if (s.curve) { s.spinAngle += dt * 26 * s.spin; obj.rotation.set(0, BALL_FACE_Y + s.spinAngle, 0); }
   else faceBall(obj);
-  SPIN_HALO.material.opacity = Math.max(0, SPIN_HALO.material.opacity - dt * 6);
   pushTrail(b.x, b.y, b.z);
 
   // Crossed the target plane: this is the moment accuracy and the ring size are measured. Checked
@@ -1013,8 +1193,9 @@ function resolveContact(hx, hy) {
     return;
   }
 
-  // Inside the capture circle. The grade is the size of the target ring right now, GO-style — and
-  // the ball has to be inside that ring, not merely inside the white circle.
+  // Inside the capture circle. The grade is the size of the target ring — which has been FROZEN
+  // since the release, so this is the ring the player aimed with — and the ball has to be inside
+  // that ring, not merely inside the white circle.
   const ringR = s.ringRatio * R;
   let grade = 'hit';
   if (dist <= ringR) {
@@ -1186,11 +1367,15 @@ function updateWobble() {
 
   faceBall(s.ballObj);
   if (s.willCatch) {
-    // Three shakes and the click. The click IS the catch.
+    // Three shakes and the click. The click IS the catch — stars off the ball and the name above
+    // it, both fired on this exact frame so they land with the lock sound rather than after it.
     s.phase = 'success';
     s.phaseT = 0;
     s.onSfx?.('lock');
-    s.resultMsg = `Gotcha! ${CATALOG_BY_DEX.get(s.dex)?.name || 'It'} was caught!`;
+    const name = CATALOG_BY_DEX.get(s.dex)?.name || 'It';
+    burstStars(s.ballObj.position, s.ballRadius);
+    showCaughtText(`${name} was caught!`);
+    s.resultMsg = `Gotcha! ${name} was caught!`;
     s.onResult?.({
       caught: true, msg: s.resultMsg, ballId: s.ballId, dex: s.dex,
       accuracy: s.accuracyPct, grade: s.grade, curve: s.curve,
@@ -1255,8 +1440,9 @@ function updateDeadBall(dt) {
   // somewhere other than where the player thinks it is.
   resetCamera();
   hideAbsorb();
-  CAPTURE_RING.visible = true;
-  TARGET_RING.visible = true;
+  // Left hidden on purpose: the circles come back on the next touch of the ball, not with it.
+  s.ringPhase = 0;
+  s.ringRatio = 1;
   refreshRingColor();
   spawnBall();
 }
@@ -1291,6 +1477,5 @@ function finishThrow(reason, msg) {
   s.phaseT = 0;
   s.spin = 0;
   s.curve = false;
-  SPIN_HALO.material.opacity = 0;
   s.onResult?.({ caught: false, reason, msg, ballId: s.ballId, dex: s.dex, outOfBalls: s.ballsLeft <= 0 });
 }
