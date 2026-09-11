@@ -112,6 +112,19 @@ function offerStarters() {
 }
 
 function beginRun(starterDex) {
+  // TEAR THE PREVIOUS RUN DOWN FIRST. This is not belt-and-braces, it is the only thing that does
+  // it on the "Play Again" path: that button goes newRun -> setMode('starter') -> here, and
+  // setMode only calls teardownRun() for 'title'. Because the line below then replaces state.run
+  // wholesale with a fresh object whose `floor` is null, enterFloor's own
+  // `if (run.floor) disposeFloor(run.floor)` had nothing left to find and the OLD floor's Group
+  // stayed in the scene for the life of the page — one orphaned floor per new run, accumulating.
+  //
+  // What that looked like: the previous floor's walls were still being drawn, sitting on top of
+  // the new floor's, while collision read the new floor's grid. So some walls you could see were
+  // walls you could walk straight through, and some you could not see were solid. Verified by
+  // counting instanced meshes in the scene: 5 on run 1, 11 on run 2, and still 5 left over after
+  // returning to the title.
+  teardownRun();
   state.run = {
     themes: pickRunThemes(FLOORS_PER_RUN),
     // Which floors carry Kecleon's stall is decided ONCE, here, rather than per floor: the
@@ -150,6 +163,9 @@ function teardownRun() {
   battle = null;
   battleCtx = null;
   catchCtx = null;
+  // The shop screen holds the stall it was opened from, and that stall belongs to a floor that is
+  // being disposed right now.
+  shopCtx = null;
   endCatch();
 }
 
@@ -743,9 +759,9 @@ Object.assign(uiHooks, {
   resume: () => setMode('playing'),
   quitRun: () => { if (state.run) loseRun({ abandoned: true }); else setMode('title'); },
   openPause: () => setMode('pause'),
-  // The pause map's rotate / zoom / pan controls. They stack on TOP of the fixed view orientation
-  // rather than replacing it, so `rot: 0` is always "the way you are looking" and the Reset button
-  // has somewhere meaningful to go back to.
+  // The pause map's rotate / zoom / pan gestures. They stack on TOP of the fixed view orientation
+  // rather than replacing it, so `rot: 0` is always "the way you are looking" — which is what
+  // makes reopening the pause screen (resetMapView, above) a meaningful way back.
   mapRotate: (delta) => { mapView.rot += delta; drawFloorMap(); },
   mapZoom: (factor, originX = 0, originY = 0) => {
     const next = Math.min(6, Math.max(0.6, mapView.zoom * factor));
@@ -758,8 +774,6 @@ Object.assign(uiHooks, {
     drawFloorMap();
   },
   mapPan: (dx, dy) => { mapView.panX += dx; mapView.panY += dy; drawFloorMap(); },
-  mapReset: () => { resetMapView(); drawFloorMap(); },
-  mapRedraw: () => drawFloorMap(),
   // Buying from Kecleon. The coin spend, the bag credit and the stock decrement all happen inside
   // inv.buyFromShop so a refused purchase cannot half-apply.
   shopBuy: (itemId) => {

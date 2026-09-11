@@ -323,17 +323,23 @@
   #minimap-wrap:active { border-color: var(--gold); }
   #minimap { width: 100%; height: 100%; display: block; image-rendering: pixelated; }
 
-  /* The coin purse, beside the bag in the left column. Only Kecleon takes coins, so this has to be
-     visible while exploring or there is no reason to detour for one. */
+  /* The coin purse, immediately LEFT of the pause button in the top-right corner. Only Kecleon
+     takes coins, so it has to be visible while exploring or there is no reason to detour for one —
+     but it is a readout, not a control, so it sits out of the left column where every actual
+     button lives. Offset is the pause button's 54px plus a 10px gap plus its own 10px inset.
+     Translucent on purpose: it is permanently on screen over live gameplay, and a solid panel up
+     there reads as another button. */
   #coin-chip {
-    top: calc(var(--sat) + 176px); left: calc(var(--sal) + 72px);
+    top: calc(var(--sat) + 10px); right: calc(var(--sar) + 74px);
     height: 54px; display: flex; align-items: center; gap: 5px;
-    padding: 0 0.55rem;
-    background: rgba(11,16,32,0.85);
-    border: 1px solid var(--edge);
+    padding: 0 0.6rem;
+    background: rgba(11,16,32,0.42);
+    border: 1px solid rgba(255,255,255,0.10);
     border-radius: 10px;
     font-weight: 700; font-size: 0.936rem; color: var(--gold);
-    text-shadow: 0 2px 4px rgba(0,0,0,0.6);
+    /* Carries the contrast the translucent ground gives up, so the number stays readable over a
+       pale floor as well as a dark one. */
+    text-shadow: 0 1px 3px rgba(0,0,0,0.9), 0 0 6px rgba(0,0,0,0.7);
   }
   #coin-chip svg { width: 20px; height: 20px; display: block; flex: 0 0 auto; image-rendering: pixelated; }
 
@@ -564,15 +570,31 @@
   .team-slot .type-badges { margin-top: 5px; }
   .team-slot .type-badges img { height: 17px; }
 
-  /* ---- Pause map tools ------------------------------------------------------------------------
-     A single row of five short buttons under the floor map. `small` keeps them inside the pause
-     screen's height budget, which already carries Resume, three secondary buttons and Abandon. */
-  .map-tools {
-    flex: 0 0 auto;
-    display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px;
-    margin-top: 10px;
+  /* ---- Pause screen ---------------------------------------------------------------------------
+     Abandon Run lives in the top-right CORNER, absolutely placed against #screen-pause's own box.
+     The title is pushed down clear of it rather than sharing its line: "Paused" is centred and the
+     floor summary under it is a full line of text, so a corner button on the same row would either
+     push the title off-centre or overlap the end of that line. The map panel is `flex: 1 1 auto`
+     and simply gives up the 46px, which the removed zoom-button row more than paid for. */
+  #btn-quit {
+    position: absolute;
+    top: calc(var(--sat) + 10px); right: calc(var(--sar) + 12px);
+    /* .btn carries `width: 100%`, and an absolutely-positioned element resolves that against its
+       containing block — so without this the "corner" button stretched the full width of the
+       screen. `width: auto` lets it size to its label instead. */
+    width: auto;
+    /* ...and a fixed width on top, so arming it (label "Abandon Run" -> "Confirm?") does not
+       resize the button under the finger that is about to press it again. */
+    min-width: 148px;
   }
-  .map-tools .btn { margin-bottom: 8px; padding-left: 0; padding-right: 0; }
+  #screen-pause .screen-title { margin-top: 46px; }
+  /* Armed: one press in, one press from ending the run. Gold-edged and brighter, so the state is
+     not carried by the label alone. */
+  #btn-quit.armed {
+    background: linear-gradient(180deg, #ffb4a8, #ff3b30);
+    border: 2px solid var(--gold);
+    box-shadow: 0 4px 0 var(--danger-dark);
+  }
 
   /* ---- Kecleon's shop -------------------------------------------------------------------------
      Kecleon on the left, the purse on the right, then one row per line of stock. A row is a button
@@ -1227,6 +1249,10 @@
 
   <!-- ============ PAUSE / FLOOR MAP ============ -->
   <div class="screen overlay" id="screen-pause">
+    <!-- Top-right corner, diagonally opposite Resume, and it takes TWO presses: the first arms it
+         and swaps the label to "Confirm?", the second ends the run. renderPause() disarms it every
+         time the screen opens, and it disarms itself after a few seconds. -->
+    <button class="btn danger small" id="btn-quit">Abandon Run</button>
     <h2 class="screen-title">Paused</h2>
     <div class="screen-sub" id="pause-sub">-</div>
     <!-- The canvas is absolutely positioned inside the panel on purpose. As a normal grid item
@@ -1237,25 +1263,20 @@
     <div class="panel" style="flex:1 1 auto; position:relative; overflow:hidden; min-height:0">
       <canvas id="floormap" width="620" height="620" style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain;image-rendering:pixelated;touch-action:none"></canvas>
     </div>
-    <!-- The map's own view controls. It opens in the SAME orientation as the HUD minimap and the
-         3D view, and these rotate / zoom on top of that, so Reset always means "face the way I am
-         facing". Drag and pinch do the same things directly on the canvas; the buttons exist
-         because a gesture nobody tries is a feature nobody has. -->
-    <div class="map-tools">
-      <button class="btn secondary small" id="btn-map-rot-l" aria-label="Rotate the map left">&lt;</button>
-      <button class="btn secondary small" id="btn-map-zoom-out" aria-label="Zoom out">-</button>
-      <button class="btn secondary small" id="btn-map-reset">Reset</button>
-      <button class="btn secondary small" id="btn-map-zoom-in" aria-label="Zoom in">+</button>
-      <button class="btn secondary small" id="btn-map-rot-r" aria-label="Rotate the map right">&gt;</button>
-    </div>
-    <div class="btn-col" style="margin-top:10px">
-      <button class="btn" id="btn-resume">Resume</button>
+    <!-- There is deliberately NO row of zoom / rotate / reset buttons under the map. Drag pans it,
+         pinch zooms it and a two-finger twist rotates it, which covers everything those buttons
+         did, and closing and reopening the pause screen puts the map back to the view orientation
+         (main.js resets the view on the way in) so Reset had nothing left to do either. -->
+    <div class="btn-col" style="margin-top:12px">
       <div class="btn-row">
         <button class="btn secondary small" id="btn-pause-bag">Bag</button>
         <button class="btn secondary small" id="btn-pause-glossary">Items</button>
         <button class="btn secondary small" id="btn-pause-settings">Config</button>
       </div>
-      <button class="btn danger small" id="btn-quit">Abandon Run</button>
+      <!-- Resume is LAST, under the thumb: it is the button pressed nine times out of ten and the
+           bottom of the screen is where a thumb rests. Abandon Run has swapped places with it and
+           now sits in the top-right corner, as far from Resume as the screen allows. -->
+      <button class="btn" id="btn-resume">Resume</button>
     </div>
   </div>
 

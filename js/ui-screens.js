@@ -43,12 +43,11 @@ export const uiHooks = {
   // Kecleon's shop
   shopBuy: (_itemId) => {},
   shopLeave: () => {},
-  // The pause map's view controls
+  // The pause map's gestures. There is no reset hook: the map has no Reset button any more, and
+  // main.js resets the view every time the pause screen opens.
   mapRotate: (_delta) => {},
   mapZoom: (_factor, _originX, _originY) => {},
   mapPan: (_dx, _dy) => {},
-  mapReset: () => {},
-  mapRedraw: () => {},
 };
 
 const SCREEN_FOR_MODE = {
@@ -158,7 +157,10 @@ export function updatePreviews(dt, mode) {
     dexPreview.holder.rotation.y += dt * 0.7;
     dexPreview.render();
   } else if (mode === 'shop' && shopPreview) {
-    shopPreview.holder.rotation.y += dt * 0.5;
+    // Kecleon does NOT spin. The starter and Pokedex previews turn because they are display
+    // pieces you are inspecting; Kecleon is a shopkeeper you are talking to, and a shopkeeper who
+    // revolves reads as merchandise. His yaw is set once in renderShop and left alone. Still
+    // rendered every frame, because the model arrives a load after the screen opens.
     shopPreview.render();
   } else if (mode === 'battle') {
     updateBattleField(dt);
@@ -749,6 +751,9 @@ export function renderShop(ctx) {
     // Loaded straight from its path rather than through a dex lookup: Kecleon is not in the Quest
     // roster or POKEMON_CATALOG, he is an NPC.
     setPreviewModel(view.holder, null, 1.15, KECLEON_MODEL);
+    // A fixed three-quarter yaw, set once. He is standing still and facing the customer; the
+    // slight turn is only so he is not a dead-flat front elevation.
+    view.holder.rotation.y = -0.34;
     shopModelShown = true;
   }
   $('shop-coins').textContent = String(inv.coins());
@@ -782,11 +787,31 @@ export function renderShop(ctx) {
 }
 
 // ---- Pause ------------------------------------------------------------------------------------
+// Abandoning a run is the one irreversible button in the game — permadeath is total, so there is
+// no undo and nothing carries over — and it now sits in a screen CORNER, which is exactly where a
+// thumb lands by accident while reaching for the map. So it takes two presses: the first arms it
+// and relabels it, the second ends the run.
+const QUIT_ARM_MS = 4000;
+let quitArmed = false;
+let quitTimer = null;
+
+function disarmQuit() {
+  quitArmed = false;
+  clearTimeout(quitTimer);
+  const b = $('btn-quit');
+  if (!b) return;
+  b.textContent = 'Abandon Run';
+  b.classList.remove('armed');
+}
+
 export function renderPause() {
   const run = state.run;
   $('pause-sub').textContent = run
     ? `B${run.floorIndex + 1}F - ${run.floor.theme.name} - ${inv.partyAlive().length}/${inv.party().length} standing`
     : '';
+  // Always opens disarmed. Leaving it armed across a close and reopen would mean one stray press
+  // on a freshly opened pause screen could end the run, which is the whole thing this prevents.
+  disarmQuit();
 }
 
 // ---- The pause map's rotate / zoom / pan gestures ----------------------------------------------
@@ -899,18 +924,27 @@ export function bindUI() {
   click('minimap-wrap', () => { sfx('select'); uiHooks.openPause(); });
 
   click('btn-resume', () => { sfx('confirm'); uiHooks.resume(); });
-  click('btn-map-rot-l', () => { sfx('select'); uiHooks.mapRotate(-Math.PI / 8); });
-  click('btn-map-rot-r', () => { sfx('select'); uiHooks.mapRotate(Math.PI / 8); });
-  click('btn-map-zoom-in', () => { sfx('select'); uiHooks.mapZoom(1.35); });
-  click('btn-map-zoom-out', () => { sfx('select'); uiHooks.mapZoom(1 / 1.35); });
-  click('btn-map-reset', () => { sfx('back'); uiHooks.mapReset(); });
+  // The floor map has no buttons of its own — drag pans, pinch zooms, two fingers twist to rotate.
   bindFloorMapGestures();
 
   click('btn-shop-leave', () => { sfx('back'); uiHooks.shopLeave(); });
   click('btn-pause-bag', () => { sfx('select'); uiHooks.openBag(); });
   click('btn-pause-glossary', () => { sfx('select'); uiHooks.openGlossary(); });
   click('btn-pause-settings', () => { sfx('select'); uiHooks.openSettings(); });
-  click('btn-quit', () => { sfx('back'); uiHooks.quitRun(); });
+  click('btn-quit', () => {
+    if (!quitArmed) {
+      quitArmed = true;
+      const b = $('btn-quit');
+      b.textContent = 'Confirm?';
+      b.classList.add('armed');
+      sfx('select');
+      quitTimer = setTimeout(disarmQuit, QUIT_ARM_MS);
+      return;
+    }
+    disarmQuit();
+    sfx('back');
+    uiHooks.quitRun();
+  });
 
   click('btn-bag-close', () => { sfx('back'); uiHooks.closeBag(); });
   click('btn-bag-use', () => {

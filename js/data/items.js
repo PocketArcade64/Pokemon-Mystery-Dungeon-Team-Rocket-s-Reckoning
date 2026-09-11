@@ -73,27 +73,27 @@ const ballArt = (top, hi, mark = top, rows2 = '.kTtTTTTk.', rows3 = 'kTtTTTTTTk'
 
 export const ITEMS = [
   {
-    id: 'poke-ball', name: 'Poke Ball', kind: 'ball', ballTier: 0, catchBase: 0.42, spawnWeight: 22, shopPrice: 100,
+    id: 'poke-ball', name: 'Poke Ball', kind: 'ball', ballTier: 0, catchBase: 0.42, spawnWeight: 22, shopPrice: 10,
     desc: 'The standard capture device. Used in the catch minigame - a steady base catch rate that your throw accuracy builds on.',
     svg: ballArt('#e5453b', '#ff8f86'),
     use: (api) => (api.setActiveBall('poke-ball'), { ok: false, msg: 'Poke Ball set for your next throw.' }),
   },
   {
-    id: 'great-ball', name: 'Great Ball', kind: 'ball', ballTier: 1, catchBase: 0.58, spawnWeight: 13, shopPrice: 220,
+    id: 'great-ball', name: 'Great Ball', kind: 'ball', ballTier: 1, catchBase: 0.58, spawnWeight: 13, shopPrice: 20,
     desc: 'A better ball than the Poke Ball. Raises the base catch chance before your throw accuracy is added on top.',
     // The two red stripes down the blue shell.
     svg: ballArt('#3b6fd4', '#7ea6ef', '#e5453b', '.kTaTTaTk.', 'kTaTTTTaTk'),
     use: (api) => (api.setActiveBall('great-ball'), { ok: false, msg: 'Great Ball set for your next throw.' }),
   },
   {
-    id: 'ultra-ball', name: 'Ultra Ball', kind: 'ball', ballTier: 2, catchBase: 0.74, spawnWeight: 7, shopPrice: 450,
+    id: 'ultra-ball', name: 'Ultra Ball', kind: 'ball', ballTier: 2, catchBase: 0.74, spawnWeight: 7, shopPrice: 40,
     desc: 'The best ball you will find down here. The highest base catch chance - a clean throw with one is close to a sure thing.',
     // The two yellow blocks on the black shell.
     svg: ballArt('#2a2a33', '#565662', '#f2c12e', '.kaaTTaak.', 'kTaaTTaaTk'),
     use: (api) => (api.setActiveBall('ultra-ball'), { ok: false, msg: 'Ultra Ball set for your next throw.' }),
   },
   {
-    id: 'oran-berry', name: 'Oran Berry', kind: 'heal', needsTarget: true, spawnWeight: 20, shopPrice: 120,
+    id: 'oran-berry', name: 'Oran Berry', kind: 'heal', needsTarget: true, spawnWeight: 20, shopPrice: 10,
     desc: 'A tart blue berry. Restores 20 HP to one party Pokemon.',
     svg: pixelIcon({ k: OUTLINE, B: '#4f8ee0', h: '#bcd9ff', g: '#5fbf52' }, [
       '....gg....',
@@ -115,7 +115,7 @@ export const ITEMS = [
     },
   },
   {
-    id: 'full-heal', name: 'Full Heal', kind: 'heal', needsTarget: true, spawnWeight: 9, shopPrice: 330,
+    id: 'full-heal', name: 'Full Heal', kind: 'heal', needsTarget: true, spawnWeight: 9, shopPrice: 30,
     desc: 'A potent medicine. Restores one party Pokemon to full HP - and it will revive a fainted one.',
     svg: pixelIcon({ k: OUTLINE, W: '#eef2f8', R: '#e5453b', S: '#8f97a8' }, [
       '...kkk....',
@@ -137,7 +137,7 @@ export const ITEMS = [
     },
   },
   {
-    id: 'rare-candy', name: 'Rare Candy', kind: 'boost', needsTarget: true, spawnWeight: 8, shopPrice: 600,
+    id: 'rare-candy', name: 'Rare Candy', kind: 'boost', needsTarget: true, spawnWeight: 8, shopPrice: 55,
     desc: 'Evolves one eligible party Pokemon on the spot. Has no effect on a Pokemon with nowhere left to evolve.',
     svg: pixelIcon({ k: OUTLINE, P: '#f0648c', p: '#ffc0d4', C: '#7ec8f0' }, [
       '..........',
@@ -159,7 +159,7 @@ export const ITEMS = [
     },
   },
   {
-    id: 'town-map', name: 'Town Map', kind: 'field', spawnWeight: 10, shopPrice: 180,
+    id: 'town-map', name: 'Town Map', kind: 'field', spawnWeight: 10, shopPrice: 15,
     desc: 'Reveals the current floor’s full layout on the minimap and the pause map. Does not show items or Pokemon.',
     svg: pixelIcon({ k: OUTLINE, M: '#f2e3bd', G: '#5fbf52', R: '#e5453b' }, [
       '..........',
@@ -176,7 +176,7 @@ export const ITEMS = [
     use: (api) => (api.revealMap(), { ok: true, msg: 'The whole floor layout appeared on your map!' }),
   },
   {
-    id: 'dowsing-machine', name: 'Dowsing Machine', kind: 'field', spawnWeight: 9, shopPrice: 220,
+    id: 'dowsing-machine', name: 'Dowsing Machine', kind: 'field', spawnWeight: 9, shopPrice: 20,
     desc: 'Pings the floor and marks every item and every wild Pokemon on your map, wherever they are.',
     svg: pixelIcon({ k: OUTLINE, R: '#d8452f', S: '#9be8c8' }, [
       '..k...k...',
@@ -193,7 +193,7 @@ export const ITEMS = [
     use: (api) => (api.revealEntities(), { ok: true, msg: 'Every item and Pokemon on this floor was marked!' }),
   },
   {
-    id: 'x-attack', name: 'X Attack', kind: 'boost', spawnWeight: 11, shopPrice: 260,
+    id: 'x-attack', name: 'X Attack', kind: 'boost', spawnWeight: 11, shopPrice: 25,
     desc: 'A combat stimulant. Every party Pokemon deals +5 damage per hit for the next 60 seconds.',
     svg: pixelIcon({ k: OUTLINE, O: '#f2933a', W: '#ffffff', S: '#8f97a8' }, [
       '...kkk....',
@@ -210,7 +210,7 @@ export const ITEMS = [
     use: (api) => (api.buffAttack(5, 60000), { ok: true, msg: 'Your team’s attack rose! (+5 damage for 60s)' }),
   },
   {
-    id: 'max-repel', name: 'Max Repel', kind: 'field', spawnWeight: 9, shopPrice: 220,
+    id: 'max-repel', name: 'Max Repel', kind: 'field', spawnWeight: 9, shopPrice: 20,
     desc: 'Wild Pokemon keep their distance for 45 seconds - they will not close in or trigger an encounter.',
     svg: pixelIcon({ k: OUTLINE, N: '#5fbf52', W: '#d8f5cf', S: '#8f97a8' }, [
       '...kkk....',
@@ -227,7 +227,7 @@ export const ITEMS = [
     use: (api) => (api.setRepel(45000), { ok: true, msg: 'Wild Pokemon will keep away for 45 seconds.' }),
   },
   {
-    id: 'escape-rope', name: 'Escape Rope', kind: 'field', spawnWeight: 8, shopPrice: 170,
+    id: 'escape-rope', name: 'Escape Rope', kind: 'field', spawnWeight: 8, shopPrice: 15,
     desc: 'Warps you straight to this floor’s up-stairs. The Rocket Grunt guarding them still has to be beaten.',
     svg: pixelIcon({ k: OUTLINE, R: '#c98a4b' }, [
       '..........',
@@ -244,7 +244,7 @@ export const ITEMS = [
     use: (api) => (api.warpToStairs(), { ok: true, msg: 'You were pulled toward the stairs!' }),
   },
   {
-    id: 'revive', name: 'Revive', kind: 'boost', spawnWeight: 7, shopPrice: 480,
+    id: 'revive', name: 'Revive', kind: 'boost', spawnWeight: 7, shopPrice: 45,
     desc: 'Held in reserve. The next time a party Pokemon faints in battle it is automatically brought back at half HP.',
     svg: pixelIcon({ k: OUTLINE, Y: '#f2d54e' }, [
       '....kk....',
@@ -303,12 +303,17 @@ export function randomBallId(rng = Math.random) {
 // Coins are not bag items (see the file header): they collapse into a single `run.coins` total the
 // moment they are picked up, so there is nothing to carry and nothing to choose between.
 //
+// VALUES ARE 1 / 5 / 10, as in Pokemon Rumble Run. That is the scale the whole economy is set on
+// and it is why every shopPrice above is a two-digit number: coins are counted in ones and tens
+// here, not in hundreds.
+//
 // THE ECONOMY, because the shop prices above are meaningless without it. dungeon.js spawns
 // `7 + floor * 2` coins (9 on floor 1 up to 17 on floor 5) drawn on the weights below, which is an
-// expected 35.2 coins per pickup and so roughly 320-600 per floor. Kecleon is guaranteed on
-// floor 4, so a player who has cleared three floors arrives with ~1200: enough for a strong
-// loadout (an Ultra Ball and a Rare Candy, or four or five of the cheaper items) and not enough to
-// clear the shelf. Finding him early instead, on floor 1, leaves ~400 — one or two cheap items.
+// expected 3.2 coins per pickup and so roughly 29-54 per floor. Kecleon is guaranteed on floor 4,
+// so a player who has cleared three floors arrives with about 120: enough for a strong loadout (an
+// Ultra Ball at 40 and a Rare Candy at 55, with change for a Town Map) and not enough to clear the
+// shelf. Finding him early instead, on floor 1, leaves about 30 — one or two of the cheap items,
+// which is what an early stall should be.
 // Changing a weight or a value here means re-reading the prices above.
 const coinArt = (body, glyph, rim, fat = false) => pixelIcon(
   { k: OUTLINE, S: body, P: glyph, H: rim },
@@ -321,19 +326,19 @@ const coinArt = (body, glyph, rim, fat = false) => pixelIcon(
 
 export const COINS = [
   {
-    id: 'coin-silver', name: 'Silver Coin', value: 10, spawnWeight: 60,
+    id: 'coin-silver', name: 'Silver Coin', value: 1, spawnWeight: 60,
     // Model height in world units, taken from the rip's own proportions (0.447 / 0.639 / 0.990)
     // so the three denominations stay in their real size relationship on the floor.
     height: 0.45,
     svg: coinArt('#cfd8dc', '#6f7d84', '#eceff1'),
   },
   {
-    id: 'coin-gold', name: 'Gold Coin', value: 40, spawnWeight: 28,
+    id: 'coin-gold', name: 'Gold Coin', value: 5, spawnWeight: 28,
     height: 0.62,
     svg: coinArt('#f2c12e', '#9a6f14', '#ffe082'),
   },
   {
-    id: 'coin-large', name: 'Big Gold Coin', value: 150, spawnWeight: 12,
+    id: 'coin-large', name: 'Big Gold Coin', value: 10, spawnWeight: 12,
     height: 0.9,
     svg: coinArt('#ffd54f', '#8a5f0f', '#fff3c4', true),
   },
