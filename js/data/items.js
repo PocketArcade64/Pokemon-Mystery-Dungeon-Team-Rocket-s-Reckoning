@@ -15,7 +15,9 @@
 // `use(api, mon)` performs the effect. `api` is supplied by inventory.js and exposes only what
 // items are allowed to touch, so nothing here needs to import game state:
 //   api.party            live party array (mon objects: {dex,name,types,stage,hp,maxHp,dmg})
-//   api.heal(mon, amt)   amt === Infinity restores to full; returns HP actually restored
+//   api.heal(mon, amt)   amt === Infinity restores to full; returns HP actually restored.
+//                        Does NOTHING to a fainted Pokemon — reviving is the Revive's job alone.
+//   api.revive(mon)      brings a FAINTED Pokemon back at half HP; returns the HP it came back on
 //   api.evolve(mon)      evolves in place if its evolvesInto is non-empty; returns new name or null
 //   api.revealMap()      Town Map: uncovers the whole floor on the minimap
 //   api.revealEntities() Dowsing Machine: uncovers every item + wild Pokemon on the floor
@@ -73,6 +75,17 @@ function pixelIcon(pal, rows) {
 
 const OUTLINE = '#17101f';
 
+// Both medicines report the same three outcomes, and the two FAILURES are not the same thing:
+// `api.heal` returns 0 both for a full-HP target and for a fainted one, and telling a player their
+// fainted Pokemon "is already at full HP" is nonsense. ok:false leaves the item in the bag either
+// way (see useItem), so a misdirected medicine is never wasted — it just says why.
+// `success` is a builder rather than a string because only one of the two wants to name a number.
+const healResult = (got, mon, success) => {
+  if (got > 0) return { ok: true, msg: success(got) };
+  if (mon.hp <= 0) return { ok: false, msg: `${mon.name} has fainted. Only a Revive can bring it back.` };
+  return { ok: false, msg: `${mon.name} is already at full HP.` };
+};
+
 export const ITEMS = [
   {
     id: 'poke-ball', name: 'Poke Ball', kind: 'ball', ballTier: 0, catchBase: 0.42, spawnWeight: 22, shopPrice: 10,
@@ -117,27 +130,19 @@ export const ITEMS = [
   },
   {
     id: 'oran-berry', name: 'Oran Berry', kind: 'heal', needsTarget: true, spawnWeight: 20, shopPrice: 10,
-    desc: 'A tart blue berry. Restores 20 HP to one party Pokemon.',
+    desc: 'A tart blue berry. Restores 20 HP to one party Pokemon. Like every medicine down here it does nothing for a Pokemon that has already fainted - that is a Revive’s job.',
     shopDesc: 'Restores 20 HP to one party Pokemon.',
     icon: spriteIcon('oran-berry'),
-    use: (api, mon) => {
-      const got = api.heal(mon, 20);
-      return got > 0
-        ? { ok: true, msg: `${mon.name} recovered ${got} HP.` }
-        : { ok: false, msg: `${mon.name} is already at full HP.` };
-    },
+    // `healResult` is shared by both medicines: api.heal returns 0 both when there is nothing to
+    // heal and when the target is fainted, and those are two different things to be told.
+    use: (api, mon) => healResult(api.heal(mon, 20), mon, (n) => `${mon.name} recovered ${n} HP.`),
   },
   {
     id: 'full-restore', name: 'Full Restore', kind: 'heal', needsTarget: true, spawnWeight: 9, shopPrice: 30,
-    desc: 'A potent medicine. Restores one party Pokemon to full HP - and it will revive a fainted one.',
-    shopDesc: 'Fully heals one Pokemon, or revives a fainted one.',
+    desc: 'A potent medicine. Restores one party Pokemon to full HP, however much it has lost. It cannot bring back a Pokemon that has fainted - only a Revive does that.',
+    shopDesc: 'Restores one Pokemon to full HP.',
     icon: spriteIcon('full-restore'),
-    use: (api, mon) => {
-      const got = api.heal(mon, Infinity);
-      return got > 0
-        ? { ok: true, msg: `${mon.name} was fully restored.` }
-        : { ok: false, msg: `${mon.name} is already at full HP.` };
-    },
+    use: (api, mon) => healResult(api.heal(mon, Infinity), mon, () => `${mon.name} was fully restored.`),
   },
   {
     id: 'rare-candy', name: 'Rare Candy', kind: 'boost', needsTarget: true, spawnWeight: 8, shopPrice: 55,
@@ -187,11 +192,31 @@ export const ITEMS = [
     use: (api) => (api.warpToStairs(), { ok: true, msg: 'You were pulled toward the stairs!' }),
   },
   {
+    // The ONLY thing in the game that undoes a faint, and it does that job two ways.
+    //
+    // Pick a fainted party member in the bag and it brings THAT one back at half HP. Use it with
+    // nobody picked (or with a healthy Pokemon picked) and it goes into reserve instead, firing
+    // automatically the next time someone goes down mid-battle — which is the only form that is
+    // any use during a fight, since the bag is not reachable from the battle screen.
+    //
+    // The direct form exists because medicines stopped reviving (see inventory.heal). Without it
+    // a Pokemon that fainted with no Revive already in reserve was simply gone for the rest of the
+    // run with nothing in the game able to help, and both medicines' text would be promising a
+    // Revive that could not actually be pointed at it.
+    //
+    // `needsTarget` is deliberately NOT set: it must stay usable with no target at all.
     id: 'revive', name: 'Revive', kind: 'boost', spawnWeight: 7, shopPrice: 45,
-    desc: 'Held in reserve. The next time a party Pokemon faints in battle it is automatically brought back at half HP.',
-    shopDesc: 'Brings back the next Pokemon to faint, at half HP.',
+    desc: 'The only thing that undoes a faint. Use it on a fainted party Pokemon to bring it back at half HP - or use it with nobody selected to hold it in reserve, and the next Pokemon to faint mid-battle comes straight back on its own.',
+    shopDesc: 'Revives a fainted Pokemon, or waits in reserve.',
     icon: spriteIcon('revive'),
-    use: (api) => (api.grantRevive(), { ok: true, msg: 'A Revive is standing by for your next fainted Pokemon.' }),
+    use: (api, mon) => {
+      if (mon && mon.hp <= 0) {
+        const got = api.revive(mon);
+        return { ok: true, msg: `${mon.name} was revived with ${got} HP!` };
+      }
+      api.grantRevive();
+      return { ok: true, msg: 'A Revive is standing by for your next fainted Pokemon.' };
+    },
   },
 ];
 

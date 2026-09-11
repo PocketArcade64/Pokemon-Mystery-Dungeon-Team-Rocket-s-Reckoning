@@ -169,17 +169,43 @@ const CORNERS = [
 // Plain wall, in three depth bands. The near band is what closes the frame beside the camera; the
 // two behind it are the chamber the corners cut into.
 //
-// A wall block's inner edge is placed by the NDC at its NEAR end, but the frame keeps widening
-// behind that, so by the block's far end the same face has slid inboard — which is why these are
-// just outside the frame rather than on its edge, and why they interpolate. On a portrait screen
-// the trio alone fills three quarters of the frame's width, so a band at 1.02 ends up shaving the
-// outer two starters and burying the villains beside them; pulling the bands outboard as the
-// screen narrows is what keeps the passage clear. Raising one of these numbers is safe; lowering
-// one needs the trio and the villains re-checked at a phone aspect.
+// `inner` IS THE SCREEN EDGE NOW, and that is a change worth understanding before touching it.
+//
+// These numbers used to be well OUTSIDE the frame (1.32 / 1.16 / 1.02 on a phone) and to
+// interpolate with aspect, and the reason was a bug rather than a look: a block's inner face was
+// placed by its NDC at the block's NEAR end while the frustum kept diverging behind it, so the
+// face slid inboard along the block's depth and the bands had to start outboard to survive it.
+// Two things followed from that. The face ended up two units inside the frame at the far end of a
+// deep block, where its base drew a diagonal line across the floor. And the frame was CLOSED by
+// that same intrusion — which is why simply correcting the placement left the cave's sides open.
+//
+// wallSlab() now yaws each block onto the frustum's side plane, so an `inner` of 1.00 is the
+// screen's edge at EVERY depth. That is where the rock wants to be: it closes the frame along its
+// whole length, it never crosses the floor, and it cannot shave the trio or bury a villain no
+// matter how narrow the screen gets — because nothing inside the frame is ever behind it. The
+// per-aspect interpolation existed only to dodge the old failure mode and is gone with it.
+//
+// 0.92 — just INSIDE the frame, on purpose, which is the other half of the fix.
+//
+// "The cave walls always close the edges of the frame" is a property this scene relies on (it is
+// what lets a villain be tucked beside a corner at any aspect), and the old code delivered it by
+// accident: the intruding face WAS the dark mass down each side. Placing the bands correctly and
+// leaving them outside the frame removed the line and the enclosure together, and left the floor
+// running off the edge of the screen.
+//
+// A constant NDC is a constant SCREEN x, so with the yaw a face at 0.92 projects to a straight
+// VERTICAL edge — a band of rock 8% of the half-frame wide down each side, identical at every
+// depth and at every aspect. That is the enclosure the scene wanted, and it is the one thing the
+// old geometry could not produce: its face was at a constant world x, which projects to a
+// diagonal.
+//
+// Lowering this further widens the band and eventually reaches the trio; 0.92 clears them at a
+// phone aspect, which is the narrowest case and the one to re-check against.
+const WALL_INNER_NDC = 0.92;
 const WALLS = [
-  { inner: [1.32, 1.02], z0: 2.9, z1: 0.6, h: 3.20, step: 1.8 },
-  { inner: [1.16, 0.97], z0: 0.6, z1: -5.0, h: 3.40, step: 1.9 },
-  { inner: [1.02, 0.94], z0: -5.0, z1: -9.0, h: 3.60, step: 2.0 },
+  { z0: 2.9, z1: 0.6, h: 3.20, step: 1.8 },
+  { z0: 0.6, z1: -5.0, h: 3.40, step: 1.9 },
+  { z0: -5.0, z1: -9.0, h: 3.60, step: 2.0 },
 ];
 
 const BACK_Z = -8.9;
@@ -220,6 +246,7 @@ function buildStatic() {
   floorMesh.receiveShadow = true;
   floorMesh.count = 0;                 // rebuild() lays the tiles out for the current frustum
   titleScene.add(floorMesh);
+
 
   rockMesh = new THREE.InstancedMesh(
     new THREE.BoxGeometry(1, 1, 1),
@@ -312,19 +339,63 @@ function rebuild(wide) {
     n++;
   };
 
+  // A wall-band block, YAWED so its inner face lies ON the frustum's side plane.
+  //
+  // This is the one thing an axis-aligned box cannot do, and not doing it is what put a diagonal
+  // line across the floor. The frustum is a diverging cone: a fixed NDC x is a larger |world x|
+  // the deeper you go, so a square box can only match the frame at ONE of its two ends. Resolved
+  // at the block's near end (which is what this used to do) the frame keeps widening behind the
+  // face while the face stays put, and by the far end of a 2.3-deep block the face has slid over
+  // two units INSIDE the frame — where its base draws exactly the diagonal that was reported,
+  // dark rock face above the line and lit floor below it. Resolved at the far end instead, the
+  // face is outside the frame everywhere but leaves a wedge of open floor at the frame's edge,
+  // and the cave stops closing the frame at all.
+  //
+  // Following the plane removes the choice. `x` along a fixed NDC is LINEAR in z, so the side
+  // plane contains the direction (b, 0, 1) where b is that slope; a yaw of atan(b) puts the
+  // block's local +Z along it and its local +X square to it. The face then sits on the frame's
+  // edge at every depth, for a block of any depth — so `step` is free to go back to being about
+  // how blocky the rock looks.
+  const _q = new THREE.Quaternion();
+  const _e = new THREE.Euler();
+  const wallSlab = (side, innerNdc, z0, z1, h, thickness = 2.4) => {
+    if (n >= ROCK_MAX) return;
+    const b = (xAt(innerNdc, z1) - xAt(innerNdc, z0)) / (z1 - z0);
+    const yaw = Math.atan(b);
+    const zc = (z0 + z1) / 2;
+    // Outboard normal of the face: the block's local +X, taken `side`-ways. The box is symmetric
+    // about its centre in local x, so only the centre and the extents matter here.
+    const nx = Math.cos(yaw) * side, nz = -Math.sin(yaw) * side;
+    p.set(xAt(innerNdc, zc) + nx * thickness / 2, h / 2, zc + nz * thickness / 2);
+    // Local z spans the band's depth along the SLANTED face, so hypot() and not the z delta.
+    s.set(thickness, h, Math.abs(z1 - z0) * Math.hypot(1, b) + 0.04);
+    _e.set(0, yaw, 0);
+    _q.setFromEuler(_e);
+    m4.compose(p, _q, s);
+    rockMesh.setMatrixAt(n, m4);
+    rockMesh.setColorAt(n, col.setHex(PAL.rock).multiplyScalar(0.86 + (n % 6) * 0.05));
+    n++;
+  };
+
   // Wall bands, broken into blocks so a run of rock is not one extruded rectangle. The jitter is a
   // function of the block index, so the cave keeps its shape across a rebuild.
   for (const w of WALLS) {
     const span = Math.abs(w.z1 - w.z0);
     const blocks = Math.max(2, Math.round(span / (w.step || 1.4)));
     const step = span / blocks;
-    const inner = lerp(w.inner[0], w.inner[1], wide);
+    // One NDC for every band and every aspect now — see WALL_INNER_NDC. The old per-band,
+    // per-aspect interpolation existed only to dodge the inboard slide that wallSlab removes.
+    const inner = WALL_INNER_NDC;
     for (const side of [-1, 1]) {
       for (let b = 0; b < blocks; b++) {
         const z0 = w.z0 - b * step;
-        const wob = ((b * 7 + (side > 0 ? 3 : 0)) % 4) * 0.02;
+        // The blocks of a band all share ONE face plane, and the variety is in their heights
+        // alone. There used to be a per-block `wob` on the NDC as well; with the faces yawed onto
+        // the frustum plane that is no longer cosmetic — a block at a different NDC has a
+        // different yaw, so it is no longer parallel to its neighbours, and the wedge between two
+        // of them opened a black notch straight through to the background at the frame's edge.
         const hh = w.h + ((b * 5) % 4) * 0.14;
-        slab(side, side * (inner + wob), z0, z0 - step, hh, { grow: 0.04 });
+        wallSlab(side, side * inner, z0, z0 - step, hh);
       }
     }
   }

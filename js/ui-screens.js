@@ -460,6 +460,13 @@ function renderBagDetail() {
   let note = '';
   if (item.kind === 'ball') {
     note = `<div class="id-desc" style="color:var(--gold)">Selecting a ball sets which one you throw in the catch minigame.</div>`;
+  } else if (item.id === 'revive') {
+    // The Revive is the one item whose EFFECT depends on the selection rather than just its
+    // target, so the bag has to say which of its two jobs the button is about to do. Without this
+    // the only way to find out was to spend it.
+    note = target && target.hp <= 0
+      ? `<div class="id-desc" style="color:var(--gold)">Will bring ${target.name} back at half HP.</div>`
+      : `<div class="id-desc" style="color:var(--gold)">Nobody fainted selected - this will go into reserve for the next Pokemon to faint in battle. Pick a fainted Pokemon above to revive it now.</div>`;
   } else if (needsTarget) {
     note = target
       ? `<div class="id-desc" style="color:var(--gold)">Target: ${target.name}</div>`

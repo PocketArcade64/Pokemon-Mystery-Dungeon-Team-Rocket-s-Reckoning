@@ -1308,8 +1308,16 @@
     bottom: calc(var(--sab) + 26px); right: calc(var(--sar) + 16px);
     width: 62px; height: 62px;
   }
-  #catch-ball-icon { display: block; width: 30px; height: 30px; line-height: 0; }
-  #catch-ball-icon svg, #catch-ball-icon img { width: 30px; height: 30px; stroke: none; image-rendering: pixelated; }
+  /* 46px, not the sprite's native 30px, and the reason is the sprite's own padding: every ball PNG
+     in assets/sprites/ is an 18x18 ball centred in a 30x30 frame, so a 30px box drew an 18px ball
+     inside a 62px disc — under a third of it, which read as a ball that had been shrunk. At 46 the
+     ball itself comes out at 27.6px, a little under half the disc, which is what the other 52px
+     HUD discs give their glyphs.
+     The 46px BOX overhangs the disc's inscribed square (43.8px) by a pixel and a half at the
+     corners, and that is free: 46 x 6/30 = 9.2px of every corner is transparent. Anything much
+     past this starts putting the count badge on top of the ball rather than beside it. */
+  #catch-ball-icon { display: block; width: 46px; height: 46px; line-height: 0; }
+  #catch-ball-icon svg, #catch-ball-icon img { width: 46px; height: 46px; stroke: none; image-rendering: pixelated; }
   #catch-ball-count {
     position: absolute; bottom: 3px; right: 4px;
     font-size: 0.78rem; font-weight: 700; color: var(--gold);
@@ -1403,7 +1411,10 @@
     font-weight: 700; font-size: 0.78rem; cursor: pointer;
   }
   .ball-chip:active { transform: scale(0.92); }
-  .ball-chip svg, .ball-chip img { width: 26px; height: 26px; image-rendering: pixelated; }
+  /* 40px in a 52px disc, for the same reason and in the same proportion as #catch-ball-icon above:
+     the sprite's 20%-per-side padding means the ball itself lands at 24px. The chip keeps its
+     52px size — the picker column has to stay clear of the thrown ball at the bottom centre. */
+  .ball-chip svg, .ball-chip img { width: 40px; height: 40px; image-rendering: pixelated; }
   .ball-chip span {
     position: absolute; bottom: 2px; right: 4px;
     color: var(--gold); text-shadow: 0 1px 2px #000;

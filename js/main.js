@@ -343,7 +343,9 @@ function startBattle(kind, wild = null) {
   ui.renderBattle(battle);
   // The LEAD only, the way the games announce it. Listing all six of Giovanni's ran to four lines
   // in the message band, and how many he is carrying is already on the Poke Ball strip in his box.
-  if (kind !== 'wild') ui.battleLog(`${title} sent out ${enemies[0]?.name || 'a Pokemon'}!`);
+  // enemyLead() rather than enemies[0]: a freshly generated team is all standing, so they are the
+  // same today, but the announcement should name whoever is actually on the field.
+  if (kind !== 'wild') ui.battleLog(`${title} sent out ${battle.enemyLead()?.name || 'a Pokemon'}!`);
 }
 
 function updateBattleFrame(dtMs) {

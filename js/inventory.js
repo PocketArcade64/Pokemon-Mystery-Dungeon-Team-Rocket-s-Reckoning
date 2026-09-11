@@ -57,13 +57,33 @@ export function party() { return state.run?.party || []; }
 export function partyAlive() { return party().filter(m => m.hp > 0); }
 export function isPartyWiped() { return party().length > 0 && partyAlive().length === 0; }
 
-// Heals up to `amount` HP (Infinity = full). Deliberately allowed to bring a fainted Pokemon back:
-// Full Restore is described as doing exactly that, and losing a slot for a whole run is brutal.
+// Heals up to `amount` HP (Infinity = full). Returns the HP actually restored, or 0.
+//
+// HEALING CANNOT TOUCH A FAINTED POKEMON. This is the mainline rule and it is deliberate: reviving
+// is the Revive's whole job, and a Full Restore that also revived made the Revive nearly pointless
+// — it healed MORE, revived just the same, and cost 15 fewer coins. Splitting them gives the two
+// items different answers to different problems, and it puts a real price on letting a Pokemon go
+// down. `useItem` turns the 0 into an ok:false, so the item is not consumed and the player is told
+// why rather than quietly wasting it.
+//
+// (This reverses an earlier decision that let Full Restore revive because "losing a slot for a
+// whole run is brutal". It is brutal, and Revives are what that is for — they spawn on every floor
+// and Kecleon sells them.)
 export function heal(mon, amount) {
-  if (!mon) return 0;
+  if (!mon || mon.hp <= 0) return 0;
   const before = mon.hp;
   mon.hp = amount === Infinity ? mon.maxHp : Math.min(mon.maxHp, mon.hp + amount);
   return mon.hp - before;
+}
+
+// The counterpart to heal(): the one way a faint is undone, and it only works ON a faint. Half HP
+// is the same figure battle.js's held-Revive uses when it fires mid-fight — the item does the same
+// thing whichever of its two ways it is spent, and there is no reason to pick one over the other
+// for how much comes back.
+export function revive(mon) {
+  if (!mon || mon.hp > 0) return 0;
+  mon.hp = Math.max(1, Math.round(mon.maxHp / 2));
+  return mon.hp;
 }
 
 // Evolves in place, preserving the fraction of HP the Pokemon was on. Only targets listed in the
@@ -209,6 +229,7 @@ export function buyFromShop(stock, itemId) {
 export const itemApi = {
   get party() { return party(); },
   heal,
+  revive,
   evolve,
   revealMap: () => hooks.revealMap(),
   revealEntities: () => hooks.revealEntities(),

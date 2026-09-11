@@ -83,6 +83,22 @@ const TURN_MS = 780;      // one attack per side per turn slot
 const INTRO_MS = 900;
 const OUTRO_MS = 700;
 
+// Index of the first Pokemon on a team that can actually fight.
+//
+// This is what a battle OPENS on, and it matters for the player's side because slot 0 is the lead
+// and the lead can be FAINTED: you keep the slot when one goes down, and the rest of the game
+// already skips past it — syncPlayerModel and the HUD's lead card both read `partyAlive()[0]`, so
+// the Pokemon you are walking around as is the first standing one, not slot 0.
+//
+// createBattle used to start at index 0 regardless and leave the correction to the end of the
+// intro phase. That put a fainted Pokemon on the field for the whole 900 ms intro, announced it,
+// and then swapped it out the moment the fighting started — which reads as the game sending out a
+// KO'd Pokemon. Starting here instead means the battle opens on the one you were controlling.
+const firstStanding = (team) => {
+  const i = team.findIndex(m => m && m.hp > 0);
+  return i < 0 ? 0 : i;               // a wiped team still needs a valid index to render from
+};
+
 export function createBattle({ party, enemies, kind = 'grunt', title = 'Team Rocket Grunt',
                               attackBonus = 0, revives = 0 }) {
   const b = {
@@ -95,8 +111,8 @@ export function createBattle({ party, enemies, kind = 'grunt', title = 'Team Roc
     turn: 0,              // even: player attacks, odd: enemy attacks
     timer: INTRO_MS,
     log: [],
-    partyIndex: 0,
-    enemyIndex: 0,
+    partyIndex: firstStanding(party),
+    enemyIndex: firstStanding(enemies),
   };
 
   const firstAlive = (team, from = 0) => {
@@ -125,6 +141,11 @@ export function createBattle({ party, enemies, kind = 'grunt', title = 'Team Roc
       // deliberately enables it in this phase because it is "the one moment you most want to
       // choose who leads"). The new lead was shown on the field, the log said it was sent out,
       // and then the Pokemon you had swapped AWAY from took the first hit.
+      //
+      // It is also no longer what handles a FAINTED lead — firstStanding() does that at
+      // construction, so the fainted one is never put on the field in the first place. What is
+      // left here is the genuine edge case: a lead that stopped being able to fight DURING the
+      // intro (an item used on the bag screen cannot faint anyone, but this costs nothing).
       if (!alive(b.partyLead())) b.partyIndex = Math.max(0, firstAlive(b.party));
       if (!alive(b.enemyLead())) b.enemyIndex = Math.max(0, firstAlive(b.enemies));
       return events;
