@@ -5,7 +5,8 @@
 // grid is only ever consulted for "is this point inside a wall".
 //
 // Two user-selectable schemes (Settings): a hand-rolled bottom-left virtual joystick (no external
-// dependency), or tap-to-move, which A*s a coarse cell path and then steers along it smoothly.
+// dependency), or tap-to-move, which does two things with one finger — a TAP A*s a coarse cell path
+// and then steers along it smoothly, while a HOLD steers straight at the finger and follows it.
 // Keyboard WASD/arrows always work too, which is what makes desktop testing possible.
 import * as THREE from 'three';
 import { findPath, worldToCell, cellToWorld, canOccupy, cellValue, FLOOR } from './dungeon.js';
@@ -118,21 +119,93 @@ export function createInput({ canvas, joystickRoot, joystickKnob, camera }) {
     return null;
   }
 
+  // ---- Hold-to-follow (tap mode) ----
+  // A TAP picks a destination and walks there on its own; a HOLD steers. While the finger is down
+  // the Pokemon walks toward wherever it is and keeps following it as it moves, which is what the
+  // thumb wants for the small corrections a route is too blunt for — edging round a corner, lining
+  // up on an item, backing off a wild.
+  //
+  // The two never fight: the same press cannot be both, and the hold is what a press BECOMES once
+  // it has moved past DRAG_PX or been held past HOLD_MS — exactly the two thresholds the tap
+  // handler below already used to reject a press as "not a tap", so nothing that used to route
+  // has stopped routing.
+  const DRAG_PX = 18;              // matches the tap handler's own drag rejection
+  const HOLD_MS = 190;             // a deliberate press, not the tail of a quick tap
+  const follow = { down: false, id: null, x: 0, y: 0, since: 0, active: false, moved: false };
+
+  function followDown(clientX, clientY, id) {
+    if (!enabled || mode !== 'tap') return;
+    follow.down = true; follow.active = false; follow.moved = false;
+    follow.id = id;
+    follow.x = clientX; follow.y = clientY;
+    follow.since = performance.now();
+  }
+
+  function followMove(clientX, clientY) {
+    if (!follow.down) return;
+    if (Math.hypot(clientX - follow.x, clientY - follow.y) > DRAG_PX) follow.active = true;
+    follow.x = clientX; follow.y = clientY;
+    if (follow.active) follow.moved = true;
+  }
+
+  function followUp() {
+    follow.down = false;
+    follow.active = false;
+    follow.id = null;
+  }
+
+  // Un-project the finger onto the ground and steer straight at it. No pathfinding: this is a
+  // steering stick, and moveWithCollision already slides the player along a wall they lean into.
+  // Speed eases off over the last stride so the Pokemon settles under the finger instead of
+  // jittering across it.
+  const SETTLE = 0.75;
+  function followDir(floor, player) {
+    const r = canvas.getBoundingClientRect();
+    const ndc = new THREE.Vector2(
+      ((follow.x - r.left) / r.width) * 2 - 1,
+      -((follow.y - r.top) / r.height) * 2 + 1,
+    );
+    raycaster.setFromCamera(ndc, camera);
+    if (!raycaster.ray.intersectPlane(GROUND_PLANE, hit)) return null;
+    const dx = hit.x - player.x, dz = hit.z - player.z;
+    const dist = Math.hypot(dx, dz);
+    if (dist < 0.12) return { x: 0, z: 0, magnitude: 0 };
+    const mag = Math.min(1, dist / SETTLE);
+    return { x: dx / dist, z: dz / dist, magnitude: mag };
+  }
+
   let tapStart = null;
   canvas.addEventListener('touchstart', (e) => {
     const t = e.touches[0];
     tapStart = { x: t.clientX, y: t.clientY, time: performance.now() };
+    followDown(t.clientX, t.clientY, t.identifier);
+  }, { passive: true });
+  canvas.addEventListener('touchmove', (e) => {
+    const t = Array.from(e.touches).find(tt => tt.identifier === follow.id) || e.touches[0];
+    if (t) followMove(t.clientX, t.clientY);
   }, { passive: true });
   canvas.addEventListener('touchend', (e) => {
     const s = tapStart; tapStart = null;
-    if (!s) return;
+    const wasSteering = follow.active;
+    followUp();
+    if (!s || wasSteering) return;           // a steer has already done the moving
     const t = e.changedTouches[0];
     // Only a genuine tap moves you — a drag is a stray thumb, not a destination.
-    if (Math.hypot(t.clientX - s.x, t.clientY - s.y) > 18) return;
+    if (Math.hypot(t.clientX - s.x, t.clientY - s.y) > DRAG_PX) return;
     if (performance.now() - s.time > 400) return;
     onCanvasTap(t.clientX, t.clientY, currentFloor);
   }, { passive: true });
-  canvas.addEventListener('click', (e) => onCanvasTap(e.clientX, e.clientY, currentFloor));
+  canvas.addEventListener('touchcancel', followUp, { passive: true });
+
+  canvas.addEventListener('mousedown', (e) => followDown(e.clientX, e.clientY, 'mouse'));
+  window.addEventListener('mousemove', (e) => { if (follow.id === 'mouse') followMove(e.clientX, e.clientY); });
+  window.addEventListener('mouseup', () => { if (follow.id === 'mouse') followUp(); });
+  canvas.addEventListener('click', (e) => {
+    // A click at the end of a drag-steer is not a destination. `moved` survives followUp() for
+    // exactly this check, since mouseup lands before click.
+    if (follow.moved) { follow.moved = false; return; }
+    onCanvasTap(e.clientX, e.clientY, currentFloor);
+  });
 
   // ---- Keyboard ----
   window.addEventListener('keydown', (e) => {
@@ -170,11 +243,14 @@ export function createInput({ canvas, joystickRoot, joystickKnob, camera }) {
       mode = next === 'tap' ? 'tap' : 'joystick';
       path = null;
       stick.active = false; stick.x = stick.y = 0; setKnob(0, 0);
+      followUp();
       joystickRoot.classList.toggle('hidden', mode !== 'joystick');
     },
     setEnabled(v) {
       enabled = v;
-      if (!v) { path = null; stick.active = false; stick.x = stick.y = 0; setKnob(0, 0); }
+      // A held steer has to be dropped along with everything else, or opening the pause screen
+      // mid-hold leaves the player walking the moment it closes.
+      if (!v) { path = null; stick.active = false; stick.x = stick.y = 0; setKnob(0, 0); followUp(); }
     },
     onTapMarker(fn) { onTapMarker = fn; },
     // Called when a floor is built, so the very first tap on a new floor routes correctly instead
@@ -206,6 +282,21 @@ export function createInput({ canvas, joystickRoot, joystickKnob, camera }) {
       if (keyed) path = null;
 
       if (!keyed && mode === 'joystick') { ix = stick.x; iy = stick.y; }
+
+      // A held finger steers, and it outranks any route already running — the player is asking for
+      // this one directly. The HOLD_MS half of the promotion has to happen here rather than in an
+      // event: a press that never moves produces no further events to notice it in.
+      if (!keyed && mode === 'tap' && follow.down) {
+        if (!follow.active && performance.now() - follow.since > HOLD_MS) {
+          follow.active = true;
+          follow.moved = true;               // so the mouse `click` on release is not read as a tap
+        }
+        if (follow.active) {
+          path = null; goalCell = null;
+          const steer = followDir(floor, player);
+          if (steer) return steer;
+        }
+      }
 
       if (ix !== 0 || iy !== 0) {
         const mag = Math.min(1, Math.hypot(ix, iy));

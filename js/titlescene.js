@@ -28,10 +28,11 @@
 // camera into it). The coupling runs one way only: this module reads the UI's boxes and never
 // moves, resizes or restyles anything in the DOM.
 //
-// THE LOOP. One 8.4s cycle: the starters turn to look into the cave one at a time, each one's turn
-// scaring the villain behind it back out of sight, and each villain leaning out again once that
-// starter is facing front. It is driven by an explicit dt from tick(), so it advances at the same
-// rate however the frame rate moves, and it holds no timers of its own.
+// THE LOOP. The starters take turns looking into the cave — Piplup, then Turtwig, then Chimchar —
+// and whichever one turns sends ALL THREE villains out of sight until it is facing front again.
+// The wait between turns is redrawn at random between 8 and 14 seconds each time, so the screen
+// never settles into a countable rhythm. It is driven by an explicit dt from tick(), so it
+// advances at the same rate however the frame rate moves, and it holds no timers of its own.
 import * as THREE from 'three';
 import { canvas } from './three-setup.js';
 import { createMonObject } from './models.js';
@@ -142,18 +143,17 @@ const xAt = (ndcX, z) => atNDC(ndcX, 0, z, _tmp).x;
 // widest `inner` below it by enough to leave the slab some real thickness at a portrait aspect.
 const OUTER_NDC = 2.20;
 
-// The three corners the villains peek around. The ORDER matters twice over: it is the order the
-// cast is spawned in, and it is what pairs each villain with the starter whose turn scares it —
-// index for index against STARTERS and T0. So it runs left, centre, right, the same as the trio,
-// and the one that ducks is always the one standing behind the starter that just turned round.
+// The three corners the villains peek around, left to right, index for index against VILLAINS.
+// (They all duck together, whichever starter turns, so the order is placement and spawn order —
+// it no longer pairs anyone with anyone.)
 //
 // `inner` and `z0` interpolate between the portrait arrangement and the wide one: on a phone the
 // corners crowd in toward the centre and sit deeper (there is no room beside the trio, but there
 // is room above them), and on a desktop screen they spread out to the sides.
 const CORNERS = [
-  // Meowth, behind Piplup: the near corner on the left.
+  // Meowth: the near corner on the left.
   { side: -1, inner: [-0.80, -0.46], z0: [-3.30, -2.40], depth: 1.45, h: 1.85, hideOut: 1.00 },
-  // Weezing, behind Turtwig: a pillar standing free in the deep middle of the cave, peeked around
+  // Weezing: a pillar standing free in the deep middle of the cave, peeked around
   // on its LEFT (hence side +1: the rock extends right, the villain leans out left). It has to be
   // a pillar rather than a third wall corner, and it has to be near the middle: the two wall
   // corners cut across the whole left and right of the frame from their depth back, so ANY deep
@@ -162,7 +162,7 @@ const CORNERS = [
   // there instead of behind them, and on a phone that vertical gap is the only one left.
   { side: 1, inner: [-0.22, 0.02], z0: [-6.20, -5.60], depth: 1.60, h: 2.60, hideOut: 1.40,
     width: 2.20, float: true, peekIn: 0.25 },
-  // Arbok, behind Chimchar: the middle corner on the right, reared up out of a taller spur.
+  // Arbok: the middle corner on the right, reared up out of a taller spur.
   { side: 1, inner: [0.82, 0.50], z0: [-3.90, -3.00], depth: 1.55, h: 2.25, hideOut: 1.25 },
 ];
 
@@ -473,9 +473,9 @@ const STARTERS = [
   { dex: DEX.CHIMCHAR, x: [0.53, 0.70], dz: [-0.06, -0.02], rest: -0.12, dir: -1, phase: 3.4 },
 ];
 
-// One villain per corner, in CORNERS order — left, centre, right, matching the starter each one
-// is caught watching. `lean` is the roll it leans around the corner with, and `yaw` is where it is
-// looking in each pose: back into the rock when it ducks, out at the trio when it peeks. Weezing
+// One villain per corner, in CORNERS order — left, centre, right. `lean` is the roll it leans
+// around the corner with, and `yaw` is where it is looking in each pose: back into the rock when it
+// ducks, out at the trio when it peeks. Weezing
 // floats, so its hide pose also SINKS (see rebuild), which reads better at that distance than a
 // sideways slide and is how a levitating Pokemon would actually duck.
 const VILLAINS = [
@@ -506,41 +506,52 @@ function spawnCast() {
 }
 
 // ---- Choreography -----------------------------------------------------------------------------
-// One cycle. Each starter's turn is a 0.5s pivot, a 1.0s look into the dark, and a 0.5s pivot
-// back; the villain behind it ducks 0.15s INTO that pivot, so it is gone before the starter has
-// come round — which is the joke — and leans back out 0.08s after that starter is square to the
-// camera again. The three are staggered 2.1s apart, just over the 2.0s a full turn takes, so they
-// go one at a time and the cycle closes with all six back in their opening pose.
-const CYCLE = 8.4;
+// ONE starter turns at a time, and its turn alarms ALL THREE villains.
+//
+// A turn is a 0.5 s pivot, a 1.0 s look into the dark, and a 0.5 s pivot back. Every villain ducks
+// 0.15 s INTO that pivot — gone before the starter has come round, which is the joke — and leans
+// back out 0.08 s after it is square to the camera again. They are not in lockstep: each one is
+// offset by `DUCK_STAGGER`, so the ducking and the re-emerging both ripple across the cave instead
+// of snapping.
+//
+// The turns are NOT on a fixed cycle. Whose turn it is rotates Piplup -> Turtwig -> Chimchar, and
+// the wait between one turn and the next is drawn fresh from GAP_MIN..GAP_MAX every time, so the
+// screen never falls into a visible rhythm and a full round takes anywhere from 24 to 42 seconds.
+// `clock` therefore runs forward and is never wrapped — there is no cycle length to wrap it to.
 const TURN = 0.50;
 const LOOK = 1.00;
 const BACK_AT = TURN + LOOK;             // when the pivot back starts
 const DONE_AT = BACK_AT + TURN;          // when it is square to the camera again
 const HIDE_LEAD = 0.15, HIDE_DUR = 0.30;
 const SHOW_LAG = 0.08, SHOW_DUR = 0.44;
-const T0 = [0.9, 3.0, 5.1];
+const DUCK_STAGGER = 0.07;               // per villain, so the three do not move as one
+const GAP_MIN = 8, GAP_MAX = 14;         // seconds between one starter's turn and the next
+const FIRST_GAP = 3.2;                   // the opening pose gets held this long before anyone turns
+
+const nextGap = () => GAP_MIN + Math.random() * (GAP_MAX - GAP_MIN);
 
 const smooth = (u) => u * u * (3 - 2 * u);
 // Coming back out overshoots a little and settles — the difference between a Pokemon leaning
 // around a corner and a Pokemon being slid into place.
 const outBack = (u) => 1 + 2.2 * Math.pow(u - 1, 3) + 1.2 * Math.pow(u - 1, 2);
 
-function turnPhase(i, t) {
-  const l = t - T0[i];
-  if (l <= 0 || l >= DONE_AT) return 0;                              // square to the camera
-  if (l < TURN) return smooth(l / TURN);
-  if (l < BACK_AT) return 1;                                         // looking into the cave
-  return 1 - smooth((l - BACK_AT) / TURN);
+// How far round the starter that is mid-turn has got, 0 (facing the camera) to 1 (facing the cave).
+function turnPhase(local) {
+  if (local <= 0 || local >= DONE_AT) return 0;
+  if (local < TURN) return smooth(local / TURN);
+  if (local < BACK_AT) return 1;                                     // looking into the cave
+  return 1 - smooth((local - BACK_AT) / TURN);
 }
 
-function peekPhase(i, t) {
-  const l = t - T0[i];
-  const s0 = DONE_AT + SHOW_LAG;
-  if (l <= HIDE_LEAD) return 1;
-  if (l < HIDE_LEAD + HIDE_DUR) return 1 - smooth((l - HIDE_LEAD) / HIDE_DUR);
-  if (l <= s0) return 0;
-  if (l < s0 + SHOW_DUR) return outBack((l - s0) / SHOW_DUR);
-  return 1;
+// How hidden the villains should be, 0 (leaning out) to 1 (tucked away), for a turn that started
+// `local` seconds ago. One curve, shared by all three — whichever starter turned.
+function alarmPhase(local) {
+  const out = DONE_AT + SHOW_LAG;
+  if (local <= HIDE_LEAD) return 0;
+  if (local < HIDE_LEAD + HIDE_DUR) return smooth((local - HIDE_LEAD) / HIDE_DUR);
+  if (local <= out) return 1;
+  if (local < out + SHOW_DUR) return 1 - outBack((local - out) / SHOW_DUR);
+  return 0;
 }
 
 // ---- Framing ----------------------------------------------------------------------------------
@@ -612,16 +623,33 @@ function layout() {
 
 // ---- Frame ------------------------------------------------------------------------------------
 let built = false;
-let t = 0;
+let t = 0;                 // the idle clock: bobs, flicker, motes
+let turner = -1;           // which starter is mid-turn, -1 for none
+let turnStart = 0;         // when that turn began, on the `t` clock
+let nextTurn = FIRST_GAP;  // when the next one begins
+let turnQueue = 0;         // whose turn it is next: 0 Piplup, 1 Turtwig, 2 Chimchar
 
 export function updateTitle(dt) {
   if (!built) { buildStatic(); spawnCast(); built = true; }
-  t = (t + dt) % CYCLE;
+  t += dt;
   layout();
+
+  // Start the next turn when its time comes round, and retire the one that has finished.
+  if (t >= nextTurn) {
+    turner = turnQueue;
+    turnStart = t;
+    turnQueue = (turnQueue + 1) % cast.starters.length;
+    nextTurn = t + nextGap();
+  }
+  const local = turner >= 0 ? t - turnStart : -1;
+  // Retire only once the LAST-staggered villain has finished leaning back out, or its final few
+  // percent would snap when the turn is dropped.
+  const alarmEnds = DONE_AT + SHOW_LAG + SHOW_DUR + (cast.villains.length - 1) * DUCK_STAGGER;
+  if (turner >= 0 && local > alarmEnds) turner = -1;
 
   cast.starters.forEach((s, i) => {
     if (!s.obj.visible && s.obj.userData.ready) s.obj.visible = true;
-    const p = turnPhase(i, t);
+    const p = i === turner ? turnPhase(local) : 0;
     const st = pose.stand[i];
     s.obj.rotation.y = s.rest + s.dir * Math.PI * p;
     // A small hop out of the pivot, and an idle breath the rest of the time.
@@ -632,7 +660,10 @@ export function updateTitle(dt) {
 
   cast.villains.forEach((v, i) => {
     if (!v.obj.visible && v.obj.userData.ready) v.obj.visible = true;
-    const p = peekPhase(i, t);
+    // Every villain answers the SAME alarm, whichever starter turned — one of them looking round
+    // is enough to send all three out of sight. The stagger is what keeps it from reading as a
+    // single object in three pieces.
+    const p = turner < 0 ? 1 : 1 - alarmPhase(local - i * DUCK_STAGGER);
     const a = pose.hide[i], b = pose.peek[i];
     v.obj.position.set(
       lerp(a.x, b.x, p),

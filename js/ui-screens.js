@@ -888,6 +888,23 @@ export function resetCatchGrade() {
   el.innerHTML = '';
 }
 
+// The catch screen's one line of result text — see the #catch-note CSS for why this screen has
+// exactly one. Shown while the encounter is closing itself, so it needs no timer: whatever put it
+// up is on its way out, and clearCatchNote() runs when the next encounter opens.
+export function catchNote(text) {
+  const el = $('catch-note');
+  if (!el) return;
+  el.textContent = text;
+  el.classList.add('show');
+}
+
+export function clearCatchNote() {
+  const el = $('catch-note');
+  if (!el) return;
+  el.classList.remove('show');
+  el.textContent = '';
+}
+
 // ---- Swap or release --------------------------------------------------------------------------
 let swapSelected = null;
 

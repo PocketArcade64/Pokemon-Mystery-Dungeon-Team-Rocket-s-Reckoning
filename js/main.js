@@ -20,7 +20,7 @@ import * as inv from './inventory.js';
 import * as ui from './ui-screens.js';
 import { uiHooks } from './ui-screens.js';
 import { unlockAudio, playMusic, playMusicExclusive, releaseMusicLock, musicForMode, prefetchMusic,
-         releaseMusic, sfx, applyVolumes } from './audio.js';
+         releaseMusic, restartMusic, sfx, applyVolumes } from './audio.js';
 
 const PLAYER_SPEED = 4.7;
 const player = { x: 0, z: 0 };
@@ -230,6 +230,12 @@ function enterFloor(index) {
   if (index + 1 > state.stats.bestFloor) state.stats.bestFloor = index + 1;
   saveStats();
 
+  // Arriving on a floor plays its theme from the TOP. Floor themes are `resume: true` so that
+  // stepping out of a battle or the shop drops you back in where you left off, but this is not a
+  // return — it is a new floor (or, through beginRun, a new run), and the saved position has to go
+  // before setMode() below asks for the track. Done here rather than after, so only one source
+  // ever starts.
+  restartMusic(theme.id);
   setMode('playing');
   // Only now that the new theme is the one playing: a run walks through up to eleven of these and
   // each decoded theme is tens of megabytes, so the floor we just left gives its buffer back.
@@ -465,6 +471,7 @@ function beginCatch(wild) {
   // renderCatchUI, which also runs mid-encounter (every throw, every ball swap) and would cut a
   // live grade short. See resetCatchGrade for why a finished animation still needs clearing.
   ui.resetCatchGrade();
+  ui.clearCatchNote();
   startCatch({
     dex: wild.dex,
     ballId,
@@ -500,15 +507,21 @@ function beginCatch(wild) {
     // because a wild left standing has no collision with the player and walks through them.
     onEmpty: () => {
       const w = catchCtx?.wild;
-      // A beat so the last ball is seen to fall before the screen changes.
+      const name = CATALOG_BY_DEX.get(w?.dex)?.name || 'It';
+      // Say WHY the screen is about to close, on the screen it is closing — the empty bag is the
+      // one outcome here with nothing to see in the 3D scene, so without this line the close
+      // reads as the game giving up on its own. Then the beat that follows lets the last ball
+      // finish falling, and the exploration view gets the other half of the sentence.
+      ui.catchNote('You are out of Pokeballs');
       setTimeout(() => {
         if (state.mode !== 'catch') return;      // already resolved some other way
         endCatch();
+        ui.clearCatchNote();
         removeWild(w);
         catchCtx = null;
         setMode('playing');
-        ui.toast(`Out of Poke Balls - ${CATALOG_BY_DEX.get(w?.dex)?.name || 'it'} got away!`);
-      }, 1200);
+        ui.toast(`${name} fled!`);
+      }, 1600);
     },
     onGrade: (label) => {
       // The grade lands the instant the ball touches, well before the wobbles resolve — that

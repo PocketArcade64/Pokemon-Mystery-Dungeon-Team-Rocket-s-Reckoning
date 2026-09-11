@@ -1304,6 +1304,27 @@
        edges of a phone. Each award is its own <span>, stacked. */
     width: 100%; padding: 0 8px;
   }
+  /* The ONE result line this screen carries, and the exception to the rule above it: the bag
+     running dry is the only outcome here that is not visible in the 3D scene. Nothing is thrown,
+     nothing breaks out, nothing moves — the screen simply has no move left in it, and without a
+     line saying so the close that follows reads as the game deciding something at random. It sits
+     below the Pokemon rather than over it, and below the grade's band, so a last throw's award and
+     this can both be on screen without colliding. */
+  #catch-note {
+    position: absolute; top: 62%; left: 50%;
+    transform: translate(-50%, -50%);
+    max-width: min(80vw, 340px);
+    background: rgba(11,16,32,0.9);
+    border: 1px solid var(--edge-lt);
+    border-radius: 12px;
+    padding: 0.6rem 1.1rem;
+    color: var(--gold); font-size: 1.105rem; font-weight: 700; text-align: center;
+    box-shadow: 0 4px 0 rgba(0,0,0,0.35);
+    pointer-events: none;
+    opacity: 0; transition: opacity 0.16s ease;
+  }
+  #catch-note.show { opacity: 1; }
+
   #catch-grade span { display: block; line-height: 1.5; }
   #catch-grade span + span { color: var(--gold-lt); font-size: 0.82em; }
   #catch-grade.pop { animation: gradePop 0.9s ease-out forwards; }
@@ -1534,7 +1555,7 @@
       <div class="btn-row">
         <button class="btn secondary small" id="btn-pause-bag">Bag</button>
         <button class="btn secondary small" id="btn-pause-glossary">Items</button>
-        <button class="btn secondary small" id="btn-pause-settings">Config</button>
+        <button class="btn secondary small" id="btn-pause-settings">Settings</button>
       </div>
       <!-- Resume is LAST, under the thumb: it is the button pressed nine times out of ten and the
            bottom of the screen is where a thumb rests. Abandon Run has swapped places with it and
@@ -1692,6 +1713,7 @@
       <div id="catch-sub"></div>
     </div>
     <div id="catch-grade"></div>
+    <div id="catch-note"></div>
     <div id="catch-ballmenu" class="hidden"></div>
     <button id="btn-catch-ball" class="go-round" aria-label="Change Poke Ball">
       <span id="catch-ball-icon"></span>

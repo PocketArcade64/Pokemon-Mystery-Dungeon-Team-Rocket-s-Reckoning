@@ -235,6 +235,21 @@ export function stopMusic() {
   currentKey = null;
 }
 
+// Forget where `key` had got to, so the next playMusic() of it starts at the top of the track.
+//
+// This is what ARRIVING somewhere does, as opposed to coming back to it. A floor theme is
+// `resume: true` precisely so that stepping out of a battle, the shop or the pause screen drops
+// you back in mid-phrase where you left off — but walking onto a NEW floor, or starting a new run,
+// is not coming back to anything, and picking a fresh theme up halfway through its second loop
+// made every floor after the first sound like it had already been playing without you. Cheap
+// enough to call unconditionally: on a track with no saved position it does nothing, and on the
+// track already sounding it restarts it in place.
+export function restartMusic(key) {
+  if (!key) return;
+  resumeAt.delete(key);
+  if (key === currentKey) playMusic(key, true);
+}
+
 // Decode ahead of time so a track that is triggered by gameplay rather than by a screen change
 // starts on the beat it is asked for instead of a second later.
 export function prefetchMusic(...keys) {
