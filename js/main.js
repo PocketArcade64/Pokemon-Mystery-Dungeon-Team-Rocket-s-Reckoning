@@ -617,7 +617,9 @@ function onCatchFlee() {
   endCatch();
   if (wild && !wild.gone) {
     removeWild(wild);
-    ui.toast(`${CATALOG_BY_DEX.get(wild.dex)?.name || 'It'} slipped away.`);
+    // Phrased from the player's side rather than the Pokemon's. "X slipped away" read as the
+    // encounter ending on its own; running is a choice YOU made, so the toast says so.
+    ui.toast(`You fled from ${CATALOG_BY_DEX.get(wild.dex)?.name || 'it'}.`);
   }
   catchCtx = null;
   setMode('playing');

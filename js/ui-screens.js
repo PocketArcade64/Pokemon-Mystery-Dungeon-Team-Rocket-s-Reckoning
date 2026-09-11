@@ -98,10 +98,15 @@ export function showScreen(mode) {
 }
 
 // ---- Type badges -------------------------------------------------------------------------------
+// The <img> tags on their own, for a caller that supplies its own container. The battle info boxes
+// float theirs onto the Pokemon's name line and want a tighter gap than .type-badges gives, so they
+// take these and skip the wrapper.
+function typeIcons(types) {
+  return types.map(t => `<img src="${encodeURI(typeIconPath(t))}" alt="${t}" title="${t}" />`).join('');
+}
+
 function typeBadges(types) {
-  return `<div class="type-badges">${types
-    .map(t => `<img src="${encodeURI(typeIconPath(t))}" alt="${t}" title="${t}" />`)
-    .join('')}</div>`;
+  return `<div class="type-badges">${typeIcons(types)}</div>`;
 }
 
 // ---- Toast / banner ----------------------------------------------------------------------------
@@ -442,15 +447,32 @@ function renderTeamStrip(container, { selected = null, onPick = null, includeEmp
   });
 }
 
+// How many pockets the satchel shows. FIXED rather than grown to fit what you are carrying, so the
+// grid is the same shape every time the bag is opened and an item stays in the pocket you last saw
+// it in. 15 is three rows of five, which holds every one of items.js's 13 distinct items with a
+// little room to spare and keeps the pouch wider than it is tall — at four rows the satchel came
+// out taller than it was wide, and a bag that shape reads as a crate. Derived from ITEMS rather
+// than hard-coded so that adding a fourteenth or sixteenth item grows the bag by a whole ROW
+// instead of silently hiding the overflow.
+const BAG_SLOTS = Math.max(15, Math.ceil(ITEMS.length / 5) * 5);
+
 function renderBagItems() {
   const entries = inv.bagEntries();
   const grid = $('bag-items');
   $('bag-empty').style.display = entries.length ? 'none' : 'block';
-  grid.innerHTML = entries.map(({ item, count }) => `
-    <div class="item-cell ${bagSelectedItem === item.id ? 'selected' : ''}" data-id="${item.id}" title="${item.name}">
-      ${item.icon}<span class="qty">${count}</span>
-    </div>`).join('');
-  grid.querySelectorAll('.item-cell').forEach(el => {
+  const cells = [];
+  for (let i = 0; i < BAG_SLOTS; i++) {
+    const e = entries[i];
+    // An empty pocket carries NO data-id, which is what makes it unpressable — the click binding
+    // below and the cursor rule in the stylesheet both select on that attribute.
+    if (!e) { cells.push('<div class="item-cell empty"></div>'); continue; }
+    cells.push(`
+    <div class="item-cell ${bagSelectedItem === e.item.id ? 'selected' : ''}" data-id="${e.item.id}" title="${e.item.name}">
+      ${e.item.icon}<span class="qty">${e.count}</span>
+    </div>`);
+  }
+  grid.innerHTML = cells.join('');
+  grid.querySelectorAll('.item-cell[data-id]').forEach(el => {
     el.addEventListener('click', () => {
       sfx('select');
       bagSelectedItem = el.dataset.id;
@@ -749,11 +771,10 @@ export function updateBattleRows(battle) {
 function fillMonBox(side, mon, { showNumbers }) {
   if (!mon) return;
   $(`${side}-name`).textContent = mon.name;
-  // Stands where a level does in the games. "Stage1" -> "STAGE 1"; Basic and Legendary have no
-  // number, and Legendary is shortened because the full word does not fit beside a long name.
-  $(`${side}-stage`).textContent = mon.stage === 'Legendary'
-    ? 'LGND'
-    : mon.stage.replace(/(\d)$/, ' $1').toUpperCase();
+  // Rides on the name's line, where a level sits in the games. This used to be the evolution stage
+  // spelled out ("BASIC", "STAGE 1", "LGND"), which names a number the player cannot act on; the
+  // TYPES are what decide whether the next hit lands super effective, so the icons go here instead.
+  $(`${side}-types`).innerHTML = typeIcons(mon.types);
   setHpBar($(`${side}-hpbar`), mon.hp, mon.maxHp);
   // Exact HP is shown for your own Pokemon only, exactly as the games do it.
   if (showNumbers) $('you-hpnum').textContent = `${mon.hp} / ${mon.maxHp}`;
@@ -1196,8 +1217,11 @@ function disarmQuit() {
 
 export function renderPause() {
   const run = state.run;
+  // Floor and theme only. The party count used to ride on the end of this line ("- 4/6 standing"),
+  // but the roster is a tap away on the Bag button right below and the count made the line long
+  // enough to need its own narrow-screen layout (see #screen-pause .screen-sub).
   $('pause-sub').textContent = run
-    ? `B${run.floorIndex + 1}F - ${run.floor.theme.name} - ${inv.partyAlive().length}/${inv.party().length} standing`
+    ? `B${run.floorIndex + 1}F - ${run.floor.theme.name}`
     : '';
   // Always opens disarmed. Leaving it armed across a close and reopen would mean one stray press
   // on a freshly opened pause screen could end the run, which is the whole thing this prevents.

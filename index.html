@@ -815,7 +815,7 @@
   .team-slot .hpbar { height: 5px; }
 
   /* ---- Pause screen ---------------------------------------------------------------------------
-     Abandon Run lives in the top-right CORNER, absolutely placed against #screen-pause's own box,
+     Abandon Run lives in the top-LEFT CORNER, absolutely placed against #screen-pause's own box,
      and its label is stacked on TWO lines ("Abandon" / "Run"). Two lines is what lets "Paused" sit
      at the very top of the screen: on one line the button was 148px wide, and the only way to keep
      the centred title off it was to push the title down past it (this section used to carry
@@ -832,7 +832,7 @@
   #screen-pause { --quit-w: 92px; --quit-h: 63px; }
   #btn-quit {
     position: absolute;
-    top: calc(var(--sat) + 10px); right: calc(var(--sar) + 12px);
+    top: calc(var(--sat) + 10px); left: calc(var(--sal) + 12px);
     /* .btn carries `width: 100%`, and an absolutely-positioned element resolves that against its
        containing block — so without this the "corner" button stretched the full width of the
        screen. `width: auto` lets it size to its label instead. */
@@ -854,30 +854,25 @@
   }
   /* The title needs nothing: "Paused" is one short word, so at full width and centred on the SCREEN
      it clears the button on its own.
-     The floor summary is the awkward one, and it gets TWO layouts.
 
-     The default, below, pushes it clear of the button's bottom edge. That is the only thing that
-     works when the screen is too narrow to fit it beside the button: the worst case,
-     "B5F - Rocket Warehouse - 6/6 standing" (longest theme name, full party), measures 232px, and
-     reserving the button's 100px column leaves only 192px at 320px — which wraps it onto THREE
-     lines and pushes the map down further than the gap ever did.
+     The floor summary reserves the button's column so it sits on its own natural line directly
+     under the title, clearing the button by 18px. The reserve is on the LEFT, matching the corner
+     the button moved to, and since .screen-sub is centred text that ALSO pushes the summary right
+     by half the reserve — which is what keeps "B3F - Scorched Desert" from reading as if it were
+     hanging off the button.
 
-     From 360px up (`vw - 28px of screen padding - 100px reserve >= 232px`), it reserves the column
-     instead and sits on its own natural line directly under the title, clearing the button by 18px.
-     That is the layout every real phone gets, and it is what reclaims the 33px of dead space this
-     rule used to put between the title and the summary — the map panel (`flex: 1 1 auto`) takes it.
-     Re-measure this breakpoint if the summary's wording or 1.105rem font size ever changes. */
+     This used to need a second, narrow-screen layout that pushed the summary clear of the button's
+     bottom edge instead, because the worst case then — "B5F - Rocket Warehouse - 6/6 standing"
+     (longest theme name plus the party count) — measured 232px and wrapped onto three lines once
+     the button's 100px column was reserved at 320px. Dropping the party count took the worst case
+     to "B5F - Rocket Warehouse" at ~138px, which clears the 192px left at 320px, the narrowest
+     phone — so one layout now covers every screen. Re-measure if the wording grows back or the
+     1.105rem font size changes. */
   #screen-pause .screen-sub {
-    margin-top: calc(var(--sat) + var(--quit-h) - 42px);
+    padding-left: calc(var(--quit-w) + 20px);
     /* A touch more air under the summary than .screen-sub's default 12px: it separates the header
        block from the map, which is a real boundary. */
     margin-bottom: 16px;
-  }
-  @media (min-width: 360px) {
-    #screen-pause .screen-sub {
-      margin-top: -4px;                                   /* .screen-sub's own default */
-      padding-right: calc(var(--quit-w) + 8px);
-    }
   }
   /* Armed: one press in, one press from ending the run. Gold-edged and brighter, so the state is
      not carried by the label alone. */
@@ -992,33 +987,176 @@
   /* Priced out rather than sold out: the number is the reason the row is dead, so it says so. */
   .shop-row .shop-price.short { color: var(--danger); }
 
-  /* Items: a scrollable grid exactly 5 columns wide (design brief §5). */
-  /* The right/bottom padding is for the qty badges, which overhang their cell on purpose. An
-     absolutely-positioned child DOES count toward scrollable overflow, and without the padding
-     that overhang put a horizontal scrollbar across the bottom of the bag. */
-  .item-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 9px; padding: 4px 8px 8px 4px; }
+  /* ---- The bag, drawn as a pixel-art satchel --------------------------------------------------
+     The one deliberate exception to the rounded-gradient control language at the top of this file,
+     and it is not a control: the satchel is an OBJECT in the menu, the same register as the item
+     sprites inside it, which are chunky pixel art already (see the note over spriteIcon in
+     js/data/items.js). So it gets hard square corners, flat colour BANDS instead of smooth
+     gradients, and 0-blur shadows. There are still no scanlines and no dither in it anywhere —
+     "pixel art" here means chunky and hard-edged, not CRT.
+
+     The leather palette is five flat tones plus a thread colour, scoped to #screen-bag because
+     nothing else in the game is leather. Every edge in the satchel picks from these, and that is
+     what keeps a dozen separate gradients reading as one object rather than as a pile of parts. */
+  #screen-bag {
+    --lea-out:  #21140a;   /* the hard outline every leather edge gets */
+    --lea-sh:   #4a2c14;   /* leather in shadow: the bottom lip, the right-hand gusset */
+    --lea:      #7c4a21;   /* the body tone */
+    --lea-lit:  #9b6130;   /* leather catching light: the flap's face, the left gusset */
+    --lea-hi:   #bd8347;   /* the 3px highlight along a top edge, and the rivets */
+    --lea-slot: #2b1a0b;   /* inside a pocket, where no light reaches */
+    --lea-thr:  #d9a86a;   /* stitching thread */
+  }
+
+  .satchel {
+    position: relative;
+    /* The top margin is 30px rather than a matching 4px because the carry strap below hangs 24px
+       ABOVE the satchel's own box, and nothing clips it — that space is the strap's. */
+    margin: 30px 1px 4px;
+    background: var(--lea);
+    border: 3px solid var(--lea-out);
+    /* Square corners and one hard 0-blur drop. Both are the point: a radius or a blur here would
+       pull the satchel back into the control language and stop it reading as pixel art. */
+    box-shadow: 0 5px 0 rgba(0,0,0,0.45);
+  }
+  /* The carry strap, a squared arch over the top of the flap — a bottomless 7px border, which is
+     three sides of a rectangle and reads as a strap looping up out of the bag. It is what makes the
+     satchel a BAG at a glance; without it a brown rectangle with a lid on it reads as a crate.
+     The outline is a pair of 2px box-shadows, one outside the border and one inside, so the strap
+     is fenced on both edges the way every other leather edge here is. The ring the outer shadow
+     draws across the arch's open bottom lands 3px inside the flap, which paints over it — a
+     pseudo-element is the first child, so the flap (later in tree order) wins. */
+  .satchel::before {
+    content: ''; position: absolute;
+    left: 50%; margin-left: -58px; top: -24px;
+    width: 116px; height: 30px;
+    border: 7px solid var(--lea-lit);
+    border-bottom: 0;
+    box-shadow: 0 0 0 2px var(--lea-out), inset 0 0 0 2px var(--lea-out);
+  }
+
+  /* The flap folded over the top of the pouch. Four flat bands rather than a gradient — a 3px lit
+     top edge, then the flap's face, then the fold turning down into shadow just above the seam.
+     It is 40px so the fold band has somewhere to be: at 34px the flap read as a flat plank laid
+     over the bag rather than as leather bending over its front. */
+  .satchel-flap {
+    position: relative;
+    height: 40px;
+    border-bottom: 3px solid var(--lea-out);
+    background: linear-gradient(180deg,
+      var(--lea-hi)  0 3px,
+      var(--lea-lit) 3px 25px,
+      var(--lea)     25px 32px,
+      var(--lea-sh)  32px 100%);
+  }
+  /* Stitching: 2px dashes inset from the flap's edge. A dashed border draws SQUARE dashes, which is
+     exactly the stitch shape wanted, and it is dimmed rather than full-strength thread so it sits
+     in the leather instead of on top of it. */
+  .satchel-flap::before {
+    content: ''; position: absolute; inset: 5px 7px 7px;
+    border: 2px dashed var(--lea-thr); opacity: 0.38;
+  }
+  /* Two 4px rivets, one inside each end of the flap, as background squares on ONE pseudo-element
+     rather than two more elements in the markup. A single-stop gradient is just a solid fill; the
+     position / size pair after it is what places that fill as a 4px square. */
+  .satchel-flap::after {
+    content: ''; position: absolute; inset: 0; pointer-events: none;
+    background:
+      linear-gradient(var(--lea-hi) 0 0) 10px 14px / 4px 4px no-repeat,
+      linear-gradient(var(--lea-hi) 0 0) right 10px top 14px / 4px 4px no-repeat;
+  }
+  /* The buckled strap: a vertical band down the middle of the flap with its own 3px highlight and
+     5px shadow edges, so it reads as a separate piece of leather lying ON the flap. It runs 3px
+     past the flap's top — over the satchel's own outline, the way a strap wraps a lid — and 6px
+     past the seam, where the clasp catches it. */
+  .satchel-strap {
+    position: absolute; left: 50%; margin-left: -12px; top: -3px; bottom: -6px;
+    width: 24px; z-index: 1;
+    background: linear-gradient(90deg,
+      var(--lea-out) 0 2px,
+      var(--lea-hi)  2px 5px,
+      var(--lea-lit) 5px 17px,
+      var(--lea-sh)  17px 22px,
+      var(--lea-out) 22px 24px);
+  }
+  /* The clasp, straddling the seam. Gold in the same flat-band treatment as the leather, with the
+     buckle's slot punched through the middle in the outline colour. */
+  .satchel-clasp {
+    position: absolute; left: 50%; margin-left: -17px; bottom: -10px;
+    width: 34px; height: 22px; z-index: 2;
+    border: 3px solid var(--lea-out);
+    background: linear-gradient(180deg,
+      var(--gold-lt)   0 4px,
+      var(--gold-mid)  4px 11px,
+      var(--gold-dark) 11px 100%);
+  }
+  .satchel-clasp::after {
+    content: ''; position: absolute; inset: 4px 9px; background: var(--lea-out);
+  }
+
+  /* The pouch. Its three inset bands are the gusset seams and the bottom lip: the left edge catches
+     the light, the right edge and the bottom fall away. That is what gives a flat rectangle depth
+     without a single blurred shadow. The 11px padding has to clear those 7px bands, or the
+     outermost slots would sit on top of them. */
+  .satchel-pouch {
+    position: relative;
+    /* 15px at the top rather than 11px: the flap's shadow below takes the first 4px. */
+    padding: 15px 11px 11px;
+    background: var(--lea);
+    box-shadow:
+      /* The flap's own shadow, thrown straight down onto the front of the pouch. Hard-edged, like
+         everything else here — this is the band that makes the flap sit IN FRONT of the pouch
+         rather than flush with it. */
+      inset 0 4px 0 rgba(0,0,0,0.32),
+      inset 0 -7px 0 var(--lea-sh),
+      inset 7px 0 0 var(--lea-lit),
+      inset -7px 0 0 var(--lea-sh);
+  }
+  /* Stitching again, running along the gusset seams the way real stitching would. */
+  .satchel-pouch::before {
+    content: ''; position: absolute; inset: 3px;
+    border: 2px dashed var(--lea-thr); opacity: 0.3; pointer-events: none;
+  }
+
+  /* Items: a grid exactly 5 columns wide (design brief §5), and a FIXED number of slots — every
+     pocket is drawn whether or not something is in it, so the bag reads as a bag with room left in
+     it rather than as a list that happens to be short. BAG_SLOTS in js/ui-screens.js is the count.
+     No padding here: the pouch's own padding is the margin now, and the qty badges no longer
+     overhang their cell, so there is nothing left to reserve room for. */
+  .item-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+  /* A slot is a pocket cut into the leather: the recess tone, a hard outline, a 2px shadow down the
+     inside of its top-left corner and a matching 2px lift on the bottom-right. */
   .item-cell {
     position: relative; aspect-ratio: 1;
-    background: rgba(255,255,255,0.07);
-    border: 2px solid transparent;
-    border-radius: 8px;
-    box-shadow: 0 4px 0 var(--silver-dark);
-    display: grid; place-items: center; padding: 5px; cursor: pointer;
+    background: var(--lea-slot);
+    border: 2px solid var(--lea-out);
+    box-shadow:
+      inset 2px 2px 0 rgba(0,0,0,0.55),
+      inset -2px -2px 0 rgba(255,255,255,0.08);
+    display: grid; place-items: center; padding: 4px;
   }
+  /* Only a filled slot is pressable — renderBagItems() puts data-id on those and nothing else. An
+     empty one needs no dimming or dashed outline; the recess already says there is nothing in it. */
+  .item-cell[data-id] { cursor: pointer; }
   .item-cell.selected {
     border-color: var(--gold);
-    background: rgba(255,213,79,0.22);
-    box-shadow: 0 4px 0 var(--gold-dark);
+    background: #4d3413;
+    box-shadow:
+      inset 0 0 0 2px var(--gold-dark),
+      inset 3px 3px 0 rgba(0,0,0,0.4);
   }
   .item-cell svg, .item-cell img { width: 100%; height: 100%; display: block; image-rendering: pixelated; }
+  /* The count sits INSIDE the slot's bottom-right corner. It used to overhang the cell by 6px,
+     which needed padding on the grid to stop that overhang scrolling the bag sideways; in a
+     satchel the overhang would land on the neighbouring pocket as well. Gold on the outline
+     colour, which stays legible over whatever sprite is behind it. */
   .item-cell .qty {
-    position: absolute; bottom: -6px; right: -6px;
-    min-width: 24px; height: 22px; padding: 0 4px;
-    background: var(--silver-dark); color: var(--ink);
-    font-weight: 700; font-size: 0.715rem;
+    position: absolute; bottom: 0; right: 0;
+    min-width: 16px; height: 14px; padding: 0 2px;
+    background: var(--lea-out); color: var(--gold);
+    font-weight: 700; font-size: 0.65rem;
     display: grid; place-items: center;
-    border-radius: 6px;
-    box-shadow: 0 2px 0 rgba(0,0,0,0.35);
+    box-shadow: -2px -2px 0 rgba(0,0,0,0.45);
   }
   .item-detail { margin-top: 12px; min-height: 82px; font-size: 1.04rem; }
   .item-detail .id-name {
@@ -1217,8 +1355,26 @@
     font-weight: 700; font-size: 1.014rem; line-height: 1.35;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
-  /* The stage tag rides on the name's line the way a level does in the games. */
-  .mon-box .mb-stage { float: right; font-size: 0.78rem; color: var(--gold); font-weight: 700; }
+  /* The type icons ride on the name's line the way a level does in the games, in the corner the
+     stage tag used to occupy. They are the Pokemon Types/ PNGs at their NATIVE 32x14, so they land
+     pixel-for-pixel with no resampling to soften them — do not scale them to make room, since the
+     icons carry words and the note under .team-slot .type-badges puts the floor at 11px before
+     "WATER" turns into a smudge. A dual type's two icons sit 1px apart: enough to read as two
+     badges rather than one wide one, and no wider, because every pixel the pair takes comes out of
+     the name beside it.
+
+     The arithmetic, measured: the box is min(52%, 248px), so at 375px it is 181px wide and 161px
+     inside its padding. A dual pair plus this margin is 71px of that, leaving 89px for the name —
+     and the widest name in the catalog ("Meowscarada") is 72px, so it clears. At 320px, the
+     narrowest phone, the same sum leaves 60px, and 14 of the 386 species have names wider than
+     that; those ellipsize (.mb-name already declares text-overflow for it) and only when the
+     species is DUAL-type, since a single icon leaves 93px and clears everything. That is the
+     accepted trade for keeping the icons unresampled.
+
+     The 4px top margin centres a 14px icon in the name's 22px line box; a float would otherwise pin
+     it to the top of the line and leave it riding above the text. */
+  .mon-box .mb-types { float: right; display: flex; gap: 1px; margin: 4px 0 0 6px; }
+  .mon-box .mb-types img { height: 14px; width: auto; display: block; image-rendering: pixelated; }
   .mon-box .mb-bar { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
   .mon-box .mb-bar .hp-label { flex: 0 0 auto; font-size: 0.715rem; font-weight: 700; color: var(--gold); }
   .mon-box .mb-bar .hpbar { flex: 1 1 auto; }
@@ -1691,9 +1847,9 @@
 
   <!-- ============ PAUSE / FLOOR MAP ============ -->
   <div class="screen overlay" id="screen-pause">
-    <!-- Top-right corner, diagonally opposite Resume, and it takes TWO presses: the first arms it
-         and swaps the label to "Confirm?", the second ends the run. renderPause() disarms it every
-         time the screen opens, and it disarms itself after a few seconds. -->
+    <!-- Top-left corner, far from Resume at the bottom, and it takes TWO presses: the first arms
+         it and swaps the label to "Confirm?", the second ends the run. renderPause() disarms it
+         every time the screen opens, and it disarms itself after a few seconds. -->
     <!-- The label is stacked on two lines. ui-screens.js rewrites it with innerHTML, not
          textContent, for the same reason — see disarmQuit. -->
     <button class="btn danger small" id="btn-quit">Abandon<br>Run</button>
@@ -1723,7 +1879,7 @@
       </div>
       <!-- Resume is LAST, under the thumb: it is the button pressed nine times out of ten and the
            bottom of the screen is where a thumb rests. Abandon Run has swapped places with it and
-           now sits in the top-right corner, as far from Resume as the screen allows. -->
+           now sits in the top-left corner, as far from Resume as the screen allows. -->
       <button class="btn" id="btn-resume">Resume</button>
     </div>
   </div>
@@ -1736,7 +1892,18 @@
          about one row high on a phone. -->
     <div class="scroll" style="min-height:0">
       <div class="team-strip" id="bag-team"></div>
-      <div class="item-grid" id="bag-items"></div>
+      <!-- The bag itself, drawn as a brown leather satchel: a buckled flap across the top, then the
+           open pouch with the item slots recessed into it. Every piece below is decoration and
+           carries no id — renderBagItems() only ever touches #bag-items. -->
+      <div class="satchel">
+        <div class="satchel-flap">
+          <div class="satchel-strap"></div>
+          <div class="satchel-clasp"></div>
+        </div>
+        <div class="satchel-pouch">
+          <div class="item-grid" id="bag-items"></div>
+        </div>
+      </div>
       <div class="empty-note" id="bag-empty" style="display:none">Your bag is empty. Items are scattered across every floor - the wrapped presents.</div>
     </div>
     <div class="item-detail panel" id="bag-detail">
@@ -1874,7 +2041,7 @@
   <div class="screen overlay" id="screen-battle">
     <div id="battle-field">
       <div class="mon-box foe" id="foe-box">
-        <div class="mb-name"><span class="mb-stage" id="foe-stage"></span><span id="foe-name">-</span></div>
+        <div class="mb-name"><span class="mb-types" id="foe-types"></span><span id="foe-name">-</span></div>
         <div class="mb-bar"><span class="hp-label">HP</span><div class="hpbar" id="foe-hpbar"><i style="width:100%"></i></div></div>
         <div class="mb-balls" id="foe-balls"></div>
       </div>
@@ -1893,7 +2060,7 @@
       </div>
 
       <div class="mon-box you" id="you-box">
-        <div class="mb-name"><span class="mb-stage" id="you-stage"></span><span id="you-name">-</span></div>
+        <div class="mb-name"><span class="mb-types" id="you-types"></span><span id="you-name">-</span></div>
         <div class="mb-bar"><span class="hp-label">HP</span><div class="hpbar" id="you-hpbar"><i style="width:100%"></i></div></div>
         <div class="mb-hpnum" id="you-hpnum">- / -</div>
         <div class="mb-balls" id="you-balls"></div>
