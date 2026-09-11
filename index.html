@@ -436,27 +436,101 @@
      real button — tapping it opens the party switch — so it carries the SWAP tag rather than
      relying on the player guessing. Right-hand corner so it never fights the joystick for space.
      Over live gameplay a translucent-white panel would vanish, so this one keeps a dark ground. */
+  /* The lead card, CONDENSED. Same two font sizes as before (0.936rem name, 0.65rem SWAP tag) and
+     the same three things on it — name, gold SWAP tag, HP bar — in less room: 148px instead of
+     182px, padding 0.34/0.5rem instead of 0.5/0.6, the name-to-bar gap 3px instead of 6, and the
+     bar 6px tall instead of 10. Nothing was dropped and nothing shrank typographically; the card
+     just stopped padding itself out. */
   #lead-panel {
     right: calc(var(--sar) + 12px); bottom: calc(var(--sab) + 22px);
-    width: 182px;
-    display: flex; flex-direction: column; align-items: stretch; gap: 7px;
+    width: 148px;
+    display: flex; flex-direction: column; align-items: stretch; gap: 5px;
   }
   #btn-lead {
     appearance: none; font: inherit; color: inherit; text-align: left;
-    width: 100%; padding: 0.5rem 0.6rem;
+    width: 100%; padding: 0.34rem 0.5rem;
     background: rgba(11,16,32,0.72);
     border: 1px solid var(--edge);
-    border-radius: 12px;
+    border-radius: 10px;
     cursor: pointer;
     transition: transform 0.06s ease, border-color 0.12s ease;
   }
   #btn-lead:active { transform: translateY(2px); border-color: var(--gold); }
+  /* Open: the card reads as the head of the list standing above it, so it keeps the gold edge for
+     as long as the menu is up rather than only while a finger is down. */
+  #btn-lead.open { border-color: var(--gold); background: rgba(20,26,48,0.88); }
   #btn-lead .name {
-    display: flex; align-items: baseline; gap: 6px;
-    font-size: 0.936rem; margin-bottom: 6px;
+    display: flex; align-items: baseline; gap: 5px;
+    font-size: 0.936rem; margin-bottom: 3px;
   }
   #btn-lead .name #lead-name { flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   #btn-lead .swap-tag { flex: 0 0 auto; font-size: 0.65rem; font-weight: 700; color: var(--gold); letter-spacing: 1px; }
+  #btn-lead .hpbar { height: 6px; }
+
+  /* ---- The inline swap list ----
+     Anchored to #lead-panel's TOP edge (`bottom: 100%`), which is the button's top edge, so it
+     grows up out of the button it belongs to. ABSOLUTE on purpose: the panel is bottom-anchored in
+     the HUD, so an in-flow menu would still not move the button — but it would make the panel's
+     box grow over the joystick and eat its touches. Out of flow, the panel's box never changes.
+
+     Closed state is opacity 0 + a slight drop and squash, `transform-origin: bottom` so the whole
+     list collapses INTO the button rather than sliding off somewhere. `visibility` is in the
+     transition list and is the reason this works without touching `display`: it is discretely
+     animatable, so it flips to `hidden` only at the END of the retract, which both keeps the fade
+     visible on the way out and takes the rows out of the tab order and away from the pointer once
+     they are gone. `display: none` would have cut the animation off at frame one. */
+  #lead-menu {
+    position: absolute;
+    left: 0; right: 0; bottom: 100%;
+    margin-bottom: 6px;
+    /* Plain `column`, so the party reads top-to-bottom in SLOT order — slot 1 at the top, the same
+       order the bag strip and the battle ball rows use. */
+    display: flex; flex-direction: column; gap: 4px;
+    opacity: 0; visibility: hidden;
+    transform: translateY(6px) scaleY(0.88);
+    transform-origin: bottom center;
+    transition: opacity 0.16s ease, transform 0.18s cubic-bezier(0.2, 0.85, 0.3, 1),
+                visibility 0s linear 0.18s;
+    pointer-events: none;
+  }
+  #lead-menu.open {
+    opacity: 1; visibility: visible;
+    transform: none;
+    /* No delay on the way IN — visibility has to flip before the fade, not after it. */
+    transition-delay: 0s, 0s, 0s;
+    pointer-events: auto;
+  }
+  .lead-row {
+    appearance: none; font: inherit; color: inherit; text-align: left;
+    display: flex; align-items: center; gap: 6px;
+    width: 100%; padding: 0.28rem 0.4rem;
+    background: rgba(11,16,32,0.88);
+    border: 1px solid var(--edge);
+    border-radius: 9px;
+    cursor: pointer;
+  }
+  .lead-row:active:not(:disabled) { transform: translateY(1px); border-color: var(--gold); }
+  /* The one you already have out. Not hidden from the list — seeing the whole party is the point of
+     opening it — but it cannot be picked, so it is marked rather than offered. */
+  .lead-row.current { border-color: var(--gold-dark); background: rgba(255,213,79,0.14); }
+  .lead-row:disabled { cursor: default; }
+  .lead-row.fainted { opacity: 0.5; border-color: var(--danger); }
+  .lead-row .lr-art {
+    width: 26px; height: 26px; flex: 0 0 auto; border-radius: 5px;
+    background: rgba(0,0,0,0.3); object-fit: contain; display: block;
+  }
+  /* A flex COLUMN, and that is load-bearing rather than tidiness. A row is a <button>, whose
+     content model is phrasing content, so these are <span>s — and a span is `display: inline`,
+     which ignores `height` entirely and does not establish the block box `text-overflow: ellipsis`
+     needs either. So the HP bar came out 0x0 (its `<i>` fill rendered at full width inside a parent
+     with no box) and the name could not ellipsise. Making .lr-body a flex container blockifies both
+     children at once, which is why neither needs its own `display`. */
+  .lead-row .lr-body { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+  .lead-row .lr-name {
+    font-size: 0.65rem; font-weight: 700; line-height: 1.3;
+    overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  }
+  .lead-row .hpbar { height: 5px; margin-top: 3px; }
   /* One ball per party member, dimmed once that member has fainted — the same read as the strip in
      the battle info boxes. Right-aligned so it hangs under the card's own right edge. */
   #party-balls { display: flex; gap: 4px; justify-content: flex-end; }
@@ -1381,7 +1455,11 @@
     </div>
     <div id="buff-strip"></div>
     <div id="lead-panel">
-      <button id="btn-lead" aria-label="Swap the Pokemon you have out">
+      <!-- The swap list. Absolutely positioned against #lead-panel and anchored to its top edge,
+           so it expands UPWARD out of the button and takes no layout space of its own — the button
+           and the ball row underneath it never move. Filled and animated by js/ui-screens.js. -->
+      <div id="lead-menu" role="menu" aria-label="Swap the Pokemon you have out"></div>
+      <button id="btn-lead" aria-expanded="false" aria-label="Swap the Pokemon you have out">
         <div class="name"><span id="lead-name">-</span><span class="swap-tag">SWAP</span></div>
         <div class="hpbar" id="lead-hpbar"><i style="width:100%"></i></div>
       </button>
@@ -1421,7 +1499,11 @@
          the bottom half of the map. Absolute + inset:0 pins it to the panel's real box, and
          object-fit keeps the map square inside it. -->
     <div class="panel" style="flex:1 1 auto; position:relative; overflow:hidden; min-height:0">
-      <canvas id="floormap" width="620" height="620" style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain;image-rendering:pixelated;touch-action:none"></canvas>
+      <!-- No object-fit and no meaningful width/height here: js/ui-screens.js syncFloorMapSize()
+           sets the BITMAP to this box on every draw, so the map fills the panel instead of being
+           a square letterboxed in a tall box with dead translucent strips above and below it. The
+           attributes below are only the pre-first-draw placeholder. -->
+      <canvas id="floormap" width="620" height="620" style="position:absolute;inset:0;width:100%;height:100%;image-rendering:pixelated;touch-action:none"></canvas>
     </div>
     <!-- There is deliberately NO row of zoom / rotate / reset buttons under the map. Drag pans it,
          pinch zooms it and a two-finger twist rotates it, which covers everything those buttons

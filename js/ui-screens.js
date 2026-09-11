@@ -40,6 +40,10 @@ export const uiHooks = {
   resolveSwap: (_index) => {},
   openSwitch: () => {},
   chooseSwitch: (_index) => {},
+  // The dungeon HUD's inline swap list: opening it (guarded on having someone to swap to) and
+  // picking from it. The battle Swap button still goes through openSwitch/chooseSwitch.
+  openLeadMenu: () => {},
+  chooseLead: (_index) => {},
   newRun: () => {},
   // Kecleon's shop
   shopBuy: (_itemId) => {},
@@ -76,6 +80,10 @@ export function showScreen(mode) {
   $('hud').classList.toggle('visible', mode === 'playing');
   // A ball picker left open would still be sitting there on the next encounter.
   if (mode !== 'catch') setBallMenu(false);
+  // Same for the lead swap list: it lives on the dungeon HUD, so anything that leaves `playing`
+  // (a battle, the pause screen, an encounter) has to put it away — otherwise it is still hanging
+  // over the HUD when you come back.
+  if (mode !== 'playing') setLeadMenu(false);
 }
 
 // ---- Type badges -------------------------------------------------------------------------------
@@ -281,6 +289,65 @@ export function updateHUD() {
   }
   if (run.revives > 0) pills.push(`<span class="buff-pill">Revive x${run.revives}</span>`);
   $('buff-strip').innerHTML = pills.join('');
+}
+
+// ---- The HUD's inline swap list ----------------------------------------------------------------
+// The lead card used to open the full-screen `switch` mode. In the dungeon that is a whole screen
+// for one tap — it hides the floor you are standing on to answer a question about a card in the
+// corner. The battle Swap button still uses the full screen (there is nothing behind it worth
+// keeping in view); out here the list expands out of the button itself.
+//
+// Every party member is listed, INCLUDING the one already out and any that have fainted. Seeing the
+// whole team is half the reason to open it, so those are marked and disabled rather than omitted —
+// a list whose length changes as members faint is a list you cannot build muscle memory for.
+let leadMenuOpen = false;
+
+export function setLeadMenu(open) {
+  const menu = $('lead-menu');
+  const btn = $('btn-lead');
+  if (!menu || !btn) return;
+  if (open) renderLeadMenu();
+  leadMenuOpen = open;
+  menu.classList.toggle('open', open);
+  btn.classList.toggle('open', open);
+  btn.setAttribute('aria-expanded', String(open));
+}
+
+export function toggleLeadMenu() { setLeadMenu(!leadMenuOpen); }
+export function isLeadMenuOpen() { return leadMenuOpen; }
+
+function renderLeadMenu() {
+  const p = inv.party();
+  const menu = $('lead-menu');
+  menu.innerHTML = p.map((m, i) => {
+    const pct = Math.max(0, Math.min(100, (m.hp / m.maxHp) * 100));
+    const barClass = pct <= 20 ? 'low' : pct <= 50 ? 'mid' : '';
+    const dead = m.hp <= 0;
+    const current = i === 0;
+    const art = portraitFor(m.dex);
+    // Disabled for the current lead and for anyone fainted: picking either is a no-op, and a row
+    // that looks pressable and does nothing is worse than one that says it cannot be.
+    return `<button class="lead-row${current ? ' current' : ''}${dead ? ' fainted' : ''}"
+         ${current || dead ? 'disabled' : `data-i="${i}"`} role="menuitem">
+      ${art ? `<img class="lr-art" src="${art}" alt="" />` : `<span class="lr-art"></span>`}
+      <span class="lr-body">
+        <span class="lr-name">${m.name}</span>
+        <span class="hpbar ${barClass}"><i style="width:${pct}%"></i></span>
+      </span>
+    </button>`;
+  }).join('');
+  for (const el of menu.querySelectorAll('.lead-row[data-i]')) {
+    el.addEventListener('click', () => {
+      // Retract FIRST, then swap. The animation is the feedback that the tap landed, and closing
+      // on the way out means the list is already collapsing while the lead card re-renders under
+      // it — which is what makes it read as one movement instead of a menu that vanishes.
+      setLeadMenu(false);
+      uiHooks.chooseLead(Number(el.dataset.i));
+    });
+  }
+  // The portraits are rendered once per species and cached; any that are not ready yet arrive a
+  // frame or two later, and the list redraws itself in place — but only while it is still open.
+  preloadPortraits(p.map(m => m.dex), () => { if (leadMenuOpen) renderLeadMenu(); });
 }
 
 function setHpBar(el, hp, maxHp) {
@@ -724,8 +791,15 @@ export function floatDamage(side, _index, dmg, superEff) {
 }
 
 // ---- Party switch ------------------------------------------------------------------------------
-// One screen for both callers: the Swap button in battle and the lead-Pokemon card on the dungeon
-// HUD. A fainted member is not offered — there is nothing it can do on either side of that call.
+// The BATTLE Swap button's screen. It used to serve the dungeon HUD's lead card as well, which is
+// why it still takes `inBattle` and swaps its own subtitle — the dungeon path is now the inline
+// list that grows out of the lead card (see setLeadMenu), because a full screen there hid the floor
+// you were standing on to answer a question about a card in the corner. In a battle there is
+// nothing behind the screen worth keeping in view, so this stayed.
+//
+// `inBattle` is kept rather than hardcoded: renderSwitch is reached through state.returnTo, and a
+// caller that is not a battle is still a legitimate thing to add.
+// A fainted member is not offered — there is nothing it can do on either side of that call.
 export function renderSwitch({ inBattle, currentIndex }) {
   $('switch-sub').textContent = inBattle
     ? 'Send out a different Pokemon. A fainted one cannot be sent out.'
@@ -1126,7 +1200,14 @@ export function bindUI() {
   click('btn-battle-swap', () => { sfx('select'); uiHooks.openSwitch(); });
 
   // The lead-Pokemon card on the dungeon HUD is the other way into the same screen.
-  click('btn-lead', () => { sfx('select'); uiHooks.openSwitch(); });
+  // The lead card toggles its own inline list rather than opening the full `switch` screen — see
+  // setLeadMenu. The "nobody else to swap to" guard stays with the CALLER (main.js's
+  // openLeadMenu), because it needs the party, and a list with one unpickable row in it is not an
+  // answer to a tap.
+  click('btn-lead', () => {
+    if (leadMenuOpen) { sfx('back'); setLeadMenu(false); return; }
+    uiHooks.openLeadMenu();
+  });
   click('btn-switch-back', () => { sfx('back'); uiHooks.back(); });
   click('btn-catch-ball', () => { sfx('select'); toggleBallMenu(); });
   click('btn-catch-flee', () => { sfx('back'); setBallMenu(false); uiHooks.catchFlee(); });
@@ -1144,3 +1225,30 @@ export function bindUI() {
 
 export const minimapCtx = () => $('minimap').getContext('2d');
 export const floormapCtx = () => $('floormap').getContext('2d');
+
+// Match the pause map's BITMAP to the box it is displayed in, before drawing into it.
+//
+// This is what killed the two empty translucent bands above and below the map. The canvas shipped a
+// fixed 620x620 bitmap and `object-fit: contain`, but its box is the panel's — 346x556 on a phone.
+// Contain fitted the square bitmap into the tall box at 346x346 and centred it, which left 105px
+// of the panel's own `rgba(255,255,255,0.06)` ground showing top and bottom: two semi-translucent
+// strips with nothing in them, framed as if they held something.
+//
+// drawMap already handles a non-square canvas — it takes `Math.min(cw, ch)` for the scale and puts
+// the origin at the box centre — so sizing the bitmap to the box makes the map FILL the panel, at
+// the same scale as before, showing more floor above and below instead of dead plate.
+//
+// Called on every draw rather than once on open, which covers a rotate or a window resize while
+// the pause screen is up. The width/height assignment is guarded because assigning either one
+// clears the canvas, and it is a no-op reallocation of the drawing buffer besides.
+export function syncFloorMapSize() {
+  const cv = $('floormap');
+  const w = cv.clientWidth, h = cv.clientHeight;
+  if (!w || !h) return false;                    // laid out but not visible yet: nothing to size to
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const bw = Math.max(1, Math.round(w * dpr));
+  const bh = Math.max(1, Math.round(h * dpr));
+  if (cv.width === bw && cv.height === bh) return false;
+  cv.width = bw; cv.height = bh;
+  return true;
+}

@@ -672,6 +672,9 @@ function updatePlaying(dt) {
 function drawFloorMap() {
   const floor = state.run?.floor;
   if (!floor) return;
+  // Before the draw, not after: the map's bitmap tracks the panel it is shown in, and resizing a
+  // canvas clears it. See syncFloorMapSize for why the bitmap is not a fixed square any more.
+  ui.syncFloorMapSize();
   drawMap(ui.floormapCtx(), floor, player, {
     detail: true, heading: playerHeading,
     rot: mapView.rot, zoom: mapView.zoom, panX: mapView.panX, panY: mapView.panY,
@@ -842,11 +845,36 @@ Object.assign(uiHooks, {
     setCatchBall(id, inv.countOf(id));
     if (catchCtx) ui.renderCatchUI({ dex: catchCtx.wild.dex, activeBall: id });
   },
-  // The Swap button in battle and the lead-Pokemon card in the dungeon both land here. Which one
-  // it was is remembered in state.returnTo, and that is what decides what "swap" means.
+  // The full-screen switch. ONE caller now: the battle Swap button. The dungeon's lead card used to
+  // come through here too — that is why this and chooseSwitch below still branch on
+  // state.returnTo — but it now opens the inline list instead (openLeadMenu, below). So the
+  // `'playing'` half of both branches is currently unreachable. It is kept rather than deleted
+  // because it is the whole of what a non-battle caller would need, and `returnTo` is what would
+  // route one here; do not "simplify" it away and then have to rediscover it.
   openSwitch: () => {
     if (inv.partyAlive().length < 2) { ui.toast('You have nobody else to swap to.'); return; }
     setMode('switch', { returnTo: state.mode === 'battle' ? 'battle' : 'playing' });
+  },
+  // The dungeon HUD's inline swap list. Kept separate from openSwitch/chooseSwitch, which are the
+  // battle Swap button's full-screen path: that one branches on state.returnTo, and reusing it from
+  // the HUD would have it read a `returnTo` left over from whatever last set it.
+  openLeadMenu: () => {
+    if (inv.partyAlive().length < 2) { ui.toast('You have nobody else to swap to.'); return; }
+    sfx('select');
+    ui.setLeadMenu(true);
+  },
+  chooseLead: (index) => {
+    const p = inv.party();
+    const target = p[index];
+    if (!target || target.hp <= 0 || index === 0) return;
+    sfx('confirm');
+    // Slot 0 IS the lead — it is what syncPlayerModel and every "who is out" read uses — so the
+    // swap is a move to the front, with everyone else keeping their order behind them.
+    p.splice(index, 1);
+    p.unshift(target);
+    syncPlayerModel();
+    ui.updateHUD();
+    ui.toast(`${target.name} takes the lead.`);
   },
   chooseSwitch: (index) => {
     const target = inv.party()[index];
@@ -864,7 +892,8 @@ Object.assign(uiHooks, {
       return;
     }
     // In the dungeon it changes who you steer, which is party slot 0 — so move them there and
-    // keep everyone else in order behind them.
+    // keep everyone else in order behind them. Currently unreachable: the dungeon goes through
+    // chooseLead above, which does the same move without the screen change. See openSwitch.
     const p = inv.party();
     p.splice(index, 1);
     p.unshift(target);
