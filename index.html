@@ -713,6 +713,75 @@
     display: grid; place-items: center; min-height: 84px;
   }
   .team-slot.fainted { border-color: var(--danger); }
+
+  /* ---- The ROOMY strip, for the switch screen -------------------------------------------------
+     `.team-strip` is six-across because on the bag screen and the swap prompt it is a HEADER: the
+     party sits above the thing you actually came to that screen for (the item grid, the caught
+     Pokemon), so it has to be compact. On the switch screen the party IS the screen — picking one
+     of six is the only thing there is to do — and six 58px cells crammed into the top eighth of an
+     812px phone wasted the other seven eighths and made the names and HP illegible at 0.6rem.
+     So that one screen gets a 2x3 grid of the whole available height instead. The rows are always
+     thirds (`repeat(3, ...)` rather than `grid-auto-rows`) so a party of two does not blow its two
+     cells up to full height; a short team simply leaves the lower rows empty.
+     Everything here is scoped to `.roomy` — the other two strips are untouched. */
+  .team-strip.roomy {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+    flex: 1 1 auto; min-height: 0;
+    margin-bottom: 0;
+  }
+  /* Landscape is the other way round: short and wide, so three across and two down. Same query
+     shape the pause screen and the catch HUD already use for this.
+     At this height the rows are NOT stretched to fill: a 390px-tall phone leaves about 180px for
+     the grid, and two stretched rows of 90px is less than the four text rows need on their own —
+     the portrait collapsed to nothing and the type badges were clipped off the bottom. So the rows
+     size to their content, the portrait (which had no room to be seen anyway) is dropped, and the
+     strip scrolls if even that does not fit. */
+  @media (orientation: landscape) and (max-height: 520px) {
+    .team-strip.roomy {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-rows: none;
+      grid-auto-rows: min-content;
+      flex: 0 0 auto;
+    }
+    .team-strip.roomy .ts-art { display: none; }
+  }
+  .team-strip.roomy .team-slot {
+    flex: none;
+    display: flex; flex-direction: column;
+    padding: 9px 8px 11px;
+    min-height: 0;
+  }
+  /* The portrait takes whatever height the row has left after the text, instead of forcing a
+     square. `object-fit: contain` is already on .ts-art, so it letterboxes rather than stretching
+     — which is what lets one rule serve a tall portrait cell and a wide one. */
+  .team-strip.roomy .ts-art {
+    flex: 1 1 auto; min-height: 0; width: 100%;
+    aspect-ratio: auto;
+    margin-bottom: 6px;
+    border-radius: 8px;
+  }
+  /* The PORTRAIT is the only thing allowed to flex. Everything else keeps its natural height:
+     without this, flex's default `shrink: 1` squeezed the four text rows as well as the art, and
+     `.ts-name`'s `overflow: hidden` cropped every name into a sliver over its HP bar. */
+  .team-strip.roomy .ts-name,
+  .team-strip.roomy .hpbar,
+  .team-strip.roomy .ts-hp,
+  .team-strip.roomy .type-badges { flex: 0 0 auto; }
+  .team-strip.roomy .ts-name {
+    font-size: 1.04rem; line-height: 1.3; letter-spacing: 0; margin-bottom: 5px;
+  }
+  .team-strip.roomy .ts-hp { font-size: 0.9rem; margin-top: 4px; letter-spacing: 0; }
+  .team-strip.roomy .hpbar { height: 13px; }
+  /* At this size a dual-type pair fits side by side, so the wrap the compact cell needs (see the
+     note under .type-badges) is not wanted here. */
+  .team-strip.roomy .type-badges { flex-wrap: nowrap; margin-top: 5px; }
+  .team-strip.roomy .type-badges img { height: 19px; }
+  /* A fainted one cannot be sent out and is not clickable (renderTeamStrip drops its data-i), so
+     at this size it has to LOOK unavailable rather than merely carry a red border. */
+  .team-strip.roomy .team-slot.fainted { opacity: 0.55; cursor: default; box-shadow: none; }
   .team-slot.selected {
     border-color: var(--gold); background: rgba(255,213,79,0.22);
     box-shadow: 0 4px 0 var(--gold-dark);
@@ -1847,8 +1916,11 @@
   <div class="screen overlay" id="screen-switch">
     <h2 class="screen-title">Choose a Pokemon</h2>
     <div class="screen-sub" id="switch-sub">-</div>
-    <div class="scroll" style="min-height:0">
-      <div class="team-strip" id="switch-team"></div>
+    <!-- `roomy`: on this screen the party IS the screen, so the strip takes the whole height as a
+         2x3 grid instead of the compact six-across row the bag and swap prompts use. The scroll
+         wrapper becomes a flex column so the grid can claim that height. -->
+    <div class="scroll" style="min-height:0; display:flex; flex-direction:column">
+      <div class="team-strip roomy" id="switch-team"></div>
     </div>
     <button class="btn secondary" id="btn-switch-back" style="margin-top:14px">Back</button>
   </div>

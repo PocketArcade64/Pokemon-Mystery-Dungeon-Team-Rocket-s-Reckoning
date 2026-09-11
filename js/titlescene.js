@@ -244,7 +244,7 @@ const SPIKES = [
 
 const ROCK_MAX = 96;        // instance budget for every slab, wall block and boulder
 const FLOOR_MAX = 1500;     // and for the floor's 1x1 tiles, at the widest frustum going
-let rockMesh = null, spikeMesh = null, glow = null, floorMesh = null;
+let rockMesh = null, spikeMesh = null, glow = null, floorMesh = null, ceilMesh = null;
 
 function buildStatic() {
   const col = new THREE.Color();
@@ -258,6 +258,37 @@ function buildStatic() {
   floorMesh.receiveShadow = true;
   floorMesh.count = 0;                 // rebuild() lays the tiles out for the current frustum
   titleScene.add(floorMesh);
+
+  // THE CEILING IS ITS OWN MESH, AND IT MUST NOT CAST A SHADOW. This is the fix for the diagonal
+  // line across the floor above the Start Run button, reported twice.
+  //
+  // The key light sits at y 4.4, ABOVE the ceiling slab's top at 3.35, so the slab blocks it from
+  // the whole chamber — and the slab's FRONT EDGE is a straight line, which throws a straight
+  // shadow edge across the floor. Floor under the ceiling is 8-14 luminance darker than the strip
+  // in front of it, and because the light is off to the right (x +2.2) the edge is not square to
+  // the view: it walks from 0.51 of frame height on the left to 0.61 on the right. That is exactly
+  // the line, and it is why it looked diagonal and spanned the full width.
+  //
+  // The ceiling's shadow was never worth anything — it is a lid over everything, so it darkens the
+  // room uniformly and only its own edge is ever legible. Dropping it keeps every shadow that
+  // means something (the trio's contact shadows, the boulders, the walls, all still in rockMesh).
+  //
+  // It does not RECEIVE either: nothing in the scene is above it.
+  //
+  // HOW TO VERIFY, because a profile comparison is not enough and got this wrong once: render a
+  // DIFFERENCE grid. Sample luminance across several columns with the ceiling casting, then with
+  // it moved out of the light's way, and subtract. The shadow's footprint shows up as a band of
+  // non-zero deltas whose upper edge walks steadily across the columns. Comparing whole profiles
+  // instead can sample a band that is entirely inside the shadow on both runs, which looks
+  // identical and proves nothing.
+  ceilMesh = new THREE.Mesh(
+    new THREE.BoxGeometry(1, 1, 1),
+    new THREE.MeshStandardMaterial({ roughness: 0.95, flatShading: true }),
+  );
+  ceilMesh.castShadow = false;
+  ceilMesh.receiveShadow = false;
+  ceilMesh.material.color.setHex(PAL.rockTop).multiplyScalar(0.82);
+  titleScene.add(ceilMesh);
 
 
   rockMesh = new THREE.InstancedMesh(
@@ -459,15 +490,12 @@ function rebuild(wide) {
   // same reason as the floor — running from the back wall to past the camera, so the top of the
   // frame is rock rather than the end of the world. Its front edge is above the top of the frame,
   // so it only comes into view with distance.
+  // NOT an instance of rockMesh — rockMesh casts, and a lid over the whole chamber must not.
+  // See the note on ceilMesh in buildStatic for the diagonal line that came of it.
   const ceilW = Math.abs(xAt(OUTER_NDC, BACK_Z)) * 2.2;
   const ceilFront = camZ + 2, ceilBack = BACK_Z - 1;
-  p.set(0, 3.0, (ceilFront + ceilBack) / 2); s.set(ceilW, 0.7, ceilFront - ceilBack);
-  m4.compose(p, q, s);
-  if (n < ROCK_MAX) {
-    rockMesh.setMatrixAt(n, m4);
-    rockMesh.setColorAt(n, col.setHex(PAL.rockTop).multiplyScalar(0.82));
-    n++;
-  }
+  ceilMesh.position.set(0, 3.0, (ceilFront + ceilBack) / 2);
+  ceilMesh.scale.set(ceilW, 0.7, ceilFront - ceilBack);
 
   for (const [ndc, z, w, h] of RUBBLE) {
     if (n >= ROCK_MAX) break;
