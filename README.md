@@ -21,14 +21,14 @@ When you encounter a Pokemon - Wild Pokemon Battle
 Updates
 
 This is a major update - please methodically plan out how you will approach this change and ask any necessary clarifying questions before proceeding: 
-Please redesign how the rooms randomly generate on- I feel like some of the walls can block your visibility - what is the best way to handle this? Maybe lower the walls to be half a block tall?
-Additionally, I want to make all rooms larger - Make all floors 5x larger and the rooms varying sizes and shapes (not all rectangles or squares) - I want this to feel like a real dungeon exploration game. 
-Make the mini map be from the same orientation you are looking at (If you click the mini map, it opens the same pause menu and you can rotate/zoom in the map)
-Change the player minimap icon to be a green arrow that changes direction based on where you are facing, change the team rocket icon to be a pixel art capital R.
+✅ Please redesign how the rooms randomly generate on- I feel like some of the walls can block your visibility - what is the best way to handle this? Maybe lower the walls to be half a block tall?
+✅ Additionally, I want to make all rooms larger - Make all floors 5x larger and the rooms varying sizes and shapes (not all rectangles or squares) - I want this to feel like a real dungeon exploration game. 
+✅ Make the mini map be from the same orientation you are looking at (If you click the mini map, it opens the same pause menu and you can rotate/zoom in the map)
+✅ Change the player minimap icon to be a green arrow that changes direction based on where you are facing, change the team rocket icon to be a pixel art capital R.
 
-For the items that randomly generate on the floor, make them all rotate in place. If the item is a poke ball, use its associated poke ball model. If it is anything else, use the gift box present 3d model, but when you pick it up, show the sprite of what the item you collected was. Also add the 3 types of coins to spawn on the floor. Also, make every floor have at least 15 poke balls to be acquired. (If you see a poke ball on the ground, it can contain 1-5 poke balls of that type. but each floor has at least 15 in total) 
-- On the fourth floor somewhere there is a guaranteed Kecleon shop somewhere on that floor (Kecleon standing on a blanket like in Mystery Dungeon with presents laying on the blanket)
-    - If you walk up to Kecleon a pop up menu appears where you can exchange your coins for some of his items. The song (25. Kecleon's Shop.mp3) plays here - (this track was added on GitHub. Please look there.)
+✅ For the items that randomly generate on the floor, make them all rotate in place. If the item is a poke ball, use its associated poke ball model. If it is anything else, use the gift box present 3d model, but when you pick it up, show the sprite of what the item you collected was. Also add the 3 types of coins to spawn on the floor. Also, make every floor have at least 15 poke balls to be acquired. (If you see a poke ball on the ground, it can contain 1-5 poke balls of that type. but each floor has at least 15 in total) 
+✅ - On the fourth floor somewhere there is a guaranteed Kecleon shop somewhere on that floor (Kecleon standing on a blanket like in Mystery Dungeon with presents laying on the blanket)
+   ✅- If you walk up to Kecleon a pop up menu appears where you can exchange your coins for some of his items. The song (25. Kecleon's Shop.mp3) plays here - (this track was added on GitHub. Please look there.)
 
 ______________________________
 
@@ -44,9 +44,11 @@ Please enhance the title screen to show a POV of the camera eye level with piplu
 
 ___________________________
 
-I added You Lose.mp3 to the Music Shortened Folder on GitHub. Please look there and make that play when the game over screen appears and stops all other music until you return back to the title screen. 
+✅ I added You Lose.mp3 to the Music Shortened Folder on GitHub. Please look there and make that play when the game over screen appears and stops all other music until you return back to the title screen. 
 
-I also added sound effects for when you Evolve (213. Evolution.mp3) and a pokemon joins your team (208. Pokemon Joins.mp3), when you pick up coins (SE_ACT_MONEY.wav) (this track was added on GitHub. Please look there.)
+✅ I also added sound effects for when you Evolve (213. Evolution.mp3) and a pokemon joins your team (208. Pokemon Joins.mp3), 
+
+✅ I also added sound effects for when you pick up coins (SE_ACT_MONEY.wav) (this track was added on GitHub. Please look there.)
 
 ________________________
 
@@ -67,15 +69,15 @@ When in a battle with a shadow pokemon, make its purple particle effects show in
 In battle, make the pokemon slightly lunge forward when they attack. 
 ___________________
 
-When catching, only make the catching circle show around pokemon when you are touching the poke ball - exactly the same behavior like Pokemon Go. 
+✅ When catching, only make the catching circle show around pokemon when you are touching the poke ball - exactly the same behavior like Pokemon Go. 
 Also, when preparing to throw a curve ball, why does an orange circle appear around the poke ball? (Please remove that) 
 When the poke ball releases from your throw, the shrinking circle around the pokemon stops and if you hit inside the circle there is a greater chance for you to catch it
 
-In the catching mini game, after the 3 shakes then the click when you catch a pokemon, make the click cause some yellow stars to fly off the pokeball then fade away to signify the pokemon has been caught. Also above the pokeball, make text appear saying X was caught. 
+✅ In the catching mini game, after the 3 shakes then the click when you catch a pokemon, make the click cause some yellow stars to fly off the pokeball then fade away to signify the pokemon has been caught. Also above the pokeball, make text appear saying X was caught. 
 
 __________________
 
-When you click on your bag and you can see your pokemon team, make their models be angled 45 degrees facing towards the left.
+When you click on your bag and you can see your pokemon team, make their models be angled 45 degrees facing towards the left. Also keep all the current pokemon info but make all 6 pokemon in your be able to fit on one row.
 
 Below the map, make the floor and dungeon name all fit on one line and be centered underneath the map (decrease the font if necessary) - for example: “B1F, Cavern”
 
@@ -85,4 +87,21 @@ _____________________
 
 Can you please redesign the bag below the party pokemon and design it to be more thematically looking like a pixel art brown satchel bag in the inventory menu with small squares where each item takes up a slot. Design this bag to look polished and fitting pixel art.
 
-After you beat a team rocket grunt, do you advise that the player is given a choice of 3 reward items?
+After you beat a team rocket grunt, do you advise that the player is given a choice of 3 reward items? And should your team be fully healed after beating a rocket grunt? Maybe add a randomly spawning Chansey station that allows you to heal infinitely each time you approach it and a menu prompt appears. Change the functionality of healing items so if your Pokemon is fainted and you use a healing item on them, it cannot bring them back from being fainted (only a revive can do that)
+
+_________________
+
+In the pause menu, change “Config” to Settings.
+
+As part of the Tap Move controls, also allow the user to hold in a direction and your pokemon follows your finger.
+
+
+
+
+
+
+
+Please implement an endless Mode:
+After you click Start Run give 2 options - Default mode on the left and on the right is endless mode below each is a description of what the mode entails. At the bottom of the default mode card shows Wins: #
+Endless mode - you progress through all 11 floors before any of the other ones can repeat. You cannot encounter the same floor within 4 floors. (For example if you have forest on floor 20 you cannot see it again until at least floor 25). Giovanni appears every 5 floors
+At the bottom of this card shows Deepest Floor: B1F 
