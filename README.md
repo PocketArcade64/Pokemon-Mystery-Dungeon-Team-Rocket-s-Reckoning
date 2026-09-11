@@ -52,6 +52,10 @@ ___________________________
 
 ________________________
 
+Please add in the Master Ball (which already exits as a 3d Model). For every other type of poke ball that spawns, the master ball has a 1/50 change of replacing it in the spawn logic. When you throw the master ball, even if you miss the pokemon, it is a guaranteed catch.  
+
+Please in the settings menu add a debug menu with password “Team Rocket” where inside this menu you can add items to your inventory and add money for testing purposes.
+
 I want to replace the items' menu sprites with better png sprites. please look in the assets/sprites folder for the new pixel art icons.
 
 Change the Full Heal to Full Restore.
@@ -62,11 +66,11 @@ Please remodel the stairs 3d model to be like the Minecraft cobblestone stairs m
 
 ____________________
 
-When you select a starter, make it so the first slot is always a grass type, the second slot is always a fire type, and the third slot is always a water type.
+✅ When you select a starter, make it so the first slot is always a grass type, the second slot is always a fire type, and the third slot is always a water type.
 - Also below the Pokémon’s name on this starter selection screen only show its type(s) png and not “Fire - Basic - No. 909” for example
 
-When in a battle with a shadow pokemon, make its purple particle effects show in battle and on the catching screen, but they disappear once you add them to your team.
-In battle, make the pokemon slightly lunge forward when they attack. 
+✅ When in a battle with a shadow pokemon, make its purple particle effects show in battle and on the catching screen, but they disappear once you add them to your team.
+✅ In battle, make the pokemon slightly lunge forward when they attack. 
 ___________________
 
 ✅ When catching, only make the catching circle show around pokemon when you are touching the poke ball - exactly the same behavior like Pokemon Go. 
@@ -77,11 +81,11 @@ When the poke ball releases from your throw, the shrinking circle around the pok
 
 __________________
 
-When you click on your bag and you can see your pokemon team, make their models be angled 45 degrees facing towards the left. Also keep all the current pokemon info but make all 6 pokemon in your be able to fit on one row.
+🟨 When you click on your bag and you can see your pokemon team, make their models be angled 45 degrees facing towards the left. Also keep all the current pokemon info but make all 6 pokemon in your be able to fit on one row.
 
-Below the map, make the floor and dungeon name all fit on one line and be centered underneath the map (decrease the font if necessary) - for example: “B1F, Cavern”
+🟨 Below the map, make the floor and dungeon name all fit on one line and be centered underneath the map (decrease the font if necessary) - for example: “B1F, Cavern”
 
-When transitioning between floors (and also after you select you starter), you already show exactly the same format as Pokemon Mystery Dungeon - Dungeon name on first line then below that is the floor number. - I want you to now make the text fade in then fade out to cleanly transition into the new floor. This should all be on a completely black screen while the text is shown on screen just like in Pokemon Mystery Dungeon.
+🟨 When transitioning between floors (and also after you select you starter), you already show exactly the same format as Pokemon Mystery Dungeon - Dungeon name on first line then below that is the floor number. - I want you to now make the text fade in then fade out to cleanly transition into the new floor. This should all be on a completely black screen while the text is shown on screen just like in Pokemon Mystery Dungeon.
 
 _____________________
 
@@ -99,9 +103,14 @@ As part of the Tap Move controls, also allow the user to hold in a direction and
 
 
 
-
+______________
 
 Please implement an endless Mode:
 After you click Start Run give 2 options - Default mode on the left and on the right is endless mode below each is a description of what the mode entails. At the bottom of the default mode card shows Wins: #
 Endless mode - you progress through all 11 floors before any of the other ones can repeat. You cannot encounter the same floor within 4 floors. (For example if you have forest on floor 20 you cannot see it again until at least floor 25). Giovanni appears every 5 floors
 At the bottom of this card shows Deepest Floor: B1F 
+
+
+______________
+
+Are all pokemon able to be acquired in some way? how did you implement legendaries?
