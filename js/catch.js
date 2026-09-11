@@ -39,6 +39,7 @@
 import * as THREE from 'three';
 import { createMonObject, createBallObject, disposeObject } from './models.js';
 import { registerCamera } from './three-setup.js';
+import { makeAura, spinAura, disposeAura } from './aura.js';
 import { ITEM_BY_ID } from './data/items.js';
 import { CATALOG_BY_DEX } from './data/pokemon-catalog.js';
 import { makeProp, THEMES } from './dungeon.js';
@@ -621,6 +622,8 @@ export const catchState = {
   ballId: 'poke-ball',
   monObj: null,
   ballObj: null,
+  shadow: false,      // a shadow (aggressive) wild: wears the purple aura for this encounter
+  monAura: null,      // that aura, a child of monObj — built in fitMonToFrame
   monX: 0, monDrift: 0, monBodyY: 0.8, monHeight: 1.4,
   monFit: 1,          // extra scale applied to keep a wide species inside the frame
   captureRadius: 0.78,
@@ -657,6 +660,11 @@ export const catchState = {
 };
 
 function clearMon() {
+  // The aura before the body it hangs on: it is a child of monObj, and disposeObject deliberately
+  // leaves geometry alone (it is shared with the loader cache) — which is right for the model and
+  // wrong for an aura, whose geometry is built fresh for this encounter and shared with nothing.
+  disposeAura(catchState.monAura);
+  catchState.monAura = null;
   if (catchState.monObj) { disposeObject(catchState.monObj); catchState.monObj = null; }
 }
 function clearBall() {
@@ -693,8 +701,12 @@ function refreshRingColor() {
 // ---- Lifecycle ---------------------------------------------------------------------------------
 // Start a fresh catch attempt sequence for one wild Pokemon. `theme` is the floor theme and it
 // dresses the whole stage.
+// `shadow` is the wild's `aggressive` flag. It draws the same purple aura the Pokemon was wearing
+// on the floor and in the battle you had to win to get here, so the thing you are throwing at is
+// visibly the thing that came after you. It is the last screen that shows it: what comes out of the
+// ball is a fresh mon with no flag on it (inventory.addCaught), so the aura going out is the catch.
 export function startCatch({ dex, ballId, ballsLeft, onResult, onThrow, onGrade, onRearm, onSfx,
-                             onEmpty, floorNumber = 1, theme = null }) {
+                             onEmpty, floorNumber = 1, theme = null, shadow = false }) {
   clearMon(); clearBall(); hideTrail(); hideAbsorb(); resetCamera();
 
   const th = theme || THEMES[0];
@@ -706,6 +718,9 @@ export function startCatch({ dex, ballId, ballsLeft, onResult, onThrow, onGrade,
 
   Object.assign(catchState, {
     active: true, phase: 'aim', dex, ballId,
+    // The aura itself is built in fitMonToFrame, which is the only place the body's real width is
+    // known — see the note there.
+    shadow, monAura: null,
     monX: 0, monDrift: Math.random() * Math.PI * 2,
     monHeight: height,
     // The capture circle and the ring sit on the middle of the body, not on the feet — the throw
@@ -772,6 +787,25 @@ function fitMonToFrame(group) {
   s.monBodyY = visualH * 0.55;
   CAPTURE_RING.position.y = s.monBodyY;
   TARGET_RING.position.y = s.monBodyY;
+
+  // The shadow aura goes on HERE and not at spawn, for two reasons that both point at this line.
+  //
+  // Order: the width measurement above must not see it. An aura is deliberately wider than the
+  // body it surrounds, so measuring the pair together would shrink the Pokemon to make room for
+  // its own aura — and then shrink the aura with it, every encounter, compounding nothing but a
+  // smaller Pokemon.
+  //
+  // Width: it is solved FROM that measurement. makeAura's ring is 2.07 * height across at
+  // spread 1, which is sized for a creature standing on an open dungeon floor; here it has to land
+  // about a quarter wider than the actual body, whatever shape the species turned out to be, or a
+  // wide one (Kabuto, Wailmer) wears its aura inside itself and a tall thin one is lost in a disc.
+  // It is a child of the group, so monFit and every scale updateMon applies — the dodge, the
+  // attack lunge, the shrink into the ball — carry it along without any code of their own.
+  if (s.shadow && !s.monAura) {
+    const spread = THREE.MathUtils.clamp(1.25 * Math.max(0.2, _fitSize.x) / (2.07 * s.monHeight), 0.4, 1);
+    s.monAura = makeAura(s.monHeight, { spread });
+    group.add(s.monAura);
+  }
 }
 
 // One ball, centred on its OWN origin (createBallObject sits a model's feet at y=0, which is wrong
@@ -1084,6 +1118,9 @@ function updateMon(dt) {
   s.monObj.position.set(s.monX, Math.abs(Math.sin(s.t * 3.2)) * s.monHeight * 0.05, z);
   s.monObj.rotation.y = lean;
   s.monObj.scale.setScalar(scale * s.monFit);
+  // Turned in the Pokemon's own local space, so the cloud keeps orbiting at a steady rate while
+  // the body leans and sidesteps under it rather than swinging with the lean.
+  spinAura(s.monAura, dt);
 }
 
 // True while an attack is actually swinging — a ball arriving in this window gets swatted.

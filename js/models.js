@@ -310,18 +310,49 @@ export function disposeObject(group) {
   group.parent?.remove(group);
 }
 
+// Multiply one instance's diffuse colours, to lift a model that comes out too dark under the
+// shared preview lighting rig.
+//
+// The materials HAVE to be cloned first. fitModel's .clone(true) shares materials with the entry
+// in the loader cache, so writing to them in place would tint every future instance of that model
+// — including, for Kecleon, the one standing on the blanket in the dungeon, which has its own warm
+// point light over it and is not too dark.
+//
+// Colour above 1.0 is legal in three.js and is exactly the right lever here: a Quest material's
+// colour MULTIPLIES its texture map, so 1.0 -> 1.3 lifts every palette pixel by 30% and keeps the
+// flat-voxel look intact. Raising the rig's lights instead would brighten every other view that
+// renders through modelstage with it.
+function brightenInstance(root, k) {
+  root.traverse(o => {
+    if (!o.isMesh || !o.material) return;
+    const many = Array.isArray(o.material);
+    const next = (many ? o.material : [o.material]).map(mm => {
+      if (!mm) return mm;
+      const c = mm.clone();
+      if (c.color) c.color.multiplyScalar(k);
+      return c;
+    });
+    o.material = many ? next : next[0];
+  });
+}
+
 // A rotating-preview helper for the starter-select / Pokedex / shop panels: loads the model at a
 // fixed display height into the given holder Group, clearing whatever was there.
 //
 // `explicitPath` bypasses the dex lookup, for the models that have no dex number to look up —
 // Kecleon in the shop is not in the Quest roster or POKEMON_CATALOG.
-export function setPreviewModel(holder, dex, height = 1.6, explicitPath = null) {
+//
+// `brighten` scales this instance's diffuse colours (see brightenInstance). Kecleon needs it: his
+// texture is a dark green and he stands alone in a small panel with no dungeon light on him, so
+// under the shared preview rig he reads as a silhouette rather than as a shopkeeper.
+export function setPreviewModel(holder, dex, height = 1.6, explicitPath = null, { brighten = 1 } = {}) {
   while (holder.children.length) holder.remove(holder.children[0]);
   const path = explicitPath || modelPathForDex(dex);
   const token = (holder.userData.token = (holder.userData.token || 0) + 1);
   return loadModelOrNull(path).then(model => {
     if (!model || holder.userData.token !== token) return null;
     const fitted = fitModel(model, height);
+    if (brighten !== 1) brightenInstance(fitted, brighten);
     holder.add(fitted);
     return fitted;
   });

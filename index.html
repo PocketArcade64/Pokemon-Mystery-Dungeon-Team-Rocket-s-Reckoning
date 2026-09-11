@@ -272,6 +272,11 @@
     margin: 0.7rem 0 0.2rem; color: var(--gold); text-shadow: 0 2px 0 rgba(0,0,0,0.5);
   }
   .starter-meta { text-align: center; color: var(--ink-dim); font-size: 1.04rem; margin-bottom: 12px; }
+  /* This slot now holds the selected starter's type icons and nothing else. They are the headline
+     fact about the Pokemon you are looking at, so they run bigger than the 15px badges on the three
+     cards below — those are a glance, this is the answer. */
+  .starter-meta .type-badges { gap: 6px; }
+  .starter-meta .type-badges img { height: 24px; }
   /* Detail appended after the name. Its own line, regular weight, no shadow. */
   .meta-inline {
     display: block; font-size: 1.014rem; font-weight: 400;
@@ -652,10 +657,20 @@
     font-size: 0.988rem; font-weight: 700;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
-  .shop-row .shop-stock { font-size: 0.754rem; color: var(--ink-dim); }
-  .shop-row .shop-price {
-    flex: 0 0 auto; font-size: 1.105rem; font-weight: 700; color: var(--gold);
+  /* What the item DOES, the line the shop is actually shopped by.
+     Deliberately NOT clipped or line-clamped: a half-sentence with an ellipsis in it explains
+     nothing, which is the one thing this line exists to do. Every shopDesc in items.js is sized to
+     fit on ONE line here — the longest measures 210px against the 226px a row gives it at a 375px
+     viewport, the narrowest phone — and a longer one, or a narrower screen, wraps to a second line
+     and takes the row from 68px to 84px, which five rows of stock still fit without scrolling. */
+  .shop-row .shop-desc { font-size: 0.754rem; line-height: 1.35; color: var(--ink-dim); }
+  /* Price over stock, right-aligned: both are facts about the offer rather than about the item, so
+     they share a column and the item's own two lines get the full width of the row. */
+  .shop-row .shop-meta {
+    flex: 0 0 auto; display: flex; flex-direction: column; align-items: flex-end; gap: 1px;
   }
+  .shop-row .shop-price { font-size: 1.105rem; font-weight: 700; color: var(--gold); }
+  .shop-row .shop-stock { font-size: 0.715rem; color: var(--ink-dim); white-space: nowrap; }
   /* Priced out rather than sold out: the number is the reason the row is dead, so it says so. */
   .shop-row .shop-price.short { color: var(--danger); }
 
@@ -879,6 +894,31 @@
   }
   .fighter.fainted canvas { opacity: 0.25; filter: saturate(0.1); }
   .fighter.hurt canvas { filter: brightness(2.2) saturate(0.4); }
+
+  /* ---- The attacker's lunge ----
+     Combat is automatic, so the ONLY thing that said a blow had been struck was what happened to
+     the Pokemon taking it (the flash, the floating number). Nothing said who threw it. The step in
+     is that: it starts before the damage number lands, so the eye is already on the attacker.
+
+     Percentages, not pixels, so it scales with the fighter (min(40vw, 176px)). Each side moves
+     toward the other across the field's diagonal — the foe is top-right, you are bottom-left — and
+     the recovery is slower than the step out, which is what keeps it a lunge rather than a twitch.
+     `both` holds the end frame until the class comes off, so there is no snap back at 100%. */
+  @keyframes lunge-you {
+    0%   { transform: translate(0, 0); }
+    30%  { transform: translate(9%, -7%); }
+    100% { transform: translate(0, 0); }
+  }
+  @keyframes lunge-foe {
+    0%   { transform: translate(0, 0); }
+    30%  { transform: translate(-9%, 7%); }
+    100% { transform: translate(0, 0); }
+  }
+  .fighter.you.lunge { animation: lunge-you 260ms cubic-bezier(0.2, 0.8, 0.3, 1) both; }
+  .fighter.foe.lunge { animation: lunge-foe 260ms cubic-bezier(0.2, 0.8, 0.3, 1) both; }
+  /* A fainted Pokemon is lying down and does not lunge; nor does anything, once the fight is over
+     and the models are dimmed out. */
+  .fighter.fainted.lunge { animation: none; }
 
   /* The Grunt / Giovanni sprite, standing behind their Pokemon. Hidden for wild encounters. */
   #foe-trainer {
