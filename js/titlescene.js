@@ -205,33 +205,20 @@ const SPIKES = [
 ];
 
 const ROCK_MAX = 96;        // instance budget for every slab, wall block and boulder
+const FLOOR_MAX = 1500;     // and for the floor's 1x1 tiles, at the widest frustum going
 let rockMesh = null, spikeMesh = null, glow = null, floorMesh = null;
 
 function buildStatic() {
   const col = new THREE.Color();
 
-  // Floor: the dungeon's own checkerboard, which is what ties the title to the game it opens. It
-  // is the one thing NOT rebuilt per aspect — it is a plain grid, wide and deep enough to run past
-  // the walls at every framing, so there is nothing about it to re-fit.
-  const cells = [];
-  for (let gx = -15; gx <= 15; gx++) {
-    for (let gz = -10; gz <= 5; gz++) cells.push([gx, gz]);
-  }
+  // Floor: the dungeon's own checkerboard, which is what ties the title to the game it opens.
   floorMesh = new THREE.InstancedMesh(
     new THREE.BoxGeometry(1, 0.3, 1),
     new THREE.MeshStandardMaterial({ roughness: 0.9 }),
-    cells.length,
+    FLOOR_MAX,
   );
   floorMesh.receiveShadow = true;
-  const m4 = new THREE.Matrix4();
-  cells.forEach(([gx, gz], i) => {
-    m4.makeTranslation(gx, -0.15, gz);
-    floorMesh.setMatrixAt(i, m4);
-    const jitter = 0.9 + (Math.abs(gx * 5 + gz * 11) % 4) * 0.05;
-    floorMesh.setColorAt(i, col.setHex((gx + gz) % 2 ? PAL.floorA : PAL.floorB).multiplyScalar(jitter));
-  });
-  floorMesh.instanceMatrix.needsUpdate = true;
-  if (floorMesh.instanceColor) floorMesh.instanceColor.needsUpdate = true;
+  floorMesh.count = 0;                 // rebuild() lays the tiles out for the current frustum
   titleScene.add(floorMesh);
 
   rockMesh = new THREE.InstancedMesh(
@@ -282,6 +269,31 @@ function rebuild(wide) {
   const col = new THREE.Color();
   const p = new THREE.Vector3(), s = new THREE.Vector3(), q = new THREE.Quaternion();
   let n = 0;
+
+  // The floor is tiled to cover the FRUSTUM, not to a fixed extent, and that is what stops the
+  // scene ending in mid-air. The camera sits several units back from the trio — up to nine — so a
+  // grid that stopped at z = +5 ran out IN FRONT of the camera on a tall screen, and the bottom
+  // band of the frame showed bare background past the edge of the world. It now runs from behind
+  // the back wall to past the camera, and out to the frame's own edge at the deepest point it can
+  // be seen. `1.06` is that edge with a tile of margin; anything beyond it is off-screen anyway.
+  const camZ = titleCamera.position.z;
+  const zFront = Math.ceil(camZ + 1.5);
+  const zBack = Math.floor(BACK_Z - 1);
+  const xHalf = Math.min(34, Math.ceil(Math.abs(xAt(1.06, BACK_Z))) + 1);
+  let f = 0;
+  for (let gx = -xHalf; gx <= xHalf && f < FLOOR_MAX; gx++) {
+    for (let gz = zBack; gz <= zFront && f < FLOOR_MAX; gz++) {
+      m4.makeTranslation(gx, -0.15, gz);
+      floorMesh.setMatrixAt(f, m4);
+      const jitter = 0.9 + (Math.abs(gx * 5 + gz * 11) % 4) * 0.05;
+      floorMesh.setColorAt(f, col.setHex((gx + gz) % 2 ? PAL.floorA : PAL.floorB).multiplyScalar(jitter));
+      f++;
+    }
+  }
+  floorMesh.count = f;
+  floorMesh.instanceMatrix.needsUpdate = true;
+  if (floorMesh.instanceColor) floorMesh.instanceColor.needsUpdate = true;
+  floorMesh.computeBoundingSphere();
 
   // One box, from its inner NDC edge (signed) out past the frame in the `side` direction — or only
   // `width` world units, for a free-standing pillar. `y` is the centre height, floor by default.
@@ -360,10 +372,13 @@ function rebuild(wide) {
     n++;
   }
 
-  // Ceiling: one slab, wide enough to reach the walls at the back of the chamber. Its front edge
-  // is above the top of the frame, so it only comes into view with distance.
+  // Ceiling: one slab, wide enough to reach the walls at the back of the chamber and — for the
+  // same reason as the floor — running from the back wall to past the camera, so the top of the
+  // frame is rock rather than the end of the world. Its front edge is above the top of the frame,
+  // so it only comes into view with distance.
   const ceilW = Math.abs(xAt(OUTER_NDC, BACK_Z)) * 2.2;
-  p.set(0, 3.0, -3.0); s.set(ceilW, 0.7, 13.6);
+  const ceilFront = camZ + 2, ceilBack = BACK_Z - 1;
+  p.set(0, 3.0, (ceilFront + ceilBack) / 2); s.set(ceilW, 0.7, ceilFront - ceilBack);
   m4.compose(p, q, s);
   if (n < ROCK_MAX) {
     rockMesh.setMatrixAt(n, m4);

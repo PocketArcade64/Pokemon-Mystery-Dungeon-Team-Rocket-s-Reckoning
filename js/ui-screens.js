@@ -476,7 +476,25 @@ export function renderGlossary() {
 }
 
 // ---- Settings ---------------------------------------------------------------------------------
+// ---- Settings ---------------------------------------------------------------------------------
+// The word that has to be typed before Erase Records will fire. Compared case-insensitively and
+// trimmed: this is a "are you sure you meant this" gate, not a secret, and an autocapitalised R
+// off a phone keyboard should not be a wrong answer.
+const RESET_WORD = 'reset';
+
+function setResetGate(armed) {
+  $('reset-gate').hidden = !armed;
+  $('btn-reset-stats').hidden = armed;
+  if (!armed) {
+    $('reset-pass').value = '';
+    $('btn-reset-go').disabled = true;
+  }
+}
+
 export function renderSettings() {
+  // Always opens closed: leaving the screen with the field half-filled and coming back to a live
+  // Erase button is exactly the accident this gate exists to prevent.
+  setResetGate(false);
   $('vol-music').value = Math.round(state.settings.music * 100);
   $('vol-sfx').value = Math.round(state.settings.sfx * 100);
   $('vol-music-val').textContent = Math.round(state.settings.music * 100) + '%';
@@ -1205,11 +1223,25 @@ export function bindUI() {
 
   click('ctrl-joystick', () => { sfx('select'); uiHooks.setControls('joystick'); renderSettings(); });
   click('ctrl-tap', () => { sfx('select'); uiHooks.setControls('tap'); renderSettings(); });
-  click('btn-reset-stats', () => {
+  // Erase Records is gated on typing the word `reset`. The check is re-run on the Erase press
+  // itself and not left to the button's `disabled` state, so the password is what performs the
+  // erase rather than just what reveals the button.
+  const passOk = () => $('reset-pass').value.trim().toLowerCase() === RESET_WORD;
+  click('btn-reset-stats', () => { sfx('select'); setResetGate(true); $('reset-pass').focus(); });
+  click('btn-reset-cancel', () => { sfx('back'); setResetGate(false); });
+  $('reset-pass').addEventListener('input', () => { $('btn-reset-go').disabled = !passOk(); });
+  $('reset-pass').addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    if (passOk()) $('btn-reset-go').click();
+  });
+  click('btn-reset-go', () => {
+    if (!passOk()) return;
     resetStats();
     saveStats();
     sfx('back');
     toast('Lifetime record erased.');
+    setResetGate(false);
     renderSettings();
   });
 

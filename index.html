@@ -248,24 +248,30 @@
   }
   /* The title screen is the ONE sheet that does not carry `.sheet`'s flat gradient: behind it the
      main canvas is drawing the cave diorama (js/titlescene.js), and a 94%-opaque gradient would
-     hide it completely. What replaces it is a scrim — dark at the top where the logo sits and dark
-     again at the bottom under the button column, clear through the middle third where the six
-     Pokemon stand. So the logo and the buttons keep the contrast they had, and the part of the
-     scene that matters is never covered. The stops are in % of the screen's height and are tied to
-     the two things that bracket it: the logo tops out at 30vh and the button column is ~30vh tall,
-     which is why the clear window is 34%-62%.
+     hide it completely. What replaces it is a light scrim, weighted to the top and bottom edges
+     where the logo and the button column sit.
 
-     Any change to the logo size or the button column has to come back to these stops. */
+     KEEP IT LIGHT. The first version ran to 0.90 at the top and 0.88 at the bottom and, even
+     though the cave was drawing behind it the whole way down, that read as the scene being CUT
+     OFF — a window that ended mid-title-card at the top and just under the Pokedex button at the
+     bottom, with flat colour beyond. The cave carries all the way to both edges of the screen, and
+     the job of this gradient is only to take the contrast off it. The logo is a bright PNG with
+     its own drop shadow and the buttons are gradient fills with a hard drop, so both hold up
+     against lit rock at these values; nothing here needs to hide the scene to stay readable.
+
+     The stops are in % of the screen's height, tied to the two things that bracket the scene: the
+     logo tops out at 30vh and the button column is ~30vh tall, so the middle 31%-60% is left
+     completely clear. Any change to either has to come back to these stops. */
   #screen-title.sheet {
     background: linear-gradient(180deg,
-      rgba(9,7,16,0.90) 0%,
-      rgba(9,7,16,0.72) 16%,
-      rgba(9,7,16,0.26) 27%,
-      rgba(9,7,16,0.00) 34%,
-      rgba(9,7,16,0.00) 62%,
-      rgba(9,7,16,0.34) 72%,
-      rgba(10,7,18,0.72) 84%,
-      rgba(10,7,18,0.88) 100%);
+      rgba(9,7,16,0.52) 0%,
+      rgba(9,7,16,0.30) 13%,
+      rgba(9,7,16,0.10) 23%,
+      rgba(9,7,16,0.00) 31%,
+      rgba(9,7,16,0.00) 60%,
+      rgba(9,7,16,0.16) 71%,
+      rgba(10,7,18,0.38) 86%,
+      rgba(10,7,18,0.50) 100%);
   }
   .logo-wrap { text-align: center; margin-bottom: 0.3rem; }
   /* A downscaled high-res PNG, so it has to opt out of the global pixelated rendering or its
@@ -989,6 +995,30 @@
     box-shadow: 0 4px 0 var(--silver-dark);
   }
   .setting-note { font-size: 0.975rem; color: var(--ink-dim); margin-top: 10px; }
+  .setting-note b { color: var(--gold); font-weight: 700; }
+
+  /* The password gate on Erase Records. Text entry is the ONLY place this game takes typing, and
+     the field follows the slider's lead rather than the buttons': sliders are the one control
+     Rumble Run keeps chunky and outlined, and a recessed dark well with a hard fence is what an
+     input is the same argument for. `font-size` must stay at or above 16px — iOS zooms the whole
+     page in on focusing anything smaller, and this page does not scroll back. */
+  #reset-gate { margin-top: 12px; }
+  #reset-gate .setting-note { margin-top: 0; margin-bottom: 10px; }
+  #reset-pass {
+    -webkit-appearance: none; appearance: none;
+    display: block; width: 100%; max-width: 220px;
+    margin-bottom: 10px;
+    padding: 0.55rem 0.7rem;
+    font: inherit; font-size: 1.105rem; color: var(--ink);
+    background: var(--void-2);
+    border: var(--px) solid var(--outline);
+    border-radius: 0; outline: none;
+    /* The page is user-select:none and touch-action:none everywhere; a field has to opt back in or
+       it cannot be tapped into or corrected on a phone. */
+    -webkit-user-select: text; user-select: text; touch-action: manipulation;
+  }
+  #reset-pass::placeholder { color: var(--ink-dim); opacity: 0.55; }
+  #reset-pass:focus { border-color: var(--gold); }
 
   /* ---- Pokedex / Stats ---------------------------------------------------------------------- */
   #dex-preview {
@@ -1616,9 +1646,23 @@
           your Pokemon paths toward it. Keyboard arrows / WASD always work as well.
         </div>
       </div>
+      <!-- Erasing is guarded by a typed password rather than by a second press. It is the only
+           irreversible button in Settings, and unlike Abandon Run (which arms on a first press)
+           there is nothing on screen to warn you what you are about to lose — so it asks you to
+           write the word out. -->
       <div class="setting">
         <label>Lifetime record</label>
         <button class="btn danger small" id="btn-reset-stats">Erase Records</button>
+        <div id="reset-gate" hidden>
+          <div class="setting-note">Type <b>reset</b> to confirm. This cannot be undone.</div>
+          <input id="reset-pass" type="text" placeholder="reset" maxlength="16"
+                 autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
+                 aria-label="Type reset to confirm erasing your lifetime record" />
+          <div class="btn-row">
+            <button class="btn danger small" id="btn-reset-go" disabled>Erase</button>
+            <button class="btn secondary small" id="btn-reset-cancel">Cancel</button>
+          </div>
+        </div>
         <div class="setting-note">Clears your lifetime record only. It never affected gameplay.</div>
       </div>
     </div>

@@ -208,7 +208,15 @@ export function createInput({ canvas, joystickRoot, joystickKnob, camera }) {
   });
 
   // ---- Keyboard ----
+  // Typing in a field is not steering: WASD are movement keys, so without this the `reset`
+  // password in Settings would hold 's' and 'e' down in the movement set, and the arrow keys
+  // could not be used to correct the text because of the preventDefault below.
+  const isTyping = (e) => {
+    const t = e.target;
+    return !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
+  };
   window.addEventListener('keydown', (e) => {
+    if (isTyping(e)) return;
     keys.add(e.key.toLowerCase());
     if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(e.key.toLowerCase())) e.preventDefault();
   });
