@@ -374,9 +374,13 @@
        range between them is the give the card needs to absorb the one rule-line Endless has more of
        than Classic, which is what keeps the two footers on the same line. */
     flex: 1 1 auto;
-    min-height: 96px; max-height: 144px;
+    /* The floor has to clear the FIGURES, which are sized off the well's WIDTH (72% of it) while
+       living inside its height: at 320px that is an 81px figure, so a 96px well with 15px of
+       padding left it 0.4px of headroom and any rounding clipped his hat. 104px is the same sum
+       with room in it. */
+    min-height: 104px; max-height: 152px;
     margin-bottom: 10px;
-    display: flex; align-items: flex-end; justify-content: center;
+    display: flex; align-items: center; justify-content: center;
     padding: 8px 4px 7px;
     background:
       radial-gradient(ellipse 70% 58% at 50% 34%, rgba(167,107,255,0.16), rgba(0,0,0,0) 70%),
@@ -387,13 +391,17 @@
   }
   /* The cast stands on one baseline — `align-items: flex-end` — so the Grunts' feet line up with
      Giovanni's however tall each sprite happens to be. */
-  /* The gap is 2px and the three widths below add to 95%, not 100%: the cast has to FIT inside the
-     well, and at 128px of well the difference between "adds to 100%" and "adds to 95% plus two 2px
-     gaps" is whether the outer Grunts get clipped by the stage's `overflow: hidden`. Check
-     `.mc-cast`'s scrollWidth against its clientWidth after changing any of the three. */
+  /* Classic has one figure and centres it; Endless overlaps three — see below.
+     The band is exactly as tall as the figures in it rather than filling the well: the figures are
+     72% of the well's WIDTH and square, so `aspect-ratio: 1 / 0.72` gives a box the same height
+     they are. That plus `align-items: center` on the stage is what keeps the cast in the MIDDLE of
+     the well. It matters because the two wells are not always the same height — the stage is the
+     card's elastic element, so a card with no saved run has a taller one — and a group pinned to
+     the bottom of a tall well reads as having sunk in it. */
   .mode-card .mc-cast {
+    position: relative;
     display: flex; align-items: flex-end; justify-content: center;
-    gap: 2px; width: 100%; height: 100%;
+    width: 100%; height: auto; aspect-ratio: 1 / 0.72;
   }
   /* Figures are sized as a FRACTION OF THE STAGE, not in pixels. The card is 139px wide at 320px
      and ~165px at 375px, and no fixed pixel width fits three figures in both. The sprites are 64x64
@@ -411,17 +419,34 @@
   /* Mirrored, so the two Grunts face inward at Giovanni instead of both looking the same way. There
      is one Grunt sprite in the folder, and two unmirrored copies read as one image pasted twice. */
   .mode-card .mc-figure img.flip { transform: scaleX(-1); }
-  /* Giovanni: in front, and the biggest thing on the screen.
-     Two sizes, because the two cards are not the same picture. On Endless he shares a ~126px well
-     with two Grunts, and 46 + 27 + 27 is the whole of it — the group is WIDTH-BOUND and none of the
-     three can grow. On Classic he is alone in that well, so holding him to the group's size would
-     leave him adrift in it; at 72% he fills the stage the way a single figure should. */
-  .mode-card .mc-figure.boss { width: 45%; }
-  .mode-card[data-mode="classic"] .mc-figure.boss { width: 72%; }
-  /* The Grunts: half his width and dropped a few pixels, which reads as standing further back.
-     Dimmed very slightly for the same reason — he is the one in focus. */
-  .mode-card .mc-figure.minion { width: 25%; margin-bottom: 3px; }
-  .mode-card .mc-figure.minion img { filter: drop-shadow(0 2px 3px rgba(0,0,0,0.6)) brightness(0.88); }
+  /* ONE SIZE FOR EVERY FIGURE, on both cards: Giovanni on Classic and all three on Endless are the
+     same 72% of the well. Which means Endless's three cannot sit side by side — 3 x 72% is 216% of
+     the space there is — so they OVERLAP, with the Grunts behind him. That is the whole reason the
+     rules below exist.
+     What makes it work is that the sprites are mostly empty. Both are 64x64 with the character
+     occupying only the middle 38-40px of the width — 12-13px of transparent margin on each side,
+     measured off the PNGs' own alpha — so two boxes can overlap by well over half their width and
+     still leave each character clearly visible. Everything below is therefore positioned by the
+     INK, not by the box. Giovanni's ink centre sits 47.7% across his box and the Grunt's 50.8%
+     across theirs, and the offsets fall out of that:
+       boss    left = 50% - 47.7% x 72%                 = 15.7%   (his ink lands dead centre)
+       minions ink centres +/- 31.25% of the well from centre,
+               so left = 18.75% - 50.8% x 72% = -17.8%, and 81.25% - 36.6% = 44.7%
+     All three are percentages of the well, so the arrangement holds at every screen width. At that
+     spacing each Grunt shows about two thirds of itself past Giovanni's shoulder and loses a few
+     pixels of its outer edge to the frame, which is what "further back" looks like when nothing is
+     allowed to be smaller. Re-derive these if the sprites are ever redrawn with different margins.
+     */
+  .mode-card .mc-figure { width: 72%; }
+  /* Endless only: out of the flex flow and stacked, Giovanni in front. */
+  .mode-card[data-mode="endless"] .mc-figure { position: absolute; bottom: 0; }
+  .mode-card[data-mode="endless"] .mc-figure.boss { left: 15.7%; z-index: 2; }
+  .mode-card[data-mode="endless"] .mc-figure.minion { z-index: 1; }
+  .mode-card[data-mode="endless"] .mc-figure.minion:first-child { left: -17.8%; }
+  .mode-card[data-mode="endless"] .mc-figure.minion:last-child  { left: 44.7%; }
+  /* Same size and the same baseline as Giovanni, so depth is carried by WHO IS IN FRONT rather than
+     by who is smaller. The slight dim is the last of it — he is the one in focus. */
+  .mode-card .mc-figure.minion img { filter: drop-shadow(0 2px 3px rgba(0,0,0,0.6)) brightness(0.86); }
   /* The ellipse each figure stands on. Same radial-gradient-plus-border-radius:50% device as
      `.fighter .platform` on the battle screen, which is how this game grounds a figure. */
   .mode-card .mc-platform {
@@ -493,10 +518,17 @@
   /* Stacked rather than side by side: two buttons across a 144px card give a 68px button, and
      "Continue" does not fit in 68px at .btn.small's size. Continue is first, since it is the
      primary action whenever it is there at all.
-     No `margin-top: auto` any more — .mc-stage above is the flex-grow element now, so the card's
-     spare height goes into the artwork instead of into a gap here. */
+     `margin-top: auto` is back, and it is the SECOND sink for the card's spare height, not the
+     first. Flexbox resolves flex-grow before it resolves auto margins, so .mc-stage above takes the
+     slack up to its max-height and only what is left over after that lands here. In the cases where
+     the two cards are close in height — both with a saved run, or both without — the stage swallows
+     the difference and this margin is 0. It only opens up when the difference is far bigger than
+     the stage's range: ONE mode having a saved run and the other not, which is ~190px of saved-run
+     strip. Without it that 190px pooled under the shorter card's record footer instead, which both
+     misaligned the two footers and left dead space below one of them — strictly worse than a gap
+     above the buttons. */
   .mode-card .mc-actions {
-    padding-top: 11px;
+    margin-top: auto; padding-top: 11px;
     display: flex; flex-direction: column; gap: 7px;
   }
   .mode-card .mc-actions .btn { width: 100%; margin-bottom: 0; }
