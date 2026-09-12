@@ -311,13 +311,23 @@
     /* On a tablet or in landscape the cards would otherwise stretch to half a very wide screen and
        leave two columns of mostly empty panel. */
     max-width: 720px; margin: 0 auto;
-    /* FILL THE SCREEN. The cards are only as tall as their content, and on an 812px phone that left
-       ~200px of dead screen between them and the Back button. `min-height: 100%` against the scroll
-       pane makes the grid take the whole pane and stretch both cards into it (a grid's default
-       `align-items: stretch` does the rest), so each card's buttons and record land at the bottom
-       of the screen where a thumb is, rather than floating in the middle of it. The pane still
-       scrolls when the content genuinely does not fit — min-height, not height. */
+    /* The grid BOX fills the pane, and the row of cards is centred inside it. Two things are going
+       on and they are easy to confuse:
+         - `min-height: 100%` makes the grid as tall as the scroll pane, so there is no dead band
+           left under the cards for the screen to end on.
+         - `align-content: center` centres the ROW in that box, so the cards themselves stay the
+           height their content wants and whatever height the phone has spare is split evenly above
+           and below them.
+       The alternative — stretching the cards into the full height — was tried and is worse. The
+       cards' natural height is ~430px against a 674px pane, and something has to absorb the other
+       240px: stretched, it collects inside the card as one void after the text, or it inflates the
+       stage into a 150x390 well with a 60px sprite adrift in the middle of it. Both read as a bug.
+       Split above and below a correctly proportioned card, it reads as margin.
+       `align-items` is left at its `stretch` default, so both cards still match the taller one's
+       height and their record footers stay on the same line. The pane still scrolls when the
+       content genuinely does not fit — min-height, not height. */
     min-height: 100%;
+    align-content: center;
   }
   .mode-card {
     display: flex; flex-direction: column; min-width: 0;
@@ -327,13 +337,99 @@
     box-shadow: 0 4px 0 rgba(0,0,0,0.35);
     padding: 0.7rem 0.6rem 0.6rem;
   }
+  /* CENTRED, both of them. The buttons and the record footer below were already centred, so
+     left-aligning the name and tagline gave one card two competing alignments. */
   .mode-card .mc-name {
     font-weight: 700; font-size: 1.092rem; color: var(--gold);
     text-shadow: 0 2px 0 rgba(0,0,0,0.5); line-height: 1.35;
+    text-align: center;
   }
   .mode-card .mc-tagline {
     color: var(--ink); font-size: 0.845rem; line-height: 1.45;
     margin: 3px 0 9px; opacity: 0.85;
+    text-align: center;
+  }
+
+  /* ---- The card's stage --------------------------------------------------------------------
+     Who you are going down there to fight, standing in a lit well under the card's title: Giovanni
+     alone on Classic, Giovanni flanked by a Grunt on each side on Endless.
+
+     It is also the card's SPRING. `flex: 1 1 auto` makes it the element that absorbs every bit of
+     slack the card has — the cards stretch to fill the screen, and before this the slack all
+     collected as one ~120px dead gap between the last line of text and the buttons (`margin-top:
+     auto` on .mc-actions, now gone). The art lives in that space instead. `min-height` keeps the
+     well from collapsing on a card that has a six-strong saved run pushing everything else down,
+     and `max-height` keeps Giovanni from ballooning on a card that has nothing.
+
+     The well itself is the treatment #starter-preview uses for the starter models — a dark
+     translucent ground with one hairline edge — so the art reads as framed artwork rather than as
+     an image sitting loose on the panel. The radial highlight is a stage light: it puts the
+     brightest part of the well behind the figures' heads, which is what lifts them off the back of
+     it. */
+  .mode-card .mc-stage {
+    /* Grows, but within a NEAR-SQUARE range. The well is as wide as the card's content box (~120px
+       at 320px, ~149px at 375px) and the sprites are square, so a well much taller than it is wide
+       can only ever hold a small figure adrift in a large empty box. The floor is what makes the
+       well a stage rather than a strip; the ceiling is what stops it becoming that empty box. The
+       range between them is the give the card needs to absorb the one rule-line Endless has more of
+       than Classic, which is what keeps the two footers on the same line. */
+    flex: 1 1 auto;
+    min-height: 96px; max-height: 144px;
+    margin-bottom: 10px;
+    display: flex; align-items: flex-end; justify-content: center;
+    padding: 8px 4px 7px;
+    background:
+      radial-gradient(ellipse 70% 58% at 50% 34%, rgba(167,107,255,0.16), rgba(0,0,0,0) 70%),
+      rgba(0,0,0,0.30);
+    border: 1px solid var(--edge);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  /* The cast stands on one baseline — `align-items: flex-end` — so the Grunts' feet line up with
+     Giovanni's however tall each sprite happens to be. */
+  /* The gap is 2px and the three widths below add to 95%, not 100%: the cast has to FIT inside the
+     well, and at 128px of well the difference between "adds to 100%" and "adds to 95% plus two 2px
+     gaps" is whether the outer Grunts get clipped by the stage's `overflow: hidden`. Check
+     `.mc-cast`'s scrollWidth against its clientWidth after changing any of the three. */
+  .mode-card .mc-cast {
+    display: flex; align-items: flex-end; justify-content: center;
+    gap: 2px; width: 100%; height: 100%;
+  }
+  /* Figures are sized as a FRACTION OF THE STAGE, not in pixels. The card is 139px wide at 320px
+     and ~165px at 375px, and no fixed pixel width fits three figures in both. The sprites are 64x64
+     and land at roughly 40-70px here — non-integer scaling, which is what this game already does
+     with the same sprite on the battle screen (min(21vw, 92px)) and with the 160px team portraits
+     at 40px; `image-rendering: pixelated` is what keeps the edges hard through it. */
+  .mode-card .mc-figure { position: relative; flex: 0 0 auto; }
+  .mode-card .mc-figure img {
+    display: block; width: 100%; height: auto;
+    image-rendering: pixelated;
+    position: relative; z-index: 1;
+    /* A hard-ish drop under the figure, same idea as the battle screen's trainer sprite. */
+    filter: drop-shadow(0 3px 4px rgba(0,0,0,0.6));
+  }
+  /* Mirrored, so the two Grunts face inward at Giovanni instead of both looking the same way. There
+     is one Grunt sprite in the folder, and two unmirrored copies read as one image pasted twice. */
+  .mode-card .mc-figure img.flip { transform: scaleX(-1); }
+  /* Giovanni: in front, and the biggest thing on the screen.
+     Two sizes, because the two cards are not the same picture. On Endless he shares a ~126px well
+     with two Grunts, and 46 + 27 + 27 is the whole of it — the group is WIDTH-BOUND and none of the
+     three can grow. On Classic he is alone in that well, so holding him to the group's size would
+     leave him adrift in it; at 72% he fills the stage the way a single figure should. */
+  .mode-card .mc-figure.boss { width: 45%; }
+  .mode-card[data-mode="classic"] .mc-figure.boss { width: 72%; }
+  /* The Grunts: half his width and dropped a few pixels, which reads as standing further back.
+     Dimmed very slightly for the same reason — he is the one in focus. */
+  .mode-card .mc-figure.minion { width: 25%; margin-bottom: 3px; }
+  .mode-card .mc-figure.minion img { filter: drop-shadow(0 2px 3px rgba(0,0,0,0.6)) brightness(0.88); }
+  /* The ellipse each figure stands on. Same radial-gradient-plus-border-radius:50% device as
+     `.fighter .platform` on the battle screen, which is how this game grounds a figure. */
+  .mode-card .mc-platform {
+    position: absolute; left: -6%; right: -6%; bottom: 1px;
+    height: 9px;
+    background: radial-gradient(ellipse at 50% 50%, rgba(0,0,0,0.55), rgba(0,0,0,0) 72%);
+    border-radius: 50%;
+    z-index: 0;
   }
   /* The rules. A real list rather than a paragraph, because each line is one rule and the player is
      comparing the two cards line by line. The marker is a gold dash drawn by ::before — a UA disc
@@ -396,9 +492,11 @@
      lower than Classic's — side by side, that reads as a mistake. */
   /* Stacked rather than side by side: two buttons across a 144px card give a 68px button, and
      "Continue" does not fit in 68px at .btn.small's size. Continue is first, since it is the
-     primary action whenever it is there at all. */
+     primary action whenever it is there at all.
+     No `margin-top: auto` any more — .mc-stage above is the flex-grow element now, so the card's
+     spare height goes into the artwork instead of into a gap here. */
   .mode-card .mc-actions {
-    margin-top: auto; padding-top: 12px;
+    padding-top: 11px;
     display: flex; flex-direction: column; gap: 7px;
   }
   .mode-card .mc-actions .btn { width: 100%; margin-bottom: 0; }
@@ -435,6 +533,19 @@
     .mode-card .ms-saved-head { font-size: 0.845rem; }
     .mode-card .ms-saved-foot { font-size: 0.78rem; }
     .mode-card .mcs-label { font-size: 0.78rem; }
+    /* The stage gets the extra width too. A taller well at 375px is what lets Giovanni come up to
+       around his sprite's native 64px instead of being shrunk to fit a short band. */
+    /* The range has to stay WIDE ENOUGH to absorb every difference between the two cards, because
+       the stage is the only elastic thing either of them has. `align-items: stretch` forces both to
+       the taller one's height, and whatever the shorter card's stage cannot take up pools under its
+       record footer instead — which shows as the two footers sitting on different lines.
+       The worst case is 320px with a saved run in both modes: Endless's saved-run footer wraps to a
+       third line where Classic's takes two, ~17px, and that is what the give has to cover. 48px of
+       range is comfortable; 30px was not, and was off by 6px. Re-check both footers' `bottom` after
+       changing any copy on this card. */
+    .mode-card .mc-stage { min-height: 116px; max-height: 148px; padding: 10px 6px 8px; }
+
+    .mode-card .mc-platform { height: 11px; }
   }
 
   /* ---- Starter select ----------------------------------------------------------------------- */
@@ -1939,7 +2050,7 @@
        number all live in MODE_CARDS there, so this is only the frame they go in.
   -->
   <div class="screen sheet" id="screen-mode">
-    <h2 class="screen-title">Choose a run</h2>
+    <h2 class="screen-title">Choose a Mode</h2>
     <!-- No sub-line here. "Two ways down, each with its own run and record" is what the two cards
          below already say by being two cards with a run and a record on each. -->
     <div class="scroll" style="min-height:0">

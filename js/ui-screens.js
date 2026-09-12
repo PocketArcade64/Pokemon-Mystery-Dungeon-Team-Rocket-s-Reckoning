@@ -240,14 +240,34 @@ export function updatePreviews(dt, mode) {
   }
 }
 
+// ---- The Team Rocket trainer sprites -----------------------------------------------------------
+// Shared by the battle screen (the trainer standing behind the foe's Pokemon) and by the mode-select
+// cards' stages, which is why they are declared up here rather than down in the battle section
+// where they used to be — MODE_CARDS below needs them at module-evaluation time.
+const TRAINER_SPRITE_DIR = 'assets/sprites/';
+// A grunt's sprite is drawn at random per battle. There is one grunt sprite in the folder today;
+// this is a list so that dropping more in and naming them here is the whole change. The mode card
+// takes [0] rather than a random one: the card is not an encounter, and a stage that reshuffled
+// itself every time the screen opened would read as a glitch.
+const GRUNT_SPRITES = ['Team Rocket Grunt.png'];
+const GRUNT_SPRITE = GRUNT_SPRITES[0];
+const GIOVANNI_SPRITE = 'Giovanni.png';
+
 // ---- Mode select -------------------------------------------------------------------------------
 // Two cards, Classic on the left and Endless on the right, each one: a name, what the mode
 // actually does, whatever saved run is waiting in it, and a headline number along the bottom.
 //
-// The rules are spelled out rather than summarised. Endless is not "Classic but longer" — the
-// floor order, the boss cadence and Kecleon's schedule are all different, and a player who reads
-// "endless" and nothing else will not know that Giovanni is coming on floor 5 either. Each line is
-// one rule, in the order they are met.
+// Each rule is one thing the PLAYER CAN ACT ON, and nothing else. The cards used to carry the
+// floor-generation rules as well — Kecleon's guaranteed stall, "no repeat within 4 floors", "all 11
+// dungeons before a repeat" — and those are level design: still enforced, still documented in
+// HANDOFF.md, but not something anyone has to hold in their head to play. What is left is the shape
+// of the run (how far down it goes), the rhythm of it (who is on the stairs, and how often), and
+// how it ends. Three lines each, which is also what balances the two cards' heights.
+//
+// `cast` is who stands on the card's stage: bare filenames out of assets/sprites/, which
+// renderModeSelect prefixes with TRAINER_SPRITE_DIR. `boss` is the figure in front and `minion` the
+// ones flanking him, and `flip` mirrors a sprite so the pair face inward — there is exactly one
+// Grunt sprite in the folder, and two unmirrored copies read as the same image pasted twice.
 //
 // The headline number is what the mode is measured in, and they are different questions on purpose:
 // Classic can be WON, so it counts wins; Endless cannot, so it records how deep you got.
@@ -256,28 +276,58 @@ const MODE_CARDS = [
     runMode: 'classic',
     name: 'Classic',
     tagline: 'The five-floor descent.',
+    // Giovanni alone: he is the whole point of a Classic run, and one figure centred on the card
+    // is the strongest thing that space can hold.
+    cast: [{ sprite: GIOVANNI_SPRITE, role: 'boss' }],
+    // One line each in the ~126px column — no wrapping. Three single lines per card is what keeps
+    // the two cards the same height and leaves the stage above them as the tallest thing on the
+    // card, which is the point of the layout.
     rules: [
       '5 floors, all different',
       'A Grunt on every stairwell',
-      'Giovanni on B5F - beat him to win',
+      'Giovanni on B5F to win',
     ],
   },
   {
     runMode: 'endless',
     name: 'Endless',
-    tagline: 'Down until your team falls.',
-    // Five rules against Classic's three, and the cards stretch to the taller one — so each of
-    // these is written to fit ONE line of the ~140px column wherever it can. Two of them wrapping
-    // was what pushed the card past the screen and made it scroll.
+    // One line at 320px, which matters: a two-line tagline here against Classic's one line is 20px
+    // of difference the stage below has to absorb to keep the two records on the same line.
+    tagline: 'Until your team falls.',
+    // Giovanni and his goons, over and over — which is what the mode is. He keeps the middle and
+    // the Grunts flank him at half his width, so the group reads as one picture with him in front.
+    cast: [
+      { sprite: GRUNT_SPRITE, role: 'minion' },
+      { sprite: GIOVANNI_SPRITE, role: 'boss' },
+      { sprite: GRUNT_SPRITE, role: 'minion', flip: true },
+    ],
     rules: [
-      'No last floor - go till you wipe',
-      'All 11 dungeons before a repeat',
-      'No repeat within 4 floors',
+      'No last floor',
       'Giovanni every 5th floor',
-      'Kecleon before each Giovanni',
+      'Harder the deeper you go',
     ],
   },
 ];
+
+// The card's stage: the mode's cast standing in a lit well, and the card's hero image. It is also
+// what fills the card — `.mc-stage` is the flex-grow element, so it absorbs every bit of slack the
+// card has, which is what stopped the cards' spare height collecting as one dead gap above the
+// buttons.
+//
+// Each figure gets its own shadow ellipse rather than one shared pool, because the flanking Grunts
+// stand further back than Giovanni does and a single pool under all three would flatten that.
+// `alt=""` throughout: these are decoration, and the rules underneath already say who is down
+// there in words.
+function modeStage(cast = []) {
+  if (!cast.length) return '';
+  const figures = cast.map(c => `
+      <div class="mc-figure ${c.role}">
+        <div class="mc-platform"></div>
+        <img src="${encodeURI(TRAINER_SPRITE_DIR + c.sprite)}" alt="" draggable="false"
+             class="${c.flip ? 'flip' : ''}" />
+      </div>`).join('');
+  return `<div class="mc-stage"><div class="mc-cast">${figures}</div></div>`;
+}
 
 // The saved party, as a row of model portraits with the floor it was saved on. This is the whole
 // reason the card is the place the Continue offer lives rather than a button on the title screen:
@@ -318,6 +368,7 @@ export function renderModeSelect(saves = {}) {
     return `<div class="mode-card" data-mode="${card.runMode}">
       <div class="mc-name">${card.name}</div>
       <div class="mc-tagline">${card.tagline}</div>
+      ${modeStage(card.cast)}
       <ul class="mc-rules">${card.rules.map(r => `<li>${r}</li>`).join('')}</ul>
       ${saved ? savedTeamStrip(saved) : ''}
       <div class="mc-actions">${buttons}</div>
@@ -781,12 +832,6 @@ function selectDex(dex) {
 // Mainline Pokemon's screen. The two Pokemon on the field are live 3D in their own small canvases,
 // which is what makes the back view free: your side's holder is turned a half-turn, so the same
 // model that faces the camera on the foe's side faces away on yours.
-const TRAINER_SPRITE_DIR = 'assets/sprites/';
-// A grunt's sprite is drawn at random per battle. There is one grunt sprite in the folder today;
-// this is a list so that dropping more in and naming them here is the whole change.
-const GRUNT_SPRITES = ['Team Rocket Grunt.png'];
-const GIOVANNI_SPRITE = 'Giovanni.png';
-
 let foePreview = null, youPreview = null;
 // Which dex each side's canvas is currently showing, so a re-render only reloads on a real switch.
 let foeShownDex = null, youShownDex = null;
