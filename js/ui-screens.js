@@ -254,7 +254,7 @@ export function updatePreviews(dt, mode) {
 const MODE_CARDS = [
   {
     runMode: 'classic',
-    name: 'Classic Run',
+    name: 'Classic',
     tagline: 'The five-floor descent.',
     rules: [
       '5 floors, all different',
@@ -264,14 +264,17 @@ const MODE_CARDS = [
   },
   {
     runMode: 'endless',
-    name: 'Endless Run',
+    name: 'Endless',
     tagline: 'Down until your team falls.',
+    // Five rules against Classic's three, and the cards stretch to the taller one — so each of
+    // these is written to fit ONE line of the ~140px column wherever it can. Two of them wrapping
+    // was what pushed the card past the screen and made it scroll.
     rules: [
-      'No last floor - go until you wipe',
-      'All 11 dungeons before any repeat',
-      'Never the same one within 4 floors',
-      'Giovanni every 5th floor, forever',
-      'Kecleon guaranteed the floor before him',
+      'No last floor - go till you wipe',
+      'All 11 dungeons before a repeat',
+      'No repeat within 4 floors',
+      'Giovanni every 5th floor',
+      'Kecleon before each Giovanni',
     ],
   },
 ];
@@ -295,6 +298,7 @@ function savedTeamStrip(saved) {
   return `<div class="ms-saved">
     <div class="ms-saved-head">Run in progress &mdash; B${saved.floorNumber}F</div>
     <div class="ms-team">${cells}</div>
+    <div class="ms-saved-foot">${saved.party.length} on the team &middot; ${saved.caught} caught &middot; ${saved.coins} coins</div>
   </div>`;
 }
 
@@ -349,7 +353,9 @@ export function renderStarterSelect(offer, { runMode = 'classic' } = {}) {
   starterPick = null;
   // Which run this partner is being picked for. Two screens back is a long way to carry a mode
   // silently, and Endless and Classic want different Pokemon out of the same three.
-  $('starter-mode').textContent = runMode === 'endless' ? 'Endless Run' : 'Classic Run';
+  // Lowercase "run": the MODE is called Classic or Endless (that is what the cards say), and this
+  // line is prose about what is being started rather than a second heading for it.
+  $('starter-mode').textContent = runMode === 'endless' ? 'Endless run' : 'Classic run';
   const row = $('starter-row');
   row.innerHTML = offer.map((dex, i) => {
     const c = CATALOG_BY_DEX.get(dex);

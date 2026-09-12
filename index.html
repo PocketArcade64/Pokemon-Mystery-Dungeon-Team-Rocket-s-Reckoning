@@ -311,6 +311,13 @@
     /* On a tablet or in landscape the cards would otherwise stretch to half a very wide screen and
        leave two columns of mostly empty panel. */
     max-width: 720px; margin: 0 auto;
+    /* FILL THE SCREEN. The cards are only as tall as their content, and on an 812px phone that left
+       ~200px of dead screen between them and the Back button. `min-height: 100%` against the scroll
+       pane makes the grid take the whole pane and stretch both cards into it (a grid's default
+       `align-items: stretch` does the rest), so each card's buttons and record land at the bottom
+       of the screen where a thumb is, rather than floating in the middle of it. The pane still
+       scrolls when the content genuinely does not fit — min-height, not height. */
+    min-height: 100%;
   }
   .mode-card {
     display: flex; flex-direction: column; min-width: 0;
@@ -352,14 +359,25 @@
     font-weight: 700; font-size: 0.754rem; line-height: 1.4;
     color: var(--gold); margin-bottom: 6px;
   }
-  /* Up to six portraits on one line inside a card that is 144px wide at 320px, so they FLEX rather
-     than sit at a fixed size: `flex: 1 1 0` with a max, which fills the row at a party of two and
-     shrinks to fit at a party of six instead of wrapping onto a second line. Six at the narrowest
-     works out at ~17px each — small, but it is a glance telling you WHO is down there, and the
-     shapes and colours carry that at 17px even where a name would not fit at all. */
-  .mode-card .ms-team { display: flex; gap: 3px; }
+  /* What the run has to show for itself, under the team. Interpuncts rather than three separate
+     rows: at 125px of column it wraps to two or three lines anyway, and the dots keep it reading as
+     one summary rather than as a stat block competing with the card's own record below. */
+  .mode-card .ms-saved-foot {
+    margin-top: 6px; font-size: 0.715rem; line-height: 1.45; color: var(--ink-dim);
+  }
+  /* THREE ACROSS, wrapping — so a party of six is two rows of three rather than six slivers on one
+     line. This was a flex row of up to six, which at 320px put each portrait at ~17px: legible as a
+     coloured blob and nothing more. The cards now stretch to fill the screen, and this is the best
+     thing that space can buy — at three columns the same portraits come out ~40px, which is big
+     enough to actually recognise the Pokemon you left down there, which is the entire job of this
+     strip. Two rows of three is also the shape the switch screen's roomy team strip uses.
+     `grid-template-columns: repeat(3, 1fr)` rather than auto-fit: a party of two should show two
+     third-width portraits, not two half-width ones, so that the row lines up with a party of six. */
+  .mode-card .ms-team {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px;
+  }
   .mode-card .ms-mon {
-    flex: 1 1 0; min-width: 0; max-width: 34px;
+    min-width: 0;
     aspect-ratio: 1;
     background: rgba(0,0,0,0.30);
     border: 1px solid var(--edge);
@@ -402,6 +420,21 @@
     display: block; margin-top: 1px;
     font-weight: 700; font-size: 1.352rem; color: var(--gold);
     text-shadow: 0 2px 0 rgba(0,0,0,0.5);
+  }
+  /* From 370px up — every phone from the iPhone SE 2 onward — the cards have width to spare, so the
+     type goes up a step. The 0.78rem rules are what 320px costs, and they are the weakest thing on
+     this screen at any size above it; spending the reclaimed room on legibility is a better use of
+     it than more padding. The breakpoint is deliberately the same order as the pause screen's: it
+     is the width at which a phone stops being the 320px special case. */
+  @media (min-width: 370px) {
+    .mode-card { padding: 0.85rem 0.8rem 0.75rem; }
+    .mode-card .mc-name { font-size: 1.274rem; }
+    .mode-card .mc-tagline { font-size: 0.936rem; margin: 3px 0 11px; }
+    .mode-card .mc-rules { font-size: 0.871rem; line-height: 1.55; }
+    .mode-card .mc-rules li { padding-left: 13px; margin-bottom: 7px; }
+    .mode-card .ms-saved-head { font-size: 0.845rem; }
+    .mode-card .ms-saved-foot { font-size: 0.78rem; }
+    .mode-card .mcs-label { font-size: 0.78rem; }
   }
 
   /* ---- Starter select ----------------------------------------------------------------------- */
@@ -965,25 +998,29 @@
   /* The title needs nothing: "Paused" is one short word, so at full width and centred on the SCREEN
      it clears the button on its own.
 
-     The floor summary is centred on the SCREEN — no reserved column, no padding, dead centre under
-     "Paused" — and it clears Abandon Run by dropping BELOW the button's bottom edge rather than by
-     sitting beside it. Those are the only two ways to keep a centred line off a corner button, and
-     going down is the one that leaves the line actually centred: reserving the button's column is
-     what pushed the summary off-centre to the right.
-     The margin is built from --quit-h and --sat, the two things that decide where the button's
-     bottom edge is, so the clearance holds on a phone with a Dynamic Island as well as without one.
-     At 63px of button and no inset it comes out at 21px, putting the summary 10px under the button.
-     It costs the map panel ~33px of height, which is what the column-reserve layout was buying —
-     and is the price of a centred line.
-
-     Worth knowing if the wording ever grows back: the summary used to carry the party count
-     ("B5F - Rocket Warehouse - 6/6 standing", 232px) and needed a second layout below 360px
-     because of it. Floor and theme alone is ~138px, so this one rule covers every screen. */
+     The floor summary is centred on the SCREEN and sits TIGHT under the title — it takes
+     .screen-sub's own -4px default and adds nothing, so the header reads as one block instead of a
+     title with a stray line floating below it.
+     That works because a centred line and a corner button do not actually fight at phone widths.
+     Measured: the widest the summary can ever be is "B5F - Rocket Warehouse" at 142.5px, and the
+     button's right edge is at 104px, so a centred line clears it by 8px from 367px of viewport up
+     — every phone from the iPhone SE 2 onward. The pair only collide on a 320px screen, which is
+     the one case the media query below covers by dropping the summary under the button instead.
+     Re-measure the breakpoint if the theme names or the 1.105rem size change; `minVw = 2 * (104 +
+     gap + width / 2)` is the whole of it. */
   #screen-pause .screen-sub {
-    margin-top: calc(var(--sat) + var(--quit-h) - 42px);
     /* A touch more air under the summary than .screen-sub's default 12px: it separates the header
        block from the map, which is a real boundary. */
     margin-bottom: 16px;
+  }
+  /* 320px only. Below 367px a centred summary overlaps Abandon Run, so it goes under the button —
+     which is what the whole screen used to do, and it costs the map panel ~33px of height. The
+     margin is built from --quit-h and --sat, the two things that decide where the button's bottom
+     edge is, so the 10px clearance holds with a Dynamic Island as well as without one. */
+  @media (max-width: 366px) {
+    #screen-pause .screen-sub {
+      margin-top: calc(var(--sat) + var(--quit-h) - 42px);
+    }
   }
   /* Armed: one press in, one press from ending the run. Gold-edged and brighter, so the state is
      not carried by the label alone. */
@@ -1903,7 +1940,8 @@
   -->
   <div class="screen sheet" id="screen-mode">
     <h2 class="screen-title">Choose a run</h2>
-    <div class="screen-sub">Two ways down. Each keeps its own run and its own record.</div>
+    <!-- No sub-line here. "Two ways down, each with its own run and record" is what the two cards
+         below already say by being two cards with a run and a record on each. -->
     <div class="scroll" style="min-height:0">
       <div class="mode-cards" id="mode-cards"></div>
     </div>

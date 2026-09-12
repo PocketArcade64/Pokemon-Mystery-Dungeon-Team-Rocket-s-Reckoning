@@ -182,6 +182,11 @@ export function savedRunSummary(runMode) {
     runMode,
     floorNumber: Math.max(1, s.floorNumber | 0),
     party: party.map(m => ({ dex: m.dex, hp: Math.max(0, m.hp | 0) })),
+    // What the run has to show for itself so far. The card puts these under the team, because
+    // "B14F with these six, 9 caught and 240 coins in hand" is a fuller answer to "do I want to go
+    // back in" than the floor number alone — and all three are already in the snapshot.
+    caught: Math.max(0, s.caught | 0),
+    coins: Math.max(0, s.coins | 0),
     savedAt: s.savedAt || 0,
   };
 }
