@@ -3,7 +3,7 @@
 // The item effect functions in js/data/items.js never touch game state directly — they receive the
 // `itemApi` built here. Anything an item needs that lives outside inventory (warping the player,
 // revealing the map, showing a toast) comes through `hooks`, which main.js fills in on boot.
-import { state, MAX_PARTY, HP_BY_STAGE, makeMon, recordDex, saveStats } from './state.js';
+import { state, MAX_PARTY, HP_BY_STAGE, makeMon, recordDex, countDex, saveStats } from './state.js';
 import { ITEM_BY_ID, ITEMS, BALL_IDS, COIN_BY_ID } from './data/items.js';
 import { CATALOG_BY_DEX, DAMAGE_BY_STAGE } from './data/pokemon-catalog.js';
 
@@ -114,7 +114,7 @@ export function evolve(mon, targetDex = null) {
   mon.dmg = DAMAGE_BY_STAGE[c.stage];
   mon.maxHp = HP_BY_STAGE[c.stage];
   mon.hp = Math.max(1, Math.round(mon.maxHp * ratio));
-  recordDex('seenDex', c.dex);
+  countDex('seenCount', c.dex);
   saveStats();
   return c.name;
 }
@@ -125,8 +125,8 @@ export function addCaught(dex) {
   const mon = makeMon(dex);
   if (!mon) return { added: false, needsSwap: false };
   state.stats.pokemonCaught++;
-  recordDex('seenDex', dex);
-  recordDex('caughtDex', dex);
+  recordDex('seenDex', dex);            // already counted as seen for its floor; just registered
+  countDex('caughtCount', dex);
   saveStats();
   if (party().length < MAX_PARTY) {
     party().push(mon);

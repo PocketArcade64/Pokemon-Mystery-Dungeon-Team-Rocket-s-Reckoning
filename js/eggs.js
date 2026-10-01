@@ -18,7 +18,7 @@
 // hatched, so every egg is a new partner. That makes the pool FINITE, and the spawn gate below is
 // what keeps a found egg from ever being one the pool cannot fill. ("Legendary" is the catalog's
 // stage for the Mythicals too — Mew, Celebi, Jirachi, Arceus and the rest all carry it.)
-import { state, saveEggs, saveStats, recordDex, RUN_MODES } from './state.js';
+import { state, saveEggs, saveStats, countDex, RUN_MODES } from './state.js';
 import { POKEMON_CATALOG, CATALOG_BY_DEX } from './data/pokemon-catalog.js';
 import { hasModelForDex } from './models.js';
 
@@ -131,7 +131,7 @@ export function commitHatch(dex) {
   state.eggs.ready -= 1;
   state.eggs.hatched.push(dex);
   saveEggs();
-  recordDex('seenDex', dex);
+  countDex('seenCount', dex);
   saveStats();
   return true;
 }

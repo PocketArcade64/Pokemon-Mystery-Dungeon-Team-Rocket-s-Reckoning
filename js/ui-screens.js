@@ -5,17 +5,17 @@
 // function. Nothing here knows about the game loop — main.js registers callbacks on `uiHooks` and
 // this module only ever calls those.
 import * as THREE from 'three';
-import { state, MAX_PARTY, RUN_MODES, saveSettings, saveStats, resetStats, resetEggs } from './state.js';
+import { state, MAX_PARTY, RUN_MODES, saveSettings, saveStats, resetStats, resetEggs, dexCount } from './state.js';
 import { ITEMS, ITEM_BY_ID, BALL_IDS } from './data/items.js';
-import { CATALOG_BY_DEX } from './data/pokemon-catalog.js';
-import { typeIconPath } from './data/type-chart.js';
+import { CATALOG_BY_DEX, POKEMON_CATALOG, MYTHICAL_DEX } from './data/pokemon-catalog.js';
+import { typeIconPath, TYPES, TYPE_COLOR } from './data/type-chart.js';
 import { createModelView } from './modelstage.js';
 import { setPreviewModel, hasModelForDex, KECLEON_MODEL, EGG_MODEL } from './models.js';
 import { makeAura, spinAura, disposeAura } from './aura.js';
-import { portraitFor, preloadPortraits, portraitForPath, requestPathPortrait } from './portraits.js';
+import { portraitFor, preloadPortraits, requestPortrait, portraitForPath, requestPathPortrait } from './portraits.js';
 import * as inv from './inventory.js';
 import { sfx, applyVolumes } from './audio.js';
-import { eggsReady, hatchedDex, hatchProgress, rollHatch, commitHatch, debugAddEggs } from './eggs.js';
+import { eggsReady, hatchedDex, hatchProgress, rollHatch, commitHatch, debugAddEggs, EGG_POOL } from './eggs.js';
 import { initHatchView, beginHatch, tapHatchEgg, updateHatch, endHatch, HATCH_TAPS } from './hatch.js';
 
 const $ = (id) => document.getElementById(id);
@@ -749,7 +749,7 @@ function onHatchEmerged(dex) {
   $('hatch-types').innerHTML = c ? typeBadges(c.types) : '';
   $('hatch-tag').textContent = !hatchCommitted ? 'This egg had already been hatched.'
     : c?.stage === 'Legendary' ? 'Legendary!' : 'New partner!';
-  $('hatch-tag').classList.toggle('legend', hatchCommitted && c?.stage === 'Legendary');
+  $('hatch-tag').classList.toggle('is-legend', hatchCommitted && c?.stage === 'Legendary');
   $('hatch-note').classList.toggle('shown', hatchCommitted);
   $('hatch-reveal').classList.add('shown');
   const back = $('btn-hatch-back');
@@ -1245,58 +1245,203 @@ export function renderDebug() {
   });
 }
 
-// ---- Pokedex / Stats --------------------------------------------------------------------------
+// ---- Pokedex ------------------------------------------------------------------------------------
+// Pokemon Rumble Run's roster browser (Reference Material from Old Project/index.html, "Roster
+// browser"), rebuilt for this game: EVERY species with a model, in collapsible regional sections of
+// five-column dex boxes; the selected one turning in the preview above with its name, types and its
+// own counts; and Rumble's Filter toggle with its chip panel. What Rumble calls locked is here a
+// species you have never SEEN — a black silhouette, "???" and one ??? icon per type — because seeing
+// is how this game's Pokedex fills in.
+//
+// A box carries the same cues Rumble's does, mapped onto this game's record:
+//   the bar under it      gold once the species is OWNED (caught, or taken as a partner), grey before
+//   its border            GOLD once a run has been won with it in the party (asked for specifically)
+//   top-left              its dex number
+//   top-right             the egg, on every species an egg can hold — blacked out until one hatches it
+//   under the name        its type icons
+// Selection is a white outline, so it never hides the gold border it sits on.
+//
+// Thumbnails are the cached portraits (portraits.js), the same flat renders the bag uses, asked for
+// only as a box scrolls into view: nearly 400 boxes asking at once would load every model in the
+// game into memory just to open the screen.
+
+// Rumble's QUEST_REGIONS: national dex ranges, Kanto through Paldea.
+const DEX_REGIONS = [
+  { name: 'Kanto', from: 1, to: 151 }, { name: 'Johto', from: 152, to: 251 },
+  { name: 'Hoenn', from: 252, to: 386 }, { name: 'Sinnoh', from: 387, to: 493 },
+  { name: 'Unova', from: 494, to: 649 }, { name: 'Kalos', from: 650, to: 721 },
+  { name: 'Alola', from: 722, to: 809 }, { name: 'Galar', from: 810, to: 905 },
+  { name: 'Paldea', from: 906, to: 1025 },
+];
+const DEX_ALL = POKEMON_CATALOG.filter(c => hasModelForDex(c.dex)).sort((a, b) => a.dex - b.dex);
+const EGG_POOL_SET = new Set(EGG_POOL);
+const regionOpen = Object.fromEntries(DEX_REGIONS.map(r => [r.name, true]));
+
+// The filter, Rumble's set of chips made to fit this game: the 18 types (any of them), Legendary,
+// Mythical, and four of this game's own — Seen, Caught, Won (a run won with it) and Egg (every species
+// an egg can hold). No Mega chip: there is no Mega Evolution here. As in Rumble, the type and
+// Legendary / Mythical chips only ever surface species you have SEEN, since an unseen box hides those
+// facts; the Egg chip does not, because the egg on the box already says it either way.
+const dexFilter = { types: new Set(), legendary: false, mythical: false, seen: false, caught: false, won: false, egg: false };
+const DEX_FLAG_CHIPS = [
+  ['legendary', 'Legendary', '#8e24aa'], ['mythical', 'Mythical', '#d81b60'],
+  ['seen', 'Seen', '#455a64'], ['caught', 'Caught', '#2e7d32'],
+  ['won', 'Won', '#b8860b'], ['egg', 'Egg', '#3a9d6a'],
+];
+const dexFilterOn = () => dexFilter.types.size > 0
+  || DEX_FLAG_CHIPS.some(([k]) => dexFilter[k]);
+function clearDexFilter() {
+  dexFilter.types.clear();
+  for (const [k] of DEX_FLAG_CHIPS) dexFilter[k] = false;
+}
+
 let dexSelected = null;
+let dexSets = null;        // the record as Sets, rebuilt each time the screen is drawn
+let dexLazy = null;        // IntersectionObserver handing out portraits as boxes scroll into view
+const SILHOUETTE = new THREE.MeshStandardMaterial({ color: 0x0e1014, roughness: 1 });   // Rumble's blacken()
+
+function buildDexSets() {
+  const s = state.stats;
+  return {
+    seen: new Set(s.seenDex), caught: new Set(s.caughtDex), won: new Set(s.winnerDex),
+    hatched: new Set(state.eggs.hatched),
+  };
+}
+
+function dexMatches(c) {
+  const f = dexFilter, seen = dexSets.seen.has(c.dex);
+  if ((f.types.size || f.legendary || f.mythical || f.seen) && !seen) return false;
+  if (f.types.size && !c.types.some(t => f.types.has(t))) return false;
+  if (f.legendary && !(c.stage === 'Legendary' && !MYTHICAL_DEX.has(c.dex))) return false;
+  if (f.mythical && !(c.stage === 'Legendary' && MYTHICAL_DEX.has(c.dex))) return false;
+  if (f.caught && !dexSets.caught.has(c.dex)) return false;
+  if (f.won && !dexSets.won.has(c.dex)) return false;
+  if (f.egg && !EGG_POOL_SET.has(c.dex)) return false;
+  return true;
+}
+
+// One ??? icon per type, so an unseen box gives away how many types it has and nothing more —
+// Rumble's setUnknownTypeBadges.
+const unknownTypeIcons = (n) => Array.from({ length: n },
+  () => `<img src="${encodeURI(typeIconPath('?'))}" alt="?" />`).join('');
+
+function dexSlot(c) {
+  const seen = dexSets.seen.has(c.dex);
+  const cls = ['dex-slot', seen ? 'seen' : 'unseen',
+    dexSets.caught.has(c.dex) ? 'caught' : '', dexSets.won.has(c.dex) ? 'won' : '',
+    c.dex === dexSelected ? 'selected' : ''].filter(Boolean).join(' ');
+  const art = portraitFor(c.dex);
+  const thumb = art ? `<img class="thumb" src="${art}" alt="" draggable="false" />`
+    : `<span class="thumb" data-lazy="${c.dex}"></span>`;
+  const egg = EGG_POOL_SET.has(c.dex)
+    ? `<span class="egg-badge ${dexSets.hatched.has(c.dex) ? 'hatched' : 'unhatched'}">${eggIcon()}</span>` : '';
+  return `<button type="button" class="${cls}" data-dex="${c.dex}" aria-label="${seen ? c.name : 'Unknown Pokemon'}">
+    <span class="idx">${String(c.dex).padStart(3, '0')}</span>${egg}${thumb}
+    <span class="nm">${seen ? c.name : '???'}</span>
+    <span class="tp">${seen ? typeIcons(c.types) : unknownTypeIcons(c.types.length)}</span>
+  </button>`;
+}
+
+function renderDexRoster() {
+  const roster = $('dex-roster');
+  const filtering = dexFilterOn();
+  let html = '', anyMatch = false;
+  for (const region of DEX_REGIONS) {
+    const entries = DEX_ALL.filter(c => c.dex >= region.from && c.dex <= region.to);
+    if (!entries.length) continue;
+    const matches = filtering ? entries.filter(dexMatches) : entries;
+    const owned = entries.filter(c => dexSets.caught.has(c.dex)).length;
+    // While filtering, a region with matches is forced open so nothing hides in a collapsed section,
+    // and one without shows as a closed header only — Rumble's rule.
+    const open = filtering ? matches.length > 0 : regionOpen[region.name];
+    const count = filtering ? `${matches.length} match${matches.length === 1 ? '' : 'es'}` : `${owned}/${entries.length}`;
+    html += `<button type="button" class="region-head" data-region="${region.name}" aria-expanded="${open}">
+      <span>${open ? 'v' : '&gt;'}</span><span>${region.name}</span><span class="region-count">${count}</span></button>`;
+    if (!open) continue;
+    anyMatch = true;
+    html += `<div class="region-grid">${matches.map(dexSlot).join('')}</div>`;
+  }
+  if (filtering && !anyMatch) html += '<div class="region-none">No Pokemon match this filter.</div>';
+  roster.innerHTML = html;
+  observeDexThumbs();
+}
+
+// Hand each placeholder its portrait as it nears the visible part of the list, and swap it in place.
+function observeDexThumbs() {
+  const roster = $('dex-roster');
+  if (!dexLazy) {
+    dexLazy = new IntersectionObserver((seen) => {
+      for (const e of seen) {
+        if (!e.isIntersecting) continue;
+        const el = e.target;
+        dexLazy.unobserve(el);
+        requestPortrait(Number(el.dataset.lazy)).then(url => {
+          if (url && el.isConnected) el.outerHTML = `<img class="thumb" src="${url}" alt="" draggable="false" />`;
+        });
+      }
+    }, { root: roster, rootMargin: '240px 0px' });
+  }
+  dexLazy.disconnect();
+  roster.querySelectorAll('.thumb[data-lazy]').forEach(el => dexLazy.observe(el));
+}
+
+function renderDexFilterPanel() {
+  const chip = (key, label, bg, on) =>
+    `<button type="button" class="filter-chip${on ? ' on' : ''}" data-chip="${key}" style="background:${bg}">${label}</button>`;
+  const hex = (n) => '#' + n.toString(16).padStart(6, '0');
+  $('dex-filter').innerHTML = TYPES.map(t => chip('type:' + t, t, hex(TYPE_COLOR[t]), dexFilter.types.has(t))).join('')
+    + DEX_FLAG_CHIPS.map(([k, label, bg]) => chip(k, label, bg, dexFilter[k])).join('')
+    + '<button type="button" class="filter-chip clear" data-chip="clear">Clear</button>';
+  const btn = $('btn-dex-filter');
+  btn.classList.toggle('on', dexFilterOn());
+  btn.textContent = dexFilterOn() ? 'Filter *' : 'Filter';
+}
 
 export function renderDex() {
   ensurePreviews();
   const s = state.stats;
-  // Eight tiles: each mode's own headline figure is here, because a lifetime record that showed only
-  // some of them would be hiding part of the game. "Wins" is classic's; Easy's are counted apart.
-  $('dex-stats').innerHTML = [
-    ['Runs', s.runsPlayed], ['Wins', s.runsWon], ['Easy Wins', s.easyRunsWon || 0],
-    ['Best Floor', s.bestFloor ? 'B' + s.bestFloor + 'F' : '-'],
-    ['Endless Best', s.endlessBestFloor ? 'B' + s.endlessBestFloor + 'F' : '-'],
-    ['Giovanni KOs', s.giovanniDefeats], ['Grunts KOd', s.gruntsDefeated], ['Caught', s.pokemonCaught],
-  ].map(([label, val]) => `<div class="stat-tile"><div class="sv">${val}</div><div class="sl">${label}</div></div>`).join('');
+  dexSets = buildDexSets();
+  // The lifetime totals, all on one line: runs, wins (Classic and Easy together), Pokemon caught,
+  // Grunts beaten, and the deepest Endless floor.
+  $('dex-totals').innerHTML = [
+    ['Runs', s.runsPlayed | 0],
+    ['Wins', (s.runsWon | 0) + (s.easyRunsWon | 0)],
+    ['Caught', s.pokemonCaught | 0],
+    ['Grunts', s.gruntsDefeated | 0],
+    ['Endless', s.endlessBestFloor ? 'B' + s.endlessBestFloor + 'F' : '-'],
+  ].map(([l, v]) => `<div class="dex-total"><div class="v">${v}</div><div class="l">${l}</div></div>`).join('');
 
-  // Everything ever seen, with caught / run-winner picked out by border color.
-  const seen = s.seenDex.slice().sort((a, b) => a - b);
-  $('dex-empty').style.display = seen.length ? 'none' : 'block';
-  $('dex-grid').innerHTML = seen.map(dex => {
-    const c = CATALOG_BY_DEX.get(dex);
-    if (!c) return '';
-    const cls = s.winnerDex.includes(dex) ? 'winner' : s.caughtDex.includes(dex) ? 'caught' : '';
-    return `<div class="dex-cell ${cls} ${dexSelected === dex ? 'selected' : ''}" data-dex="${dex}">
-      <span>${c.name}</span></div>`;
-  }).join('');
-
-  $('dex-grid').querySelectorAll('.dex-cell').forEach(el => {
-    el.addEventListener('click', () => { sfx('select'); selectDex(Number(el.dataset.dex)); });
-  });
-
-  if (seen.length) selectDex(dexSelected && seen.includes(dexSelected) ? dexSelected : seen[0]);
-  else { $('dex-name').textContent = '-'; setPreviewModel(dexPreview.holder, -1); }
+  // Open on the last one looked at; failing that the first species seen; failing that the first
+  // species of all, as a silhouette.
+  if (!DEX_ALL.some(c => c.dex === dexSelected)) {
+    dexSelected = (DEX_ALL.find(c => dexSets.seen.has(c.dex)) || DEX_ALL[0])?.dex ?? null;
+  }
+  renderDexFilterPanel();
+  renderDexRoster();
+  if (dexSelected != null) selectDex(dexSelected);
 }
 
 function selectDex(dex) {
-  dexSelected = dex;
   const c = CATALOG_BY_DEX.get(dex);
-  const s = state.stats;
-  const tags = [];
-  if (s.winnerDex.includes(dex)) tags.push('won a run');
-  else if (s.caughtDex.includes(dex)) tags.push('caught');
-  else tags.push('seen');
-  // The trailing detail drops out of the display face: in Press Start 2P it is wide enough to
-  // wrap onto a second line and shove the stat grid down.
-  $('dex-name').innerHTML = `${c.name}<span class="meta-inline">${c.types.join('/')} - ${tags.join(', ')}</span>`;
-  $('dex-grid').querySelectorAll('.dex-cell').forEach(el => {
-    el.classList.toggle('selected', Number(el.dataset.dex) === dex);
-  });
+  if (!c) return;
+  dexSelected = dex;
+  const seen = dexSets.seen.has(dex);
+  $('dex-roster').querySelectorAll('.dex-slot.selected').forEach(el => el.classList.remove('selected'));
+  $('dex-roster').querySelector(`.dex-slot[data-dex="${dex}"]`)?.classList.add('selected');
+  $('dex-name').textContent = seen ? c.name : '???';
+  $('dex-types').innerHTML = seen ? typeIcons(c.types) : unknownTypeIcons(c.types.length);
+  // Rumble's "Runs / Highscore" line, as this game's three per-Pokemon counts.
+  $('dex-stats').innerHTML = seen
+    ? `<span>Seen <b>${dexCount('seenCount', dex)}</b></span><span>Caught <b>${dexCount('caughtCount', dex)}</b></span><span>Won <b>${dexCount('winCount', dex)}</b></span>`
+    : '<span>Not seen yet</span>';
   dexPreview.holder.rotation.y = 0;
   // 'contain', not 'height': the Pokedex shows every species, flat ones included, and under the
   // height fit Vibrava came out ~6 units across in a frame ~3.3 wide. Upright species are unchanged.
-  if (hasModelForDex(dex)) setPreviewModel(dexPreview.holder, dex, 1.5, null, { fit: 'contain' });
+  // An unseen one is blacked out the way Rumble blackens a locked model.
+  setPreviewModel(dexPreview.holder, dex, 1.5, null, { fit: 'contain' }).then(fitted => {
+    if (!fitted || seen) return;
+    fitted.traverse(o => { if (o.isMesh) o.material = SILHOUETTE; });
+  });
 }
 
 // ---- Battle -----------------------------------------------------------------------------------
@@ -2095,6 +2240,37 @@ export function bindUI() {
   click('btn-fc-end-exit', () => { sfx('back'); uiHooks.exitFreeCatch(); });
   click('btn-fc-new', () => { sfx('confirm'); uiHooks.freeCatchNewRoom(); });
   click('btn-dex-back', () => { sfx('back'); uiHooks.back(); });
+  // The Pokedex: one listener each on the roster, the chip panel and the Filter toggle, bound here
+  // once — the boxes and chips inside are rebuilt on every filter change.
+  $('dex-roster').addEventListener('click', (e) => {
+    const slot = e.target.closest('.dex-slot[data-dex]');
+    if (slot) { sfx('select'); selectDex(Number(slot.dataset.dex)); return; }
+    const head = e.target.closest('.region-head');
+    // While a filter is on, which sections are open is the filter's call, not the header's.
+    if (!head || dexFilterOn()) return;
+    sfx('select');
+    regionOpen[head.dataset.region] = !regionOpen[head.dataset.region];
+    renderDexRoster();
+  });
+  $('dex-filter').addEventListener('click', (e) => {
+    const chip = e.target.closest('[data-chip]');
+    if (!chip) return;
+    sfx('select');
+    const key = chip.dataset.chip;
+    if (key === 'clear') clearDexFilter();
+    else if (key.startsWith('type:')) {
+      const t = key.slice(5);
+      if (dexFilter.types.has(t)) dexFilter.types.delete(t); else dexFilter.types.add(t);
+    } else dexFilter[key] = !dexFilter[key];
+    renderDexFilterPanel();
+    renderDexRoster();
+  });
+  click('btn-dex-filter', () => {
+    const panel = $('dex-filter');
+    panel.hidden = !panel.hidden;
+    $('btn-dex-filter').setAttribute('aria-expanded', String(!panel.hidden));
+    sfx('select');
+  });
 
   const musicSlider = $('vol-music'), sfxSlider = $('vol-sfx');
   musicSlider.addEventListener('input', () => {

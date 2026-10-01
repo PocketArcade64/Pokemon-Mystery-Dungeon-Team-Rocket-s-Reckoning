@@ -39,6 +39,7 @@ export const MUSIC_LOOPS = {
   '127. Barren Valley.mp3':                  { loopStart: 18.0, loopEnd: 124.6614, loopLen: 106.6614 },
   '128. Dark Wasteland.mp3':                 { loopStart: 14.0, loopEnd: 115.6394, loopLen: 101.6394 },
   '135. Vast Ice Mountain Peak.mp3':         { loopStart: 0,    loopEnd: 115.5387, loopLen: 115.5387 },
+  'Welcome to the World of Pokémon.mp3':     { loopStart: 0.05, loopEnd: 91.4720,  loopLen: 91.4220 },
 };
 
 // Per-track notes, worth reading before changing any number above:
@@ -72,6 +73,14 @@ export const MUSIC_LOOPS = {
 //   "periodicity starts here" point exists anywhere in it. 103.6223 is trusted because two passes
 //   of it (207.2 s) match the file's content length almost exactly (fade begins at 211.5 s). If it
 //   ever sounds like it loops mid-phrase, this is the number to re-measure.
+//
+// Welcome to the World of Pokemon (the Hatch Eggs screens, added 2026-10-01) is the one file whose
+//   two passes ARE the same audio repeated, not two renders: one loop on, the WAVEFORM matches to
+//   0.0009 normalised mismatch at 48 kHz (the others do not match at the waveform level at all), and
+//   the envelope autocorrelation peaks at 0.985. Loop length 91.42203 s, refined 3 kHz -> 12 kHz ->
+//   48 kHz. There is no intro: sound starts 36 ms in, and from 0.05 s every 50 ms window matches its
+//   twin one loop later to 0.0001-0.0005 right up to 2 x loopLen, where the fade begins (~183 s of a
+//   193.35 s file). loopStart is 0.05 rather than 0 so the wrap skips that 36 ms of encoder silence.
 //
 // loopStart precision is +-0.5 s (the search grid), and that is deliberately biased LATE on the
 //   six tracks that have an intro. Landing slightly late is harmless — the loop is still exactly

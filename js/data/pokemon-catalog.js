@@ -399,6 +399,12 @@ export const CATALOG_BY_DEX = new Map(POKEMON_CATALOG.map(p => [p.dex, p]));
 // Dex numbers used for special encounter pools (design-doc requirements).
 export const STARTER_DEX = POKEMON_CATALOG.filter(p => p.starter).map(p => p.dex);
 export const LEGENDARY_DEX = POKEMON_CATALOG.filter(p => p.stage === "Legendary").map(p => p.dex);
+// The Mythicals among them. `stage` cannot tell the two apart — both are "Legendary", which is all
+// damage and HP need — so the Pokedex's Legendary / Mythical filters read this list instead. The
+// official Mythical list through Gen 9 (Pokemon Rumble Run's MYTHICAL_DEX, extended); entries the
+// catalog does not have are harmless.
+export const MYTHICAL_DEX = new Set([151, 251, 385, 386, 489, 490, 491, 492, 493, 494, 647, 648, 649,
+  719, 720, 721, 801, 802, 807, 808, 809, 893, 1025]);
 export const LEGENDARY_BIRD_DEX = [144, 145, 146]; // Articuno, Zapdos, Moltres
 export const MEWTWO_DEX = 150;
 export const FULLY_EVOLVED_DEX = POKEMON_CATALOG

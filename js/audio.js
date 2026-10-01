@@ -43,6 +43,10 @@ const TRACKS = {
   // Mystery Dungeon. It is also the only track that interrupts a floor theme without a fight, so
   // the floor theme's own `resume` is what puts you back where you were on the way out.
   kecleon:   { file: "25. Kecleon's Shop.mp3" },
+  // The Hatch Eggs box and the hatch screen. One key for both, so going from the box into a hatch
+  // and back carries straight on rather than restarting. Not `resume`: walking in from the title is
+  // arriving, and it starts from the top.
+  eggs:      { file: 'Welcome to the World of Pokémon.mp3' },
   // Floor themes, by theme id
   verdant:   { file: '29. Apple Woods.mp3', resume: true },              // Verdant Forest
   rocky:     { file: '90. Aegis Cave.mp3', resume: true },               // Rocky Cavern
@@ -300,6 +304,9 @@ export function musicForMode(mode, { themeId = null, battleKind = null } = {}) {
       return 'wild';                    // the minigame follows straight on from a wild encounter
     case 'shop':
       return 'kecleon';
+    case 'eggs':
+    case 'hatch':
+      return 'eggs';
     default:
       return currentKey;
   }

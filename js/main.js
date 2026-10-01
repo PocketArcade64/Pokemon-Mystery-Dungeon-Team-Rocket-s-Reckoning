@@ -1,7 +1,7 @@
 // State machine + the single requestAnimationFrame loop. This is the only module that knows the
 // whole game; everything else is a self-contained system it drives.
 import * as THREE from 'three';
-import { state, makeMon, saveSettings, saveStats, recordDex, FLOORS_PER_RUN, MAX_PARTY,
+import { state, makeMon, saveSettings, saveStats, recordDex, countDex, FLOORS_PER_RUN, MAX_PARTY,
          ENDLESS_BOSS_EVERY, RUN_MODES, isFiveFloorMode, saveRun, clearSave,
          savedRunSummary } from './state.js';
 import { renderer, scene, camera, canvas, followCamera, resetCameraFollow, onViewportChange } from './three-setup.js';
@@ -223,8 +223,8 @@ function beginRun(starterDex, runMode = pendingRunMode) {
   // placeholder blocks resolve.
   preloadPickupModels();
   state.stats.runsPlayed++;
-  recordDex('seenDex', starterDex);
-  recordDex('caughtDex', starterDex);   // your partner counts as one you have had
+  countDex('seenCount', starterDex);
+  recordDex('caughtDex', starterDex);   // your partner counts as one you have had (but not a catch)
   saveStats();
   enterFloor(0);
 }
@@ -414,8 +414,9 @@ function enterFloor(index) {
   syncPlayerModel();
   revealAround(floor, player.x, player.z, 7);
 
-  // Everything that wanders this floor counts as "seen" for the lifetime Pokedex.
-  for (const w of floor.wilds) recordDex('seenDex', w.dex);
+  // Everything that wanders this floor counts as "seen" for the lifetime Pokedex — once per SPECIES
+  // per floor, so four Rattata on one floor are one sighting, not four.
+  for (const dex of new Set(floor.wilds.map(w => w.dex))) countDex('seenCount', dex);
   // Depth records, and they are kept PER MODE because they answer different questions. `bestFloor`
   // is classic's and stops at 5 — which is also what it has always meant, since classic was the
   // only mode when it was written, so existing saved records carry over unchanged. Letting Endless
@@ -487,7 +488,8 @@ function winRun() {
   // marker is about the Pokemon, not the mode, so both count toward it.
   if (run.runMode === 'easy') state.stats.easyRunsWon = (state.stats.easyRunsWon || 0) + 1;
   else state.stats.runsWon++;
-  for (const m of inv.partyAlive()) recordDex('winnerDex', m.dex);
+  // Once per species per run: two Pidgey in the winning party is still one run won with Pidgey.
+  for (const dex of new Set(inv.partyAlive().map(m => m.dex))) countDex('winCount', dex);
   saveStats();
   // The run is over, so its eggs are ready to hatch, and there is nothing left to come back to.
   const eggs = bankRunEggs(run);
@@ -549,7 +551,10 @@ function startBattle(kind, wild = null) {
   else if (kind === 'grunt') { enemies = generateGruntTeam(run.floorIndex + 1); title = 'Team Rocket Grunt'; }
   else { enemies = wildEnemyTeam(wild.dex, run.floorIndex + 1, wild.aggressive); title = `Wild ${CATALOG_BY_DEX.get(wild.dex).name}`; }
 
-  for (const e of enemies) recordDex('seenDex', e.dex);
+  // A Team Rocket team is a sighting of each species in it. A wild was already counted when its
+  // floor was entered, so bumping into it only makes sure it is registered.
+  if (kind === 'wild') for (const e of enemies) recordDex('seenDex', e.dex);
+  else for (const dex of new Set(enemies.map(e => e.dex))) countDex('seenCount', dex);
   saveStats();
 
   battleCtx = { kind, wild };
@@ -1536,11 +1541,12 @@ Object.assign(uiHooks, {
     syncPlayerModel();
     setMode('playing');
   },
-  // Eggs, off the title screen. Both screens keep the title's own track (musicForMode has nothing
-  // for them, so whatever is playing carries on), and neither touches a run: hatching is only ever
-  // done between runs, which is the point of an egg being banked when its run ends.
+  // Eggs, off the title screen. Both screens play their own track (Welcome to the World of Pokemon,
+  // `eggs` in audio.js), and neither touches a run: hatching is only ever done between runs, which
+  // is the point of an egg being banked when its run ends. Leaving gives the decoded track back —
+  // the title has its own, and the egg screens are a short visit.
   openEggs: () => setMode('eggs'),
-  closeEggs: () => setMode('title'),
+  closeEggs: () => { setMode('title'); releaseMusic('eggs'); },
   openHatch: () => setMode('hatch'),
   closeHatch: () => setMode('eggs'),
   // Play Again goes back to the mode CARDS rather than straight to starter select. The run that

@@ -88,13 +88,38 @@ const DEFAULT_STATS = {
   seenDex: [],      // every species encountered anywhere
   caughtDex: [],    // every species successfully caught
   winnerDex: [],    // species that were in the party for a Giovanni win
+  // How MANY times, per species (dex -> count), for the Pokedex's per-Pokemon line. Added 2026-10-01,
+  // after the three sets above, so a record from before then has a species in a set with no count —
+  // dexCount() reads that as 1 rather than 0. What each one counts:
+  //   seenCount    once per FLOOR it wanders (not once per copy), once per Team Rocket battle it is
+  //                sent into, and once each time it is your partner, evolves into being, or hatches.
+  //                A wild you bump into was already counted for its floor, so the encounter is not
+  //                counted again.
+  //   caughtCount  catches in the catch minigame. A partner you started with is OWNED (it is in
+  //                caughtDex) but was not caught, so it does not count here.
+  //   winCount     runs won with it standing in the party — once per run, however many you had.
+  seenCount: {},
+  caughtCount: {},
+  winCount: {},
 };
+
+// Every array and object in the stats is copied, never shared with DEFAULT_STATS: a shallow spread
+// alone left a first-time player's lists BEING the defaults' lists, so every species recorded was
+// also written into DEFAULT_STATS.
+function freshStats(saved = {}) {
+  const s = { ...DEFAULT_STATS, ...saved };
+  for (const k of ['seenDex', 'caughtDex', 'winnerDex']) s[k] = Array.isArray(s[k]) ? s[k].slice() : [];
+  for (const k of ['seenCount', 'caughtCount', 'winCount']) {
+    s[k] = s[k] && typeof s[k] === 'object' && !Array.isArray(s[k]) ? { ...s[k] } : {};
+  }
+  return s;
+}
 
 function loadStats() {
   try {
     const raw = localStorage.getItem(STATS_KEY);
-    return raw ? { ...DEFAULT_STATS, ...JSON.parse(raw) } : { ...DEFAULT_STATS };
-  } catch { return { ...DEFAULT_STATS }; }
+    return freshStats(raw ? JSON.parse(raw) : {});
+  } catch { return freshStats(); }
 }
 
 export function saveStats() {
@@ -241,7 +266,7 @@ export const state = {
 };
 
 export function resetStats() {
-  state.stats = { ...DEFAULT_STATS, seenDex: [], caughtDex: [], winnerDex: [] };
+  state.stats = freshStats();
   saveStats();
 }
 
@@ -266,4 +291,23 @@ export function recordDex(listName, dex) {
   if (!list || list.includes(dex)) return;
   list.push(dex);
   list.sort((a, b) => a - b);
+}
+
+// The per-species counters (see seenCount / caughtCount / winCount above), each paired with the set
+// it implies — counting a sighting also registers the species as seen, and so on — so a caller
+// cannot bump a count without the Pokedex knowing the species at all.
+const COUNT_SET = { seenCount: 'seenDex', caughtCount: 'caughtDex', winCount: 'winnerDex' };
+
+export function countDex(countName, dex) {
+  const counts = state.stats[countName];
+  if (!counts || dex == null) return;
+  counts[dex] = (counts[dex] | 0) + 1;
+  recordDex(COUNT_SET[countName], dex);
+}
+
+// What the Pokedex shows. A species in the set with no count is one recorded before the counts
+// existed: it has happened at least once, so it reads 1, never 0.
+export function dexCount(countName, dex) {
+  const n = state.stats[countName]?.[dex] | 0;
+  return n > 0 ? n : (state.stats[COUNT_SET[countName]]?.includes(dex) ? 1 : 0);
 }

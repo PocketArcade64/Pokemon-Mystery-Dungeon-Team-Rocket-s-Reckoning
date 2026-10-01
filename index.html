@@ -754,8 +754,9 @@
   }
   .fc-end-sub { color: var(--ink-dim); font-size: 0.975rem; margin: 3px 0 14px; }
   /* The haul: up to seven, four across. The Legendary, if it was caught, is edged in gold — as
-     `.is-legend`, NOT `.legend`: that name is already the Pokedex's colour key (a flex row in dim
-     ink), and it silently restyled this card into one, name and all. */
+     `.is-legend`, NOT `.legend`: that name was the old Pokedex's colour key (a flex row in dim
+     ink), and it silently restyled this card into one, name and all. That key is gone with the
+     Rumble Run rework, but keep `is-` prefixed names for this kind of flag regardless. */
   .fc-end-caught {
     display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 7px; margin-bottom: 16px;
   }
@@ -950,7 +951,9 @@
     font-weight: 700; font-size: 0.91rem; line-height: 1.4; letter-spacing: 1.5px; text-transform: uppercase;
     color: #a9e3ad; text-shadow: 0 2px 0 rgba(0,0,0,0.5);
   }
-  .hatch-tag.legend { color: var(--gold); }
+  /* `.is-legend`, as Free Catch's haul uses: a bare `.legend` once picked up the old Pokedex legend's
+     flex row, size and margins. */
+  .hatch-tag.is-legend { color: var(--gold); }
   .hatch-name {
     font-weight: 700; font-size: 1.69rem; line-height: 1.3; margin: 0.05rem 0 0.3rem;
     color: var(--gold); text-shadow: 0 2px 0 rgba(0,0,0,0.5);
@@ -1988,13 +1991,116 @@
   .debug-btns { flex: 0 0 auto; display: flex; gap: 6px; }
   .debug-btns .btn { margin-bottom: 0; padding: 0.3rem 0.55rem; }
 
-  /* ---- Pokedex / Stats ---------------------------------------------------------------------- */
+  /* ---- Pokedex: Pokemon Rumble Run's roster browser ------------------------------------------
+     Taken from the reference's own CSS (#preview-wrap, #preview-types, #preview-stats, .toggle-btn,
+     #filter-panel, .filter-chip, #roster-grid, .region-head, .region-grid, .slot) and kept as it is
+     there — including the square, outlined chips and section headers, which are how Rumble draws
+     those two things. See renderDex in js/ui-screens.js for what each cue on a box means. */
+  #screen-dex .screen-title { margin-bottom: 8px; }
+  /* The lifetime totals, five across on ONE line. Short labels, so even a 320px phone keeps them on
+     one row at a readable size. */
+  .dex-totals {
+    flex: 0 0 auto; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 5px;
+    margin-bottom: 8px;
+  }
+  .dex-total {
+    min-width: 0; text-align: center; padding: 0.3rem 2px 0.25rem;
+    background: rgba(255,255,255,0.07); border: 1px solid var(--edge); border-radius: 8px;
+  }
+  .dex-total .v {
+    font-weight: 700; font-size: 1.04rem; line-height: 1.25; color: var(--gold);
+    text-shadow: 0 2px 0 rgba(0,0,0,0.5); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .dex-total .l {
+    font-size: 0.6rem; line-height: 1.3; color: var(--ink-dim); text-transform: uppercase; letter-spacing: 0.5px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
   #dex-preview {
-    width: 100%; height: 24vh; min-height: 132px; display: block;
+    flex: 0 0 auto; width: 100%; height: 20vh; min-height: 110px; display: block;
     background: rgba(0,0,0,0.28);
     border: 1px solid var(--edge);
     border-radius: 12px;
   }
+  .dex-name {
+    flex: 0 0 auto; text-align: center; font-weight: 700; font-size: 1.3rem; line-height: 1.3;
+    margin-top: 4px; color: var(--gold); text-shadow: 0 2px 0 rgba(0,0,0,0.5);
+  }
+  /* Fixed heights, Rumble's rule: the boxes below must never shift between a seen Pokemon and an
+     unseen one. */
+  .dex-types { flex: 0 0 1.5rem; height: 1.5rem; display: flex; gap: 0.4rem; justify-content: center; align-items: center; }
+  .dex-types img { height: 22px; width: auto; display: block; image-rendering: pixelated; }
+  .dex-stats {
+    flex: 0 0 1.35rem; height: 1.35rem; display: flex; gap: 1.3rem; justify-content: center;
+    font-size: 0.9rem; white-space: nowrap; color: var(--ink);
+  }
+  .dex-stats b { color: var(--gold); }
+  .dex-toggles { flex: 0 0 auto; display: flex; justify-content: center; margin: 6px 0 8px; }
+  /* Rumble's .toggle-btn: silver, gold while a filter is on. */
+  .dex-filter-btn {
+    appearance: none; border: 0; font: inherit; font-weight: 700; font-size: 0.8rem; line-height: 1.4;
+    padding: 0.4rem 0.9rem; border-radius: 12px; cursor: pointer; color: #1a1d24;
+    background: linear-gradient(180deg, var(--silver), var(--silver-2)); box-shadow: 0 3px 0 var(--silver-dark);
+  }
+  .dex-filter-btn.on { background: linear-gradient(180deg, var(--gold-lt), var(--gold-mid)); box-shadow: 0 3px 0 var(--gold-dark); }
+  .dex-filter-btn:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--silver-dark); }
+  .dex-filter-panel {
+    flex: 0 0 auto; display: flex; flex-wrap: wrap; gap: 0.3rem; justify-content: center;
+    padding: 0.45rem; margin-bottom: 8px; background: rgba(0,0,0,0.28); border-radius: 10px;
+  }
+  .dex-filter-panel[hidden] { display: none; }
+  .filter-chip {
+    appearance: none; border: 0; font: inherit; cursor: pointer; min-width: 0;
+    font-weight: 700; font-size: 0.6rem; line-height: 1.4; text-transform: uppercase; letter-spacing: 0.5px;
+    color: #fff; padding: 0.3rem 0.5rem; border-radius: 0; opacity: 0.55;
+    box-shadow: inset 0 0 0 2px #14161c, 0 2px 0 rgba(0,0,0,0.4); text-shadow: 1px 1px 0 rgba(0,0,0,0.5);
+  }
+  .filter-chip.on { opacity: 1; box-shadow: inset 0 0 0 2px #ffd54f, 0 2px 0 rgba(0,0,0,0.4); }
+  .filter-chip.clear { background: #37414f !important; opacity: 1; }
+  /* The roster: a scrolling column of collapsible regions, each a five-column grid of boxes. */
+  .dex-roster {
+    min-height: 120px; display: flex; flex-direction: column; gap: 0.4rem; padding: 0.5rem;
+    background: rgba(0,0,0,0.28); border-radius: 12px; overflow-x: hidden;
+  }
+  .region-head {
+    appearance: none; border: 0; font: inherit; cursor: pointer; flex: 0 0 auto;
+    display: flex; align-items: center; gap: 0.6rem; width: 100%; min-width: 0; text-align: left;
+    font-weight: 700; font-size: 0.8rem; line-height: 1.4; padding: 0.45rem 0.7rem;
+    color: #ffd54f; background: #1c2130; border-radius: 0;
+    box-shadow: inset 0 0 0 2px #14161c, 0 3px 0 #0c0f18;
+  }
+  .region-head .region-count { margin-left: auto; color: #9aa1ad; font-size: 0.7rem; }
+  .region-grid { flex: 0 0 auto; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0.4rem; padding-bottom: 4px; }
+  .region-none { color: #9aa1ad; font-size: 0.8rem; text-align: center; padding: 0.8rem; }
+  .dex-slot {
+    appearance: none; font: inherit; color: #fff; cursor: pointer;
+    position: relative; min-width: 0; height: 100px; padding: 2px;
+    border: 2px solid transparent; border-radius: 6px;
+    background: rgba(255,255,255,0.07);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+    font-size: 0.6rem; overflow: hidden;
+    /* Rumble's "owned" bar: grey until the species is yours. */
+    box-shadow: 0 4px 0 #9aa1ad;
+  }
+  .dex-slot.caught { box-shadow: 0 4px 0 #b8860b; }
+  /* A run won with it in the party. */
+  .dex-slot.won { border-color: var(--gold); }
+  /* Never seen: no box behind it, a silhouette, ??? — Rumble's locked slot. */
+  .dex-slot.unseen { background: transparent; color: #6b7280; }
+  .dex-slot.selected { background: rgba(255,213,79,0.22); outline: 2px solid #ffffff; outline-offset: 1px; }
+  .dex-slot .idx { position: absolute; top: 2px; left: 4px; font-size: 0.5rem; line-height: 1.2; opacity: 0.5; letter-spacing: 0; }
+  .dex-slot .thumb { display: block; width: 55px; max-width: 86%; aspect-ratio: 1; height: auto; image-rendering: auto; }
+  .dex-slot.unseen .thumb { filter: brightness(0); }
+  .dex-slot .nm { line-height: 1.15; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dex-slot .tp { display: flex; gap: 1px; justify-content: center; max-width: 100%; }
+  .dex-slot .tp img { display: block; width: 23px; max-width: calc(50% - 1px); height: auto; image-rendering: pixelated; }
+  /* The egg, on every species an egg can hold: blacked out until one has hatched it. */
+  .dex-slot .egg-badge { position: absolute; top: 2px; right: 2px; width: 15px; height: 15px; }
+  .dex-slot .egg-badge img, .dex-slot .egg-badge svg { display: block; width: 100%; height: 100%; object-fit: contain; image-rendering: auto; }
+  /* A faint light rim on the blacked-out egg: black on an unseen box's near-black ground vanished. */
+  .dex-slot .egg-badge.unhatched img, .dex-slot .egg-badge.unhatched svg {
+    filter: brightness(0) drop-shadow(0 0 1px rgba(255,255,255,0.7));
+  }
+
   .stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 12px 0; }
   .stat-tile {
     background: rgba(255,255,255,0.07);
@@ -2007,29 +2113,6 @@
     line-height: 1.3; text-shadow: 0 2px 0 rgba(0,0,0,0.5);
   }
   .stat-tile .sl { font-size: 0.806rem; color: var(--ink-dim); text-transform: uppercase; letter-spacing: 1px; margin-top: 5px; }
-  /* FOUR across, not five: each cell holds a species NAME, and at five columns on a phone the
-     body size this UI uses ellipsised almost every one of them. */
-  .dex-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; padding: 2px 2px 6px; }
-  .dex-cell {
-    aspect-ratio: 1;
-    border: 2px solid transparent;
-    border-radius: 8px;
-    background: rgba(255,255,255,0.07);
-    box-shadow: 0 4px 0 rgba(255,255,255,0.10);
-    display: grid; place-items: center;
-    font-size: 0.806rem; text-align: center; padding: 3px; cursor: pointer; min-width: 0;
-    overflow: hidden;
-  }
-  /* The bar under each box reads as the "collected" cue, the way Rumble tints its dex slots. */
-  .dex-cell.caught { border-color: var(--teal); box-shadow: 0 4px 0 var(--teal-dark); }
-  .dex-cell.winner { border-color: var(--gold); background: rgba(255,213,79,0.22); box-shadow: 0 4px 0 var(--gold-dark); }
-  .dex-cell.selected { border-color: var(--gold-lt); background: rgba(255,213,79,0.3); }
-  .dex-cell span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; width: 100%; }
-  .legend { display: flex; gap: 10px; justify-content: center; font-size: 0.884rem; color: var(--ink-dim); margin: 10px 0; }
-  .legend i {
-    display: inline-block; width: 10px; height: 10px; margin-right: 4px; vertical-align: middle;
-    border-radius: 3px;
-  }
 
   /* ---- Battle overlay -------------------------------------------------------------------------
      The mainline Pokemon battle screen, laid out on its diagonal: the FOE is up and to the RIGHT
@@ -2838,20 +2921,23 @@
   </div>
 
   <!-- ============ POKEDEX / STATS ============ -->
+  <!-- Pokemon Rumble Run's roster browser, laid out the way it lays it out: the lifetime totals on
+       one line, the selected Pokemon's turnable model with its name, types and own counts under it,
+       the Filter toggle and its chip panel, then every species in collapsible regional sections of
+       five-column dex boxes. ui-screens.js renderDex fills all of it. -->
   <div class="screen sheet" id="screen-dex">
     <h2 class="screen-title">Pokedex</h2>
+    <div class="dex-totals" id="dex-totals"></div>
     <canvas id="dex-preview"></canvas>
-    <div class="starter-name" id="dex-name" style="font-size:16px;margin:12px 0 4px">-</div>
-    <div class="stat-grid" id="dex-stats"></div>
-    <div class="legend">
-      <span><i style="background:var(--teal)"></i>Caught</span>
-      <span><i style="background:var(--gold)"></i>Won With</span>
-      <span><i style="background:var(--edge)"></i>Seen</span>
+    <div class="dex-name" id="dex-name">-</div>
+    <div class="dex-types" id="dex-types"></div>
+    <div class="dex-stats" id="dex-stats"></div>
+    <div class="dex-toggles">
+      <button class="dex-filter-btn" id="btn-dex-filter" aria-expanded="false">Filter</button>
     </div>
-    <div class="scroll" style="min-height:0"><div class="dex-grid" id="dex-grid"></div>
-      <div class="empty-note" id="dex-empty" style="display:none">Nothing recorded yet. Finish a run - win or lose - and it shows up here.</div>
-    </div>
-    <button class="btn secondary" id="btn-dex-back" style="margin-top:14px">Back</button>
+    <div class="dex-filter-panel" id="dex-filter" hidden></div>
+    <div class="dex-roster scroll" id="dex-roster"></div>
+    <button class="btn secondary" id="btn-dex-back" style="margin-top:12px">Back</button>
   </div>
 
   <!-- ============ FREE CATCH ============
