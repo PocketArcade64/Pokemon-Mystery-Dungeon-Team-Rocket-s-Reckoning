@@ -128,7 +128,7 @@ ______________
 
 _____________
 
-On the title screen, Add an easy mode (place this option to the left of classic mode) with no shadow pokemon (the icon is just 1 team Rocket grunt pixel art sprite). Now that Choose a Mode screen will have horizontal scrolling - keep the same sizes of each card on that screen.
+✅ On the title screen, Add an easy mode (place this option to the left of classic mode) with no shadow pokemon (the icon is just 1 team Rocket grunt pixel art sprite). Now that Choose a Mode screen will have horizontal scrolling - keep the same sizes of each card on that screen.
 
 Add the egg sprite from Pokemon Quest and there is a 1/20 chance of finding an egg instead of any other item on the floor. (Max 1 egg per floor) When you are done with a run, you can hatch the eggs and the pokemon that emerges, you can now start the run with that pokemon. Only basic pokemon can be pulled from the eggs (no stage 1, not stage 2, but you can pull legendaries) On the starter select screen, on the top right there is an egg icon that opens a menu showing all the pokemon you have unlocked. 
 - Keep the start run button in the same position and add a new button “Hatch Eggs” below the Pokédex button - (shift down items and settings) while keeping all the buttons the same size
@@ -142,8 +142,8 @@ Please change the Pokédex to be exactly like Pokemon Rumble Run. Please just lo
 - Under each pokemon name, use their type icons PNGs
 - On the top right of each eligible pokemon to be caught from eggs have a png of the 3d egg sprite be blacked out if not unlocked yet or show the sprite if the pokemon has been hatched from an egg
 
-What happens for a split evolution line when I evolve? Are there any eligible pokemon that fit this edge case? Like eevee?
+✅ What happens for a split evolution line when I evolve? Are there any eligible pokemon that fit this edge case? Like eevee?
 
-Some models like Magikarp, Kabuto, and Vibrava are much larger than the others? Is this because the models scale based on x or y dimension and Magikarp, Kabuto, and Vibrava are flat pokemon? Is there a way to not make all the pokemon uniformly the same size but more in line with their real proportions while still being reasonable for this game?
+✅ Some models like Magikarp, Kabuto, and Vibrava are much larger than the others? Is this because the models scale based on x or y dimension and Magikarp, Kabuto, and Vibrava are flat pokemon? Is there a way to not make all the pokemon uniformly the same size but more in line with their real proportions while still being reasonable for this game?
 
-In Settings add a button for Free Catch Mode - there is a single screen that shows a dungeon room (randomly selected environment from the 11 possible) with 7 random pokemon walking around at different paces and movements (enable collision so the the pokemon do not clip through each other) and you have to tap them to initiate the pokemon catching mini game. You have 30 poke balls, 15 great balls, and 5 ultra balls. If you get the ice area, do not restrict the type of pokemon that spawn (any pokemon can spawn in any area). Make 1 legendary or mythical be guaranteed to be one of the 7 pokemon that spawn.
+In Settings add a button for Free Catch Mode - there is a single screen that shows a dungeon room (randomly selected environment from the 11 possible) with 7 random pokemon walking around at different paces and movements (enable collision so the the pokemon do not clip through each other) and you have to tap them to initiate the pokemon catching mini game. You have 30 poke balls, 15 great balls, and 5 ultra balls. If you get the ice area for example, do not restrict the type of pokemon that spawn (any pokemon can spawn in any area). Make 1 legendary or mythical be guaranteed to be one of the 7 pokemon that spawn.
