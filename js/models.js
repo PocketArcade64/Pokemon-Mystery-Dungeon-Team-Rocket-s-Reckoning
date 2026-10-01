@@ -184,6 +184,23 @@ const AUTHORED_SCALE_FIX = new Map([
   [907, 0.45],   // Floragato — lands between Sprigatito and Meowscarada, where it belongs
 ]);
 
+// Models authored FACING THE WRONG WAY. Every model is meant to face +Z at rotation 0 — straight at
+// a camera in front of it — and everything that turns a Pokemon to face something relies on that.
+// These face sideways instead, so they walked and stood sideways everywhere: found by rendering all
+// 386 from the front and then each suspect from all four sides; their faces only appear at +90
+// degrees, where Squirtle's appears at 0. The yaw is applied to the model BEFORE it is measured, so
+// the fit and the base-centring see the model the right way round.
+//
+// Checked and deliberately NOT here: Magikarp, Feebas, Dondozo and Luvdisc are fish, drawn nose-on
+// to +Z — narrow from the front, which looks odd in a still but is correct for something that swims
+// the way it is facing (Luvdisc's heart is its side profile, as in the games). Milotic, Dratini,
+// Dragonair and Kyurem looked suspect in the contact sheet and all show their faces at 0.
+const AUTHORED_YAW_FIX = new Map([
+  [98, Math.PI / 2],   // Krabby
+  [99, Math.PI / 2],   // Kingler — the same model family, the same fault
+  [337, Math.PI / 2],  // Lunatone — edge-on from the front; its crescent face is on the side
+]);
+
 // The 'world' scale, applied to the RAW model. Volume, not height, is what is measured: the
 // geometric mean of the three extents is an object's size however that size is distributed, so a
 // flat species cannot be inflated by being flat.
@@ -224,6 +241,7 @@ function fitModel(model, target, { strip = null, fit = 'height', dex = null, asp
   if (strip) {
     for (const child of [...m.children]) if (strip.test(child.name || '')) m.remove(child);
   }
+  if (AUTHORED_YAW_FIX.has(dex)) m.rotation.y = AUTHORED_YAW_FIX.get(dex);
   const info = recenterOnBase(m);
   const s = fit === 'world' ? worldScale(info, target, dex)
     : fit === 'contain' ? containScale(info, target, aspect)

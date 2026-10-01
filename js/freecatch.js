@@ -2,9 +2,10 @@
 // stake. Reached from Settings. Tap a Pokemon to open the catch minigame on it.
 //
 // This module owns the ROOM and everything that happens in it — building it, the seven wanderers,
-// how each of them moves, keeping them from walking through one another, the fixed camera that frames
-// the whole room on one screen, and turning a tap into "which Pokemon". The catch itself is the same
-// catch.js minigame a run uses; main.js starts it and routes its result back here.
+// how each of them moves, keeping them from walking through one another, the camera (the dungeon's own
+// angle, turned by a drag) that frames the whole room on one screen, and turning a tap into "which
+// Pokemon". The catch itself is the same catch.js minigame a run uses; main.js starts it and routes
+// its result back here.
 //
 // It reuses the dungeon's own pieces rather than drawing a room of its own: the room is a real floor
 // object handed to buildFloor, so its tiles, walls, props, theme lighting and Pokemon models are the
@@ -14,7 +15,7 @@ import * as THREE from 'three';
 import { THEMES, FLOOR, PROP, buildFloor, disposeFloor, cellToWorld, isPointWalkable } from './dungeon.js';
 import { POKEMON_CATALOG } from './data/pokemon-catalog.js';
 import { hasModelForDex } from './models.js';
-import { scene, dirLight } from './three-setup.js';
+import { scene, dirLight, CAM_OFFSET } from './three-setup.js';
 
 const rnd = (a, b) => a + Math.random() * (b - a);
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
@@ -28,46 +29,164 @@ function shuffled(arr) {
 }
 
 // ---- The room ----------------------------------------------------------------------------------
-// 7 x 14 open cells inside a one-cell wall, sitting in PAD cells of solid rock on every side. The rock
-// is what makes it read as a room carved out of the dungeon rather than a tray floating in fog — the
-// camera sees past the walls, and the dungeon fills every solid cell for exactly this reason (see the
-// note in buildFloor). Long and narrow because a phone is: the room is framed to fill the screen's
-// WIDTH, and at 7 across that still leaves each Pokemon a usable size to tap.
-const ROOM_W = 7, ROOM_D = 14, PAD = 5;
-const GRID_W = ROOM_W + 2 + PAD * 2, GRID_H = ROOM_D + 2 + PAD * 2;
-// Pokemon are drawn a little bigger than on a dungeon floor (WORLD_MON_BASE, 1.0). The 'world' fit
-// keeps their proportions either way; this is a stage you tap on, not a map you cross.
-const MON_BASE = 1.2;
+// A ROUGH CIRCLE, different every time — not a rectangle. Every room is a circle of ROOM_R cells
+// pushed out of shape three ways, each rolled fresh per room:
+//   - stretched into an ellipse (up to 14% either way) along a random axis;
+//   - wobbled at its edge by four low-frequency lobes (2 to 5 bumps round the rim), small enough
+//     that it stays a room and large enough that no two come out alike;
+//   - then smoothed once and tidied, so the rim has no single-cell spurs or notches and the room is
+//     one piece with no holes in it.
+// It sits in ROCK_REACH cells of solid rock all round, which is what makes it read as a room carved
+// out of the dungeon rather than a tray floating in fog — the dungeon fills every solid cell for exactly
+// this reason (see the note in buildFloor).
+//
+// Round suits it twice over. The view can be TURNED (drag), and a circle looks right from every
+// angle where a long room would swing wide; and the framing below can then fit the room's
+// circumscribed circle, which bounds it at every angle the view can reach.
+const ROOM_R = 4.6;
+// How far the solid rock reaches from the room's centre, in every direction. FAR further than the
+// room: at the dungeon's angle the camera sees the ground ~21 units out along its view direction on a
+// portrait phone, and the view TURNS, so that direction can be any direction. Stopping short of it
+// showed the edge of the rock as a hard diamond against the void. Out at 24 the rock runs on into
+// the theme's fog (which starts 22 out from the camera) and fades instead of ending. That is ~2400
+// solid cells, which buildFloor instances in three draw calls the way it does a 15000-cell floor.
+const ROCK_REACH = 24;
+const GRID = 2 * ROCK_REACH + 1;                            // square and odd, so it has a centre cell
+// Pokemon are drawn bigger than on a dungeon floor (WORLD_MON_BASE, 1.0). The 'world' fit keeps their
+// proportions either way; this is a stage you tap on, and at the dungeon's angle a round room on a
+// portrait screen is held to the screen's width — so the Pokemon carry the size the room cannot.
+const MON_BASE = 1.45;
 const CAST_SIZE = 7;
 const PROP_COUNT = 5;
 
-function buildRoomFloor(theme) {
-  const cells = new Uint8Array(GRID_W * GRID_H);          // WALL (0) everywhere
-  const x0 = PAD + 1, y0 = PAD + 1;                        // first open cell, inside the wall ring
-  for (let y = y0; y < y0 + ROOM_D; y++) {
-    for (let x = x0; x < x0 + ROOM_W; x++) cells[y * GRID_W + x] = FLOOR;
+function blobMask() {
+  const c = (GRID - 1) / 2;
+  const stretch = rnd(0.86, 1.14);
+  const tilt = rnd(0, Math.PI);
+  const lobes = [[2, 0.11], [3, 0.08], [4, 0.05], [5, 0.04]]
+    .map(([k, max]) => ({ k, a: rnd(0.02, max), p: rnd(0, Math.PI * 2) }));
+  const ct = Math.cos(tilt), st = Math.sin(tilt);
+  let open = new Uint8Array(GRID * GRID);
+  for (let y = 0; y < GRID; y++) {
+    for (let x = 0; x < GRID; x++) {
+      const dx = x - c, dy = y - c;
+      // Into the ellipse's own frame: squash one axis and stretch the other, so the area is kept.
+      const u = (dx * ct + dy * st) / stretch, v = (-dx * st + dy * ct) * stretch;
+      const th = Math.atan2(v, u);
+      let r = ROOM_R;
+      for (const l of lobes) r += ROOM_R * l.a * Math.sin(l.k * th + l.p);
+      if (Math.hypot(u, v) <= r) open[y * GRID + x] = 1;
+    }
   }
+  // One majority pass over the 8 neighbours: rounds off single-cell spurs and fills single-cell bites.
+  const n8 = (m, x, y) => {
+    let s = 0;
+    for (let j = -1; j <= 1; j++) for (let i = -1; i <= 1; i++) {
+      if ((i || j) && m[(y + j) * GRID + (x + i)]) s++;
+    }
+    return s;
+  };
+  const smooth = new Uint8Array(GRID * GRID);
+  for (let y = 1; y < GRID - 1; y++) {
+    for (let x = 1; x < GRID - 1; x++) {
+      const s = n8(open, x, y), k = y * GRID + x;
+      smooth[k] = s >= 5 ? 1 : s <= 3 ? 0 : open[k];
+    }
+  }
+  open = smooth;
+  // ONE piece: keep only the largest 4-connected region...
+  const comp = new Int32Array(GRID * GRID).fill(-1);
+  let bestId = -1, bestSize = 0;
+  for (let k = 0, id = 0; k < open.length; k++) {
+    if (!open[k] || comp[k] >= 0) continue;
+    let size = 0;
+    const q = [k];
+    comp[k] = id;
+    while (q.length) {
+      const cur = q.pop(); size++;
+      const cx = cur % GRID, cy = (cur - cx) / GRID;
+      for (const [nx, ny] of [[cx + 1, cy], [cx - 1, cy], [cx, cy + 1], [cx, cy - 1]]) {
+        const nk = ny * GRID + nx;
+        if (open[nk] && comp[nk] < 0) { comp[nk] = id; q.push(nk); }
+      }
+    }
+    if (size > bestSize) { bestSize = size; bestId = id; }
+    id++;
+  }
+  for (let k = 0; k < open.length; k++) if (open[k] && comp[k] !== bestId) open[k] = 0;
+  // ...with NO holes: rock the border cannot reach is a pocket enclosed by the room, so it is room.
+  const reach = new Uint8Array(GRID * GRID);
+  const q = [];
+  for (let i = 0; i < GRID; i++) q.push(i, (GRID - 1) * GRID + i, i * GRID, i * GRID + GRID - 1);
+  for (const k of q) reach[k] = 1;
+  while (q.length) {
+    const cur = q.pop();
+    const cx = cur % GRID, cy = (cur - cx) / GRID;
+    for (const [nx, ny] of [[cx + 1, cy], [cx - 1, cy], [cx, cy + 1], [cx, cy - 1]]) {
+      if (nx < 0 || ny < 0 || nx >= GRID || ny >= GRID) continue;
+      const nk = ny * GRID + nx;
+      if (!open[nk] && !reach[nk]) { reach[nk] = 1; q.push(nk); }
+    }
+  }
+  for (let k = 0; k < open.length; k++) if (!open[k] && !reach[k]) open[k] = 1;
+  return open;
+}
+
+function buildRoomFloor(theme) {
+  const open = blobMask();
+  const cells = new Uint8Array(GRID * GRID);              // WALL (0) everywhere
+  for (let k = 0; k < cells.length; k++) if (open[k]) cells[k] = FLOOR;
+  const at = (x, y) => (x < 0 || y < 0 || x >= GRID || y >= GRID) ? 0 : cells[y * GRID + x];
   const floor = {
-    number: 1, theme, W: GRID_W, H: GRID_H, cells, rooms: [], startCell: null,
+    number: 1, theme, W: GRID, H: GRID, cells, rooms: [], startCell: null,
     stairsCell: null,                                       // no stairwell: see buildFloor
-    visited: new Uint8Array(GRID_W * GRID_H),
+    visited: new Uint8Array(GRID * GRID),
     items: [], wilds: [], props: [], outcrops: [],
     shop: null, chansey: null, boss: null, group: null, cleared: false,
     mapDirty: [], mapCache: null,
     monBase: MON_BASE,
   };
 
-  // A few of the theme's props along the walls — the tree, the boulder, the crate — so the room is
-  // recognisably THAT dungeon. Only on edge cells and never in a corner, so they dress the room
-  // without walling off any of the floor the Pokemon move on.
-  const edge = [];
-  for (let y = y0 + 1; y < y0 + ROOM_D - 1; y++) { edge.push([x0, y], [x0 + ROOM_W - 1, y]); }
-  for (let x = x0 + 1; x < x0 + ROOM_W - 1; x++) { edge.push([x, y0], [x, y0 + ROOM_D - 1]); }
-  for (const [x, y] of shuffled(edge).slice(0, PROP_COUNT)) {
-    cells[y * GRID_W + x] = PROP;
+  // A few of the theme's props on the rim — the tree, the boulder, the crate — so the room is
+  // recognisably THAT dungeon. Rim cells only (open, with rock beside them) and at least three cells
+  // apart, so they dress the edge in ones rather than walling off a stretch of it.
+  const rim = [];
+  for (let y = 0; y < GRID; y++) {
+    for (let x = 0; x < GRID; x++) {
+      if (at(x, y) === FLOOR && (!at(x + 1, y) || !at(x - 1, y) || !at(x, y + 1) || !at(x, y - 1))) rim.push([x, y]);
+    }
+  }
+  const props = [];
+  for (const s of shuffled(rim)) {
+    if (props.length >= PROP_COUNT) break;
+    if (props.every(p => Math.hypot(p[0] - s[0], p[1] - s[1]) >= 3)) props.push(s);
+  }
+  for (const [x, y] of props) {
+    cells[y * GRID + x] = PROP;
     floor.props.push({ x, y, rot: rnd(0, Math.PI * 2), scale: rnd(0.8, 1.05) });
   }
-  return { floor, x0, y0 };
+
+  // Where a Pokemon may START: cells whose whole 3x3 block is open floor (no rock, no prop), so even
+  // the widest body — radius ~1 — starts clear of everything.
+  const spots = [];
+  for (let y = 1; y < GRID - 1; y++) {
+    for (let x = 1; x < GRID - 1; x++) {
+      let clear = true;
+      for (let j = -1; j <= 1 && clear; j++) for (let i = -1; i <= 1; i++) if (at(x + i, y + j) !== FLOOR) { clear = false; break; }
+      if (clear) spots.push([x, y]);
+    }
+  }
+
+  // How far the room reaches from its centre, wall included — the circle that bounds it at every
+  // angle the view can turn to, and what the camera frames.
+  const c = (GRID - 1) / 2;
+  let reach = 0;
+  for (let y = 0; y < GRID; y++) for (let x = 0; x < GRID; x++) {
+    if (at(x, y)) reach = Math.max(reach, Math.hypot(x - c, y - c));
+  }
+  // +0.7: the floor's own edge is half a cell past the outermost cell centre, plus a little air. The
+  // wall ring beyond it is not framed — it is rock, and the rock is everywhere.
+  return { floor, spots, frameR: reach + 0.7 };
 }
 
 // ---- The cast ------------------------------------------------------------------------------------
@@ -166,21 +285,22 @@ function chooseSpawns(spots, n) {
 }
 
 // ---- Session state -------------------------------------------------------------------------------
-let room = null;   // { floor, theme, x0, y0 }
+let room = null;   // { floor, theme, frameR }
 
 // Build a fresh room: a random theme out of all eleven, its seven Pokemon spread across the floor.
 export function startFreeCatchRoom() {
   disposeFreeCatchRoom();
   const theme = pick(THEMES);
-  const { floor, x0, y0 } = buildRoomFloor(theme);
-
-  // Spawn cells: one cell in from the wall all round, so even the widest body (radius 0.95) starts
-  // clear of it, and at least 2.4 apart so nobody starts inside anybody else.
-  const spots = [];
-  for (let y = y0 + 1; y < y0 + ROOM_D - 1; y++) {
-    for (let x = x0 + 1; x < x0 + ROOM_W - 1; x++) if (floor.cells[y * GRID_W + x] === FLOOR) spots.push([x, y]);
+  // Spots at least 2.4 apart, out of the cells whose whole 3x3 block is clear (see buildRoomFloor).
+  // A room that cannot seat all seven is REROLLED rather than accepted: the shapes are random, and the
+  // smallest of them, with props along the rim, came up one seat short about one room in 130. A new
+  // shape costs nothing — nothing has been added to the scene yet — and the next one fits.
+  let built = null, chosen = [];
+  for (let tries = 0; tries < 30 && chosen.length < CAST_SIZE; tries++) {
+    built = buildRoomFloor(theme);
+    chosen = chooseSpawns(built.spots, CAST_SIZE);
   }
-  const chosen = chooseSpawns(spots, CAST_SIZE);
+  const { floor, frameR } = built;
   const cast = pickCast();
   cast.slice(0, chosen.length).forEach((c, i) => {
     const [cx, cy] = chosen[i];
@@ -200,7 +320,10 @@ export function startFreeCatchRoom() {
   dirLight.position.set(-6, 16, -6);
   dirLight.target.position.set(0, 0, 0);
   dirLight.target.updateMatrixWorld();
-  room = { floor, theme, x0, y0 };
+  room = { floor, theme, frameR };
+  // Every room opens on the dungeon's own view; a turn from the last room does not carry over.
+  viewYaw = 0;
+  placeCamera();
   frameCamera();
   return room;
 }
@@ -225,33 +348,57 @@ export function wildsLeft() {
 }
 
 // ---- The camera ----------------------------------------------------------------------------------
-// Its own camera, not the dungeon's. The dungeon looks down a DIAGONAL, which turns every room into a
-// diamond — fine for a map you walk across, wasteful for one room that has to fill a portrait screen.
-// This one looks straight down the room's long axis from behind and above (55 degrees), so the room
-// is a rectangle that runs up the screen. Same distance from its target as the dungeon camera (~20.3),
-// so the theme's fog sits where it was tuned to.
+// THE DUNGEON'S ANGLE. Built from CAM_OFFSET in three-setup.js — the same diagonal, the same pitch
+// (atan(13 / 15.56), ~40 degrees), the same ~20.3 distance, orthographic like the dungeon's — so a
+// room in here looks exactly like a room on a floor. The only differences are that it orbits the
+// room's centre rather than following a player, and that a horizontal DRAG turns it (main.js routes
+// the drag to turnFreeCatchView). Same distance means the theme's fog sits where it was tuned.
 //
-// The frustum is solved every frame from the canvas's aspect, so the room fills the screen on a phone
-// and on a desktop window alike: wide enough for the room's width, tall enough for its depth, each
-// with a margin for the HUD bars over the top and bottom.
+// The frustum is solved every frame from the canvas's aspect. It frames the room's CIRCUMSCRIBED
+// circle, not its outline at the current angle: the circle bounds the room at every angle the view
+// can turn to, so turning never slides the room off the edge of the screen and the zoom never
+// changes while you turn. On a portrait phone the width is what binds; on a landscape window, the
+// height.
 export const freeCatchCamera = new THREE.OrthographicCamera(-10, 10, 10, -10, 0.1, 200);
-const CAM_PITCH = THREE.MathUtils.degToRad(55);
-const CAM_DIST = 20.3;
-freeCatchCamera.position.set(0, CAM_DIST * Math.sin(CAM_PITCH), -CAM_DIST * Math.cos(CAM_PITCH));
-freeCatchCamera.lookAt(0, 0, 0);
-// Room centre sits a touch low on screen: the top HUD (title, tally, balls) is taller than the hint
-// along the bottom, and an exactly centred room tucks its far wall under the ball strip.
-const FRAME_SHIFT = 0.06;
+const CAM_RADIUS = Math.hypot(CAM_OFFSET.x, CAM_OFFSET.z);
+const CAM_HEIGHT = CAM_OFFSET.y;
+const CAM_BASE_YAW = Math.atan2(CAM_OFFSET.x, CAM_OFFSET.z);
+const CAM_PITCH = Math.atan2(CAM_HEIGHT, CAM_RADIUS);
+// Radians of turn per pixel dragged: a drag across the full width of a phone is a little over one
+// full turn, so the whole room can be walked round in one sweep without being twitchy.
+const TURN_PER_PX = 0.018;
+// The top HUD (title, tally, balls) takes about the top eighth of a phone and there is nothing along
+// the bottom, so the room sits a little below the screen's middle — in the middle of what is left.
+const FRAME_SHIFT = 0.12;
+let viewYaw = 0;
 let framedAspect = 0;
+
+function placeCamera() {
+  const a = CAM_BASE_YAW + viewYaw;
+  freeCatchCamera.position.set(CAM_RADIUS * Math.sin(a), CAM_HEIGHT, CAM_RADIUS * Math.cos(a));
+  freeCatchCamera.lookAt(0, 0, 0);
+  freeCatchCamera.updateMatrixWorld(true);
+}
+placeCamera();
+
+// Turn the view by a horizontal drag of `dxPx` pixels. The sign is chosen so the floor under the
+// finger travels WITH the finger, which is what makes it feel like turning the room rather than
+// steering a camera.
+export function turnFreeCatchView(dxPx) {
+  viewYaw -= dxPx * TURN_PER_PX;
+  placeCamera();
+}
 
 function frameCamera(force = true) {
   const el = document.getElementById('game-canvas');
   const aspect = (el?.clientWidth || window.innerWidth) / (el?.clientHeight || window.innerHeight);
   if (!force && Math.abs(aspect - framedAspect) < 1e-3) return;
   framedAspect = aspect;
-  const roomW = ROOM_W + 2, roomD = ROOM_D + 2;
-  const needW = roomW / (2 * aspect * 0.96);
-  const needH = (roomD * Math.sin(CAM_PITCH) + 1.6 * Math.cos(CAM_PITCH)) / (2 * 0.74);
+  const R = room?.frameR || 7;
+  const needW = (2 * R) / (2 * aspect * 0.94);
+  // A circle of radius R on the ground is 2R across and 2R x sin(pitch) tall on screen; the 2.2 is
+  // headroom for the tallest Pokemon standing on the far rim.
+  const needH = (2 * R * Math.sin(CAM_PITCH) + 2.2 * Math.cos(CAM_PITCH)) / (2 * 0.70);
   const f = Math.max(needW, needH);
   freeCatchCamera.left = -f * aspect; freeCatchCamera.right = f * aspect;
   freeCatchCamera.top = f * (1 + FRAME_SHIFT); freeCatchCamera.bottom = -f * (1 - FRAME_SHIFT);

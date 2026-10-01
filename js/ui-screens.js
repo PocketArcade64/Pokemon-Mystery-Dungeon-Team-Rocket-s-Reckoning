@@ -58,6 +58,7 @@ export const uiHooks = {
   newRun: () => {},
   // Free Catch (Settings): open it, leave it, or reroll the room with a fresh bag.
   openFreeCatch: () => {},
+  quitFreeCatch: () => {},
   exitFreeCatch: () => {},
   freeCatchNewRoom: () => {},
   // Kecleon's shop
@@ -827,15 +828,35 @@ export function renderGlossary() {
 
 // ---- Free Catch HUD ------------------------------------------------------------------------------
 // The room itself is 3D (freecatch.js); this is what sits over it. A top bar with the way out, the
-// room's dungeon and how many have been caught, the three ball counts under it, a hint along the
-// bottom, and — once the room is cleared or the bag is empty — a panel saying so with the way on.
+// room's dungeon and how many have been caught, the three ball counts under it, and — once the room
+// is cleared, the bag is empty or the player quits — a summary panel with the way on. No hint along
+// the bottom: there used to be one ("Tap a Pokemon to catch it"), and a room of Pokemon that open a
+// catch when touched says that by itself.
 //
-// The screen is pointer-events: none everywhere except its controls, so a tap anywhere else falls
-// through to the canvas, which is where main.js turns it into "which Pokemon".
+// The screen is pointer-events: none everywhere except its controls, so a tap or a drag anywhere else
+// falls through to the canvas, which is where main.js turns it into "which Pokemon" or a turn.
 const FREE_CATCH_BALL_IDS = ['poke-ball', 'great-ball', 'ultra-ball'];
 
+// The corner Exit takes TWO presses, the way Abandon Run does: the first arms it ("Confirm?", gold
+// edge) and the second ends the room. Quitting is not destructive here — nothing is lost that
+// matters — but it does end the room and its bag, and the corner is exactly where a thumb lands by
+// accident. It disarms itself after the same 4 s Abandon Run does, and on every redraw, so it can
+// never be left armed behind a catch.
+let fcExitArmed = false;
+let fcExitTimer = null;
+function disarmFreeCatchExit() {
+  fcExitArmed = false;
+  clearTimeout(fcExitTimer);
+  const b = $('btn-fc-exit');
+  if (!b) return;
+  b.textContent = 'Exit';
+  b.classList.remove('armed');
+}
+
 export function renderFreeCatch(s) {
+  disarmFreeCatchExit();
   $('fc-theme').textContent = s.themeName;
+  // One line: the count and its total are a single figure, "3 / 7".
   $('fc-tally').innerHTML = `<span class="fct-n">${s.caught.length}</span><span class="fct-of">/ ${s.total}</span>`;
   $('fc-balls').innerHTML = FREE_CATCH_BALL_IDS.map(id => {
     const n = s.balls[id] || 0;
@@ -843,15 +864,11 @@ export function renderFreeCatch(s) {
       ${ITEM_BY_ID.get(id).icon}<span>${n}</span>
     </div>`;
   }).join('');
-  $('fc-hint').textContent = s.legendaryLeft
-    ? 'Tap a Pokemon to catch it. One of them is Legendary.'
-    : 'Tap a Pokemon to catch it.';
-  $('fc-hint').hidden = !!s.over;
 
   const end = $('fc-end');
   end.classList.toggle('open', !!s.over);
   if (!s.over) return;
-  $('fc-end-title').textContent = s.over === 'cleared' ? 'Room Cleared!' : 'Out of Balls';
+  $('fc-end-title').textContent = { cleared: 'Room Cleared!', empty: 'Out of Balls', quit: 'Free Catch Over' }[s.over];
   $('fc-end-sub').textContent = s.over === 'cleared'
     ? `You caught all ${s.total}.`
     : `You caught ${s.caught.length} of ${s.total}.`;
@@ -1788,7 +1805,20 @@ export function bindUI() {
   click('btn-glossary-back', () => { sfx('back'); uiHooks.back(); });
   click('btn-settings-back', () => { sfx('back'); uiHooks.back(); });
   click('btn-free-catch', () => { sfx('confirm'); uiHooks.openFreeCatch(); });
-  click('btn-fc-exit', () => { sfx('back'); uiHooks.exitFreeCatch(); });
+  click('btn-fc-exit', () => {
+    if (!fcExitArmed) {
+      fcExitArmed = true;
+      const b = $('btn-fc-exit');
+      b.textContent = 'Confirm?';
+      b.classList.add('armed');
+      sfx('select');
+      fcExitTimer = setTimeout(disarmFreeCatchExit, QUIT_ARM_MS);
+      return;
+    }
+    disarmFreeCatchExit();
+    sfx('back');
+    uiHooks.quitFreeCatch();
+  });
   click('btn-fc-end-exit', () => { sfx('back'); uiHooks.exitFreeCatch(); });
   click('btn-fc-new', () => { sfx('confirm'); uiHooks.freeCatchNewRoom(); });
   click('btn-dex-back', () => { sfx('back'); uiHooks.back(); });

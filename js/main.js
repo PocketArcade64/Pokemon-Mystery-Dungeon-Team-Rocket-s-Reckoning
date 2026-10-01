@@ -21,7 +21,7 @@ import { startCatch, endCatch, updateCatch, setCatchBall, catchState, catchScene
          catchPointerDown, catchPointerMove, catchPointerUp } from './catch.js';
 import { titleScene, titleCamera, updateTitle } from './titlescene.js';
 import { startFreeCatchRoom, disposeFreeCatchRoom, freeCatchRoom, updateFreeCatch, freeCatchCamera,
-         pickWildAt, removeFromRoom, wildsLeft } from './freecatch.js';
+         pickWildAt, removeFromRoom, wildsLeft, turnFreeCatchView } from './freecatch.js';
 import * as inv from './inventory.js';
 import * as ui from './ui-screens.js';
 import { uiHooks } from './ui-screens.js';
@@ -862,6 +862,8 @@ const FREE_CATCH_BALLS = { 'poke-ball': 30, 'great-ball': 15, 'ultra-ball': 5 };
 // first floor, well short of its deepest.
 const FREE_CATCH_RING_FLOOR = 2;
 let freeCatchCaught = [];   // dex numbers, in the order they were caught
+let freeCatchQuit = false;        // the player ended the room with the corner Exit
+let freeCatchEndSounded = false;  // this room's end jingle has played (once per room)
 
 function openFreeCatch() {
   if (state.run && state.run.runMode !== 'freecatch') return;   // never over a live run
@@ -877,22 +879,48 @@ function openFreeCatch() {
     fixturesThrough: 0, lastRandomShop: -10,
   };
   freeCatchCaught = [];
-  // The room's own theme from the top, as arriving on a floor of it would.
+  freeCatchQuit = false;
+  freeCatchEndSounded = false;
+  // A previous room's end jingle holds the mixer (playMusicExclusive), and New Room comes straight
+  // from that panel — so the lock goes first or the new room would open in silence. Then the room's
+  // own theme from the top, as arriving on a floor of it would, and the two end jingles decoded
+  // ahead so whichever ends this room lands on the frame the panel opens.
+  releaseMusicLock();
+  prefetchMusic('victory-boss', 'lose');
   restartMusic(room.theme.id);
   setMode('freecatch');
 }
 
+// Leaving for good, from the end panel. THE ROOM'S MUSIC STOPS HERE — it used to play straight on
+// into Settings and only change when Settings was left, because Settings has no track of its own and
+// keeps whatever is already sounding. Settings is reached from the title screen, so it goes back to
+// the title screen's track, which is what Settings was playing before Free Catch began.
 function exitFreeCatch() {
+  const themeId = freeCatchRoom()?.theme?.id;
   endCatch();
   catchCtx = null;
   disposeFreeCatchRoom();
   state.run = null;
   freeCatchCaught = [];
+  freeCatchQuit = false;
+  releaseMusicLock();
   setMode('settings');
+  playMusic('menu');
+  // The room's theme is tens of megabytes of decoded audio and nothing is going to play it next.
+  releaseMusic(themeId);
 }
 
-// What the HUD draws. `over` is derived rather than stored, so it can never disagree with the room:
-// cleared when nobody is left in it, empty when the bag is.
+// The Exit button in the room's corner, once confirmed (it takes two presses — see ui-screens.js).
+// Quitting does not drop straight out: it ends the room and shows the same summary a finished room
+// does, haul and all, with its own sound. The panel's Exit is what actually leaves.
+function quitFreeCatch() {
+  freeCatchQuit = true;
+  showFreeCatch();
+}
+
+// What the HUD draws. `over` is derived from the room and the bag every time rather than stored, so
+// it can never disagree with them: quit when the player ended it, cleared when nobody is left, empty
+// when the bag is.
 function freeCatchSummary() {
   const room = freeCatchRoom();
   const left = wildsLeft();
@@ -903,14 +931,33 @@ function freeCatchSummary() {
     left,
     balls: { 'poke-ball': inv.countOf('poke-ball'), 'great-ball': inv.countOf('great-ball'),
              'ultra-ball': inv.countOf('ultra-ball') },
-    legendaryLeft: !!room?.floor.wilds.some(w => w.legendary && !w.gone),
-    over: !room ? null : left === 0 ? 'cleared' : inv.totalBalls() === 0 ? 'empty' : null,
+    over: !room ? null
+      : left === 0 ? 'cleared'
+      : freeCatchQuit ? 'quit'
+      : inv.totalBalls() === 0 ? 'empty'
+      : null,
   };
+}
+
+// Back to the room, and if that is the moment the room ENDED, the sound that goes with how. The same
+// two tracks a run's end screen uses: a cleared room is a win (Victory! — what beating Giovanni
+// plays), and running out of balls or quitting is a loss (You Lose — what a wipe or Abandon Run
+// plays). Exclusive, as on the run's end screen, so the room's theme stops dead under it and nothing
+// can start over it until the player leaves. Played once per room; the panel can be redrawn without
+// restarting it.
+function showFreeCatch() {
+  setMode('freecatch');
+  const s = freeCatchSummary();
+  if (s.over && !freeCatchEndSounded) {
+    freeCatchEndSounded = true;
+    playMusicExclusive(s.over === 'cleared' ? 'victory-boss' : 'lose');
+  }
+  return s;
 }
 
 function beginFreeCatch(wild) {
   const ballId = inv.activeBall();
-  if (!ballId) { setMode('freecatch'); return; }   // the HUD shows the out-of-balls panel
+  if (!ballId) { showFreeCatch(); return; }      // the HUD shows the out-of-balls panel
   catchCtx = { wild, free: true };
   ui.resetCatchGrade();
   ui.clearCatchNote();
@@ -925,8 +972,8 @@ function beginFreeCatch(wild) {
     ...throwHandlers(wild),
     onResult: onCatchResult,
     // Out of balls mid-encounter: say so on the catch screen, let the last ball land, and go back to
-    // the room — where the HUD's end panel takes it from there. The Pokemon stays in the room; it is
-    // the bag that ran out, not the encounter.
+    // the room — where the end panel takes it from there. The Pokemon stays in the room; it is the
+    // bag that ran out, not the encounter.
     onEmpty: () => {
       ui.catchNote('You are out of Pokeballs');
       setTimeout(() => {
@@ -934,7 +981,7 @@ function beginFreeCatch(wild) {
         endCatch();
         ui.clearCatchNote();
         catchCtx = null;
-        setMode('freecatch');
+        showFreeCatch();
       }, 1600);
     },
   });
@@ -948,11 +995,15 @@ function onFreeCatchResult(res) {
     sfx('caught');
     freeCatchCaught.push(wild.dex);
     removeFromRoom(wild);
-    // Same beat as a run's catch: the lock click, its shimmer and the fanfare all land first.
+    // Same beat as a run's catch: the lock click, its shimmer and the fanfare all land first. Then
+    // the jingle a run plays when a Pokemon joins the team — nothing joins one here, but it is the
+    // sound of a catch having worked. Not on the catch that clears the room: that one gets the
+    // victory track instead, and the two over each other would be a mess.
     setTimeout(() => {
       endCatch();
       catchCtx = null;
-      setMode('freecatch');
+      const s = showFreeCatch();
+      if (!s.over) sfx('join');
     }, 1500);
     return;
   }
@@ -960,26 +1011,40 @@ function onFreeCatchResult(res) {
   ui.renderCatchUI({ dex: wild.dex, activeBall: inv.activeBall() });
 }
 
-// A TAP on the room, as opposed to a drag: under 14px of travel between press and release. Judged on
-// release so a thumb that lands, wobbles and lifts still counts, and a scroll-like swipe does not.
-let freeCatchPress = null;
+// The room takes two gestures, told apart by how far the finger travels:
+//   - a TAP (under 14px from press to release) picks the Pokemon under it and opens the catch;
+//   - a DRAG turns the view round the room, horizontally, the moment the finger has moved 10px.
+// Judged this way so a thumb that lands, wobbles and lifts still counts as a tap, and a turn never
+// opens a catch it happened to finish over. Pointer capture keeps a drag that leaves the canvas (onto
+// the HUD, or off the edge of the screen) still turning until the finger lifts.
+let freeCatchPress = null;   // { id, x, y, lastX, dragging }
 canvas.addEventListener('pointerdown', (e) => {
-  freeCatchPress = state.mode === 'freecatch' ? { x: e.clientX, y: e.clientY } : null;
+  if (state.mode !== 'freecatch') { freeCatchPress = null; return; }
+  freeCatchPress = { id: e.pointerId, x: e.clientX, y: e.clientY, lastX: e.clientX, dragging: false };
+  try { canvas.setPointerCapture(e.pointerId); } catch { /* not every pointer can be captured */ }
+});
+canvas.addEventListener('pointermove', (e) => {
+  const p = freeCatchPress;
+  if (!p || e.pointerId !== p.id || state.mode !== 'freecatch') return;
+  if (!p.dragging && Math.hypot(e.clientX - p.x, e.clientY - p.y) > 10) p.dragging = true;
+  if (p.dragging) turnFreeCatchView(e.clientX - p.lastX);
+  p.lastX = e.clientX;
 });
 canvas.addEventListener('pointerup', (e) => {
-  const press = freeCatchPress;
+  const p = freeCatchPress;
   freeCatchPress = null;
-  if (state.mode !== 'freecatch' || !press) return;
-  if (Math.hypot(e.clientX - press.x, e.clientY - press.y) > 14) return;
-  // Room over (cleared, or the bag is empty): no more catches. Redraw rather than just ignore the
-  // tap, so the end panel is guaranteed to be up whatever emptied the bag.
+  if (!p || e.pointerId !== p.id || state.mode !== 'freecatch') return;
+  if (p.dragging || Math.hypot(e.clientX - p.x, e.clientY - p.y) > 14) return;
+  // Room over: no more catches. Redraw rather than just ignore the tap, so the end panel is
+  // guaranteed to be up whatever emptied the bag.
   const summary = freeCatchSummary();
-  if (summary.over) { ui.renderFreeCatch(summary); return; }
+  if (summary.over) { showFreeCatch(); return; }
   const wild = pickWildAt(e.clientX, e.clientY);
   if (!wild) return;
   sfx('encounter');
   beginFreeCatch(wild);
 });
+canvas.addEventListener('pointercancel', () => { freeCatchPress = null; });
 
 // ---- The playing-mode frame -------------------------------------------------------------------
 function updatePlaying(dt) {
@@ -1309,7 +1374,8 @@ Object.assign(uiHooks, {
   catchFlee: onCatchFlee,
   // Free Catch, from Settings. New Room rebuilds the room with a fresh bag in place.
   openFreeCatch: () => openFreeCatch(),
-  exitFreeCatch: () => exitFreeCatch(),
+  quitFreeCatch: () => quitFreeCatch(),     // the corner Exit, confirmed: end the room, show the summary
+  exitFreeCatch: () => exitFreeCatch(),     // the summary's Exit: leave for Settings
   freeCatchNewRoom: () => openFreeCatch(),
   chooseBall: (id) => {
     inv.itemApi.setActiveBall(id);

@@ -638,11 +638,27 @@
      because the room behind it can be any of eleven palettes, from snow to lava. */
   #screen-freecatch { pointer-events: none; }
   #screen-freecatch button, #screen-freecatch .fc-end.open { pointer-events: auto; }
+  /* `1fr auto 1fr`, with each side pinned to its own edge, is what puts the title on the SCREEN's
+     centre line. This was `auto 1fr auto`, which centres the title in whatever the two sides leave
+     between them — and the Exit button is wider than the tally, so "Free Catch" sat right of centre.
+     Equal outer tracks make the middle one centred whatever the two sides hold, which also means the
+     title does not shift when Exit arms and its label grows to "Confirm?". */
   .fc-top {
     flex: 0 0 auto;
-    display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px;
+    display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 10px;
   }
+  .fc-top > :first-child { justify-self: start; }
+  .fc-top > :last-child { justify-self: end; }
   .fc-top .btn { width: auto; margin: 0; padding-left: 0.9rem; padding-right: 0.9rem; }
+  /* Armed: gold-edged and brighter, the same treatment as Abandon Run's armed state, so the state is
+     not carried by the label alone. min-width holds the button at its "Confirm?" width throughout,
+     so arming does not resize it under the finger that is about to press it again. */
+  #btn-fc-exit { min-width: 6.2rem; text-align: center; border: 2px solid transparent; }
+  #btn-fc-exit.armed {
+    background: linear-gradient(180deg, #ffb4a8, #ff3b30);
+    border-color: var(--gold);
+    box-shadow: 0 4px 0 var(--danger-dark);
+  }
   .fc-heading {
     justify-self: center; text-align: center;
     background: rgba(8,10,20,0.62); border: 1px solid var(--edge); border-radius: 12px;
@@ -660,8 +676,11 @@
     background: rgba(8,10,20,0.62); border: 1px solid var(--edge); border-radius: 12px;
     padding: 6px 10px; text-align: center; line-height: 1.1;
   }
-  .fc-tally .fct-n { display: block; font-weight: 700; font-size: 1.43rem; color: var(--gold); text-shadow: 0 2px 0 rgba(0,0,0,0.5); }
-  .fc-tally .fct-of { font-size: 0.715rem; color: var(--ink-dim); }
+  /* "3 / 7" on ONE line: the count and its total are one figure. The count was a block, which put
+     the "/ 7" on a second line under it. */
+  .fc-tally { white-space: nowrap; }
+  .fc-tally .fct-n { font-weight: 700; font-size: 1.3rem; color: var(--gold); text-shadow: 0 2px 0 rgba(0,0,0,0.5); }
+  .fc-tally .fct-of { font-size: 0.936rem; color: var(--ink-dim); margin-left: 3px; }
   /* The three balls and how many of each are left. A ball tier at zero dims rather than vanishing,
      so the row never changes shape mid-session. */
   .fc-balls {
@@ -676,12 +695,7 @@
   }
   .fc-ball img, .fc-ball svg { width: 22px; height: 22px; display: block; image-rendering: pixelated; }
   .fc-ball.out { opacity: 0.4; }
-  /* Pinned to the bottom of the screen by the auto margin, and hidden once the room is over. */
-  .fc-hint {
-    margin-top: auto; align-self: center; text-align: center;
-    background: rgba(8,10,20,0.62); border: 1px solid var(--edge); border-radius: 12px;
-    padding: 7px 14px; font-size: 0.936rem; color: var(--ink);
-  }
+
   /* The end panel: room cleared or bag empty. Same scrim-and-panel as the evolution picker. */
   .fc-end {
     position: absolute; inset: 0; z-index: 4;
@@ -2577,7 +2591,8 @@
   -->
   <div class="screen" id="screen-freecatch">
     <div class="fc-top">
-      <button class="btn secondary small" id="btn-fc-exit">Exit</button>
+      <!-- Red, and two presses (ui-screens.js): the first arms it, the second ends the room. -->
+      <button class="btn danger small" id="btn-fc-exit">Exit</button>
       <div class="fc-heading">
         <div class="fc-name">Free Catch</div>
         <div class="fc-theme" id="fc-theme">-</div>
@@ -2585,7 +2600,6 @@
       <div class="fc-tally" id="fc-tally" aria-label="Caught"></div>
     </div>
     <div class="fc-balls" id="fc-balls"></div>
-    <div class="fc-hint" id="fc-hint"></div>
     <div class="fc-end" id="fc-end" role="dialog" aria-modal="true" aria-labelledby="fc-end-title">
       <div class="fc-end-panel">
         <h3 class="fc-end-title" id="fc-end-title">Room Cleared!</h3>
