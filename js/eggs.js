@@ -19,7 +19,7 @@
 // what keeps a found egg from ever being one the pool cannot fill. ("Legendary" is the catalog's
 // stage for the Mythicals too — Mew, Celebi, Jirachi, Arceus and the rest all carry it.)
 import { state, saveEggs, saveStats, countDex, RUN_MODES } from './state.js';
-import { POKEMON_CATALOG, CATALOG_BY_DEX } from './data/pokemon-catalog.js';
+import { POKEMON_CATALOG, CATALOG_BY_DEX, MYTHICAL_DEX } from './data/pokemon-catalog.js';
 import { hasModelForDex } from './models.js';
 
 // The chance any one pickup on a floor — present, ball lot or coin — is an egg instead, one egg a
@@ -111,13 +111,17 @@ export function bankSavedEggs(runMode) {
 // egg is the other — so the last eggs of a finished Basic set are all Legendaries, and that is right:
 // an egg always holds something new.
 const pick = (list) => list[Math.floor(Math.random() * list.length)];
+// The one-in-ten side: every "Legendary"-stage species, and every Mythical whatever its stage — the
+// catalog gives Phione "Basic" (it is one, for damage and HP), and by stage alone it hatched as an
+// ordinary Basic.
+const isRare = (d) => CATALOG_BY_DEX.get(d)?.stage === 'Legendary' || MYTHICAL_DEX.has(d);
 
 export function rollHatch() {
   if (state.eggs.ready <= 0) return null;
   const left = unhatched();
   if (!left.length) return null;
-  const legends = left.filter(d => CATALOG_BY_DEX.get(d)?.stage === 'Legendary');
-  const basics = left.filter(d => CATALOG_BY_DEX.get(d)?.stage !== 'Legendary');
+  const legends = left.filter(isRare);
+  const basics = left.filter(d => !isRare(d));
   if (!legends.length) return pick(basics);
   if (!basics.length) return pick(legends);
   return pick(Math.random() < LEGENDARY_HATCH_CHANCE ? legends : basics);

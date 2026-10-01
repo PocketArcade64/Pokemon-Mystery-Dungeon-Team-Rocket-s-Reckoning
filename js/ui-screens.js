@@ -555,7 +555,8 @@ function partnerCell(dex) {
   const c = CATALOG_BY_DEX.get(dex);
   const art = portraitFor(dex);
   const on = starterFromEgg && starterPick === dex;
-  return `<button class="evo-option ${on ? 'selected' : ''} ${c.stage === 'Legendary' ? 'is-legend' : ''}"
+  const rare = c.stage === 'Legendary' || MYTHICAL_DEX.has(c.dex);
+  return `<button class="evo-option ${on ? 'selected' : ''} ${rare ? 'is-legend' : ''}"
        data-dex="${dex}" aria-pressed="${on}">
     ${art ? `<img class="eo-art" src="${art}" alt="" />` : '<div class="eo-art"></div>'}
     <div class="eo-name">${c.name}</div>
@@ -747,9 +748,10 @@ function onHatchEmerged(dex) {
   $('hatch-sub').textContent = hatchCommitted ? 'Congratulations!' : 'Hmm...';
   $('hatch-name').textContent = c?.name || '?';
   $('hatch-types').innerHTML = c ? typeBadges(c.types) : '';
-  $('hatch-tag').textContent = !hatchCommitted ? 'This egg had already been hatched.'
-    : c?.stage === 'Legendary' ? 'Legendary!' : 'New partner!';
-  $('hatch-tag').classList.toggle('is-legend', hatchCommitted && c?.stage === 'Legendary');
+  // The tag names which rare kind it is; Phione is a Mythical despite its "Basic" stage.
+  const rare = c && (MYTHICAL_DEX.has(c.dex) ? 'Mythical!' : c.stage === 'Legendary' ? 'Legendary!' : null);
+  $('hatch-tag').textContent = !hatchCommitted ? 'This egg had already been hatched.' : rare || 'New partner!';
+  $('hatch-tag').classList.toggle('is-legend', hatchCommitted && !!rare);
   $('hatch-note').classList.toggle('shown', hatchCommitted);
   $('hatch-reveal').classList.add('shown');
   const back = $('btn-hatch-back');
@@ -1278,15 +1280,22 @@ const EGG_POOL_SET = new Set(EGG_POOL);
 const regionOpen = Object.fromEntries(DEX_REGIONS.map(r => [r.name, true]));
 
 // The filter, Rumble's set of chips made to fit this game: the 18 types (any of them), Legendary,
-// Mythical, and four of this game's own — Seen, Caught, Won (a run won with it) and Egg (every species
-// an egg can hold). No Mega chip: there is no Mega Evolution here. As in Rumble, the type and
-// Legendary / Mythical chips only ever surface species you have SEEN, since an unseen box hides those
-// facts; the Egg chip does not, because the egg on the box already says it either way.
-const dexFilter = { types: new Set(), legendary: false, mythical: false, seen: false, caught: false, won: false, egg: false };
+// Mythical, and five of this game's own — Seen, Caught, Won (a run won with it), From Egg (every
+// species an egg can hold) and Hatched (the ones an egg has actually given you). No Mega chip: there
+// is no Mega Evolution here.
+//
+// WHICH CHIPS SHOW UNSEEN SPECIES. Rumble hides every locked Pokemon from every filter, and that was
+// copied at first — which meant Mythical showed nothing at all until you had met one, and Mew never
+// appeared. Now only the TYPE chips (and Seen, Caught, Won, which imply it) are limited to species
+// you have seen, because an unseen box hides its types and a type filter would give them away.
+// Legendary, Mythical, From Egg and Hatched list every match: an unseen one stays a silhouette with
+// "???", so the filter says that one is out there without saying what it is.
+const dexFilter = { types: new Set(), legendary: false, mythical: false, seen: false, caught: false,
+                    won: false, egg: false, hatched: false };
 const DEX_FLAG_CHIPS = [
   ['legendary', 'Legendary', '#8e24aa'], ['mythical', 'Mythical', '#d81b60'],
   ['seen', 'Seen', '#455a64'], ['caught', 'Caught', '#2e7d32'],
-  ['won', 'Won', '#b8860b'], ['egg', 'Egg', '#3a9d6a'],
+  ['won', 'Won', '#b8860b'], ['egg', 'From Egg', '#3a9d6a'], ['hatched', 'Hatched', '#00897b'],
 ];
 const dexFilterOn = () => dexFilter.types.size > 0
   || DEX_FLAG_CHIPS.some(([k]) => dexFilter[k]);
@@ -1308,15 +1317,22 @@ function buildDexSets() {
   };
 }
 
+// Mythical is read off MYTHICAL_DEX alone, NOT off `stage`: the catalog gives Phione "Basic" (it is
+// a Basic for damage and HP), and requiring "Legendary" as well left it out of the Mythical chip.
+// Legendary is every other "Legendary"-stage species.
+const isMythical = (c) => MYTHICAL_DEX.has(c.dex);
+const isLegendary = (c) => c.stage === 'Legendary' && !isMythical(c);
+
 function dexMatches(c) {
   const f = dexFilter, seen = dexSets.seen.has(c.dex);
-  if ((f.types.size || f.legendary || f.mythical || f.seen) && !seen) return false;
+  if ((f.types.size || f.seen) && !seen) return false;
   if (f.types.size && !c.types.some(t => f.types.has(t))) return false;
-  if (f.legendary && !(c.stage === 'Legendary' && !MYTHICAL_DEX.has(c.dex))) return false;
-  if (f.mythical && !(c.stage === 'Legendary' && MYTHICAL_DEX.has(c.dex))) return false;
+  if (f.legendary && !isLegendary(c)) return false;
+  if (f.mythical && !isMythical(c)) return false;
   if (f.caught && !dexSets.caught.has(c.dex)) return false;
   if (f.won && !dexSets.won.has(c.dex)) return false;
   if (f.egg && !EGG_POOL_SET.has(c.dex)) return false;
+  if (f.hatched && !dexSets.hatched.has(c.dex)) return false;
   return true;
 }
 
