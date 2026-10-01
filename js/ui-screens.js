@@ -56,6 +56,10 @@ export const uiHooks = {
   openLeadMenu: () => {},
   chooseLead: (_index) => {},
   newRun: () => {},
+  // Free Catch (Settings): open it, leave it, or reroll the room with a fresh bag.
+  openFreeCatch: () => {},
+  exitFreeCatch: () => {},
+  freeCatchNewRoom: () => {},
   // Kecleon's shop
   shopBuy: (_itemId) => {},
   shopLeave: () => {},
@@ -85,6 +89,7 @@ const SCREEN_FOR_MODE = {
   switch: 'screen-switch',
   shop: 'screen-shop',
   chansey: 'screen-chansey',
+  freecatch: 'screen-freecatch',
   end: 'screen-end',
 };
 
@@ -820,8 +825,55 @@ export function renderGlossary() {
     </div>`).join('');
 }
 
-// ---- Settings ---------------------------------------------------------------------------------
-// ---- Settings ---------------------------------------------------------------------------------
+// ---- Free Catch HUD ------------------------------------------------------------------------------
+// The room itself is 3D (freecatch.js); this is what sits over it. A top bar with the way out, the
+// room's dungeon and how many have been caught, the three ball counts under it, a hint along the
+// bottom, and — once the room is cleared or the bag is empty — a panel saying so with the way on.
+//
+// The screen is pointer-events: none everywhere except its controls, so a tap anywhere else falls
+// through to the canvas, which is where main.js turns it into "which Pokemon".
+const FREE_CATCH_BALL_IDS = ['poke-ball', 'great-ball', 'ultra-ball'];
+
+export function renderFreeCatch(s) {
+  $('fc-theme').textContent = s.themeName;
+  $('fc-tally').innerHTML = `<span class="fct-n">${s.caught.length}</span><span class="fct-of">/ ${s.total}</span>`;
+  $('fc-balls').innerHTML = FREE_CATCH_BALL_IDS.map(id => {
+    const n = s.balls[id] || 0;
+    return `<div class="fc-ball ${n ? '' : 'out'}" title="${ITEM_BY_ID.get(id).name}">
+      ${ITEM_BY_ID.get(id).icon}<span>${n}</span>
+    </div>`;
+  }).join('');
+  $('fc-hint').textContent = s.legendaryLeft
+    ? 'Tap a Pokemon to catch it. One of them is Legendary.'
+    : 'Tap a Pokemon to catch it.';
+  $('fc-hint').hidden = !!s.over;
+
+  const end = $('fc-end');
+  end.classList.toggle('open', !!s.over);
+  if (!s.over) return;
+  $('fc-end-title').textContent = s.over === 'cleared' ? 'Room Cleared!' : 'Out of Balls';
+  $('fc-end-sub').textContent = s.over === 'cleared'
+    ? `You caught all ${s.total}.`
+    : `You caught ${s.caught.length} of ${s.total}.`;
+  // The haul, as the same cached portraits the bag uses; empty frames fill in as they render.
+  const strip = $('fc-end-caught');
+  const draw = () => {
+    strip.innerHTML = s.caught.length
+      ? s.caught.map(dex => {
+          const art = portraitFor(dex);
+          const c = CATALOG_BY_DEX.get(dex);
+          return `<div class="fc-got ${c?.stage === 'Legendary' ? 'is-legend' : ''}" title="${c?.name || ''}">
+            ${art ? `<img src="${art}" alt="${c?.name || ''}" />` : '<div class="fc-got-art"></div>'}
+            <div class="fc-got-name">${c?.name || '?'}</div>
+          </div>`;
+        }).join('')
+      : '<div class="fc-got-none">Nothing this time.</div>';
+  };
+  draw();
+  if (s.caught.length) preloadPortraits(s.caught, () => { if (end.classList.contains('open')) draw(); });
+}
+
+// ---- Settings ----------------------------------------------------------------------------------
 // The word that has to be typed before Erase Records will fire. Compared case-insensitively and
 // trimmed: this is a "are you sure you meant this" gate, not a secret, and an autocapitalised R
 // off a phone keyboard should not be a wrong answer.
@@ -867,6 +919,14 @@ export function renderSettings() {
   $('vol-sfx-val').textContent = Math.round(state.settings.sfx * 100) + '%';
   $('ctrl-joystick').setAttribute('aria-pressed', String(state.settings.controls === 'joystick'));
   $('ctrl-tap').setAttribute('aria-pressed', String(state.settings.controls === 'tap'));
+  // Free Catch builds a room of its own and borrows `state.run` for its bag (see main.js), so it can
+  // only open when there is no run to borrow it from. Settings is also reachable from the pause
+  // screen, where it says why the button is dead rather than just being dead.
+  const inRun = !!state.run;
+  $('btn-free-catch').disabled = inRun;
+  $('free-catch-note').textContent = inRun
+    ? 'Free Catch opens from the title screen, so it never touches a run in progress.'
+    : 'One room, seven wild Pokemon - one of them Legendary - and 50 balls. Nothing caught here joins a team or your Pokedex.';
 }
 
 // ---- Debug menu -------------------------------------------------------------------------------
@@ -1727,6 +1787,10 @@ export function bindUI() {
 
   click('btn-glossary-back', () => { sfx('back'); uiHooks.back(); });
   click('btn-settings-back', () => { sfx('back'); uiHooks.back(); });
+  click('btn-free-catch', () => { sfx('confirm'); uiHooks.openFreeCatch(); });
+  click('btn-fc-exit', () => { sfx('back'); uiHooks.exitFreeCatch(); });
+  click('btn-fc-end-exit', () => { sfx('back'); uiHooks.exitFreeCatch(); });
+  click('btn-fc-new', () => { sfx('confirm'); uiHooks.freeCatchNewRoom(); });
   click('btn-dex-back', () => { sfx('back'); uiHooks.back(); });
 
   const musicSlider = $('vol-music'), sfxSlider = $('vol-sfx');

@@ -20,6 +20,8 @@ import { createBattle, generateGruntTeam, generateGiovanniTeam, wildEnemyTeam } 
 import { startCatch, endCatch, updateCatch, setCatchBall, catchState, catchScene, catchCamera,
          catchPointerDown, catchPointerMove, catchPointerUp } from './catch.js';
 import { titleScene, titleCamera, updateTitle } from './titlescene.js';
+import { startFreeCatchRoom, disposeFreeCatchRoom, freeCatchRoom, updateFreeCatch, freeCatchCamera,
+         pickWildAt, removeFromRoom, wildsLeft } from './freecatch.js';
 import * as inv from './inventory.js';
 import * as ui from './ui-screens.js';
 import { uiHooks } from './ui-screens.js';
@@ -101,6 +103,9 @@ function setMode(next, { returnTo = null } = {}) {
       break;
     case 'dex':
       ui.renderDex();
+      break;
+    case 'freecatch':
+      ui.renderFreeCatch(freeCatchSummary());
       break;
     default:
       break;
@@ -699,26 +704,8 @@ function beginCatch(wild) {
     theme: state.run.floor.theme,
     // A shadow Pokemon keeps its purple aura right up to the moment the ball locks.
     shadow: !!wild.aggressive,
-    onThrow: () => {
-      const id = catchState.ballId;
-      if (inv.countOf(id) <= 0) return false;
-      inv.removeItem(id, 1);
-      sfx(catchState.spin !== 0 ? 'curve' : 'throw');
-      ui.renderCatchUI({ dex: wild.dex, activeBall: id });
-      return true;
-    },
+    ...throwHandlers(wild),
     onResult: onCatchResult,
-    // The capture beats, fired by catch.js on the animation itself so the sound lands with the
-    // frame rather than a fixed delay after it.
-    onSfx: (name) => sfx(name),
-    // GO hands you a fresh ball on its own after a failed throw. Returning null means the bag is
-    // empty: catch.js parks in its 'empty' phase and the Run button is all that is left.
-    onRearm: () => {
-      const id = inv.activeBall();
-      if (!id) return null;
-      ui.renderCatchUI({ dex: wild.dex, activeBall: id });
-      return { ballId: id, ballsLeft: inv.countOf(id) };
-    },
     // The bag ran dry mid-encounter and there is nothing left to throw. End it rather than
     // parking on a screen with no move left — the Run button in the corner was the only way out
     // and it read as a freeze. The wild leaves the floor, exactly as fleeing does; it has to,
@@ -741,15 +728,43 @@ function beginCatch(wild) {
         ui.toast(`${name} fled!`);
       }, 1600);
     },
+  });
+  setMode('catch');
+  ui.renderCatchUI({ dex: wild.dex, activeBall: ballId });
+}
+
+// The handlers every catch encounter shares, wherever it was started from — a dungeon floor or the
+// Free Catch room. Throwing spends a ball out of whatever bag `state.run` holds, a miss re-arms with
+// the next one, and the grade and capture beats get their sounds. Only what happens when an
+// encounter ENDS differs between the two, so that stays with each caller.
+function throwHandlers(wild) {
+  return {
+    onThrow: () => {
+      const id = catchState.ballId;
+      if (inv.countOf(id) <= 0) return false;
+      inv.removeItem(id, 1);
+      sfx(catchState.spin !== 0 ? 'curve' : 'throw');
+      ui.renderCatchUI({ dex: wild.dex, activeBall: id });
+      return true;
+    },
+    // The capture beats, fired by catch.js on the animation itself so the sound lands with the
+    // frame rather than a fixed delay after it.
+    onSfx: (name) => sfx(name),
+    // GO hands you a fresh ball on its own after a failed throw. Returning null means the bag is
+    // empty: catch.js parks in its 'empty' phase and the Run button is all that is left.
+    onRearm: () => {
+      const id = inv.activeBall();
+      if (!id) return null;
+      ui.renderCatchUI({ dex: wild.dex, activeBall: id });
+      return { ballId: id, ballsLeft: inv.countOf(id) };
+    },
     onGrade: (label) => {
       // The grade lands the instant the ball touches, well before the wobbles resolve — that
       // read-ahead is most of what makes a good GO throw feel good.
       sfx(label.includes('EXCELLENT') ? 'excellent' : label.includes('GREAT') ? 'great' : 'nice');
       ui.flashCatchGrade(label);
     },
-  });
-  setMode('catch');
-  ui.renderCatchUI({ dex: wild.dex, activeBall: ballId });
+  };
 }
 
 // Take a wild off the floor for good — body and all. There is no wild-vs-player collision, so a
@@ -774,6 +789,7 @@ function sendWildAway(wild) {
 function onCatchResult(res) {
   const wild = catchCtx?.wild;
   if (!wild) return;
+  if (catchCtx.free) { onFreeCatchResult(res); return; }
 
   if (res.caught) {
     sfx('caught');
@@ -813,6 +829,10 @@ function onCatchResult(res) {
 function onCatchFlee() {
   const wild = catchCtx?.wild;
   endCatch();
+  // In Free Catch, running is just stepping back into the room. The Pokemon STAYS — there is no
+  // floor for it to wander off across and nothing at stake, so leaving it to be tried again is the
+  // useful answer. The balls already thrown are what it cost.
+  if (catchCtx?.free) { catchCtx = null; setMode('freecatch'); return; }
   if (wild && !wild.gone) {
     removeWild(wild);
     // Phrased from the player's side rather than the Pokemon's. "X slipped away" read as the
@@ -822,6 +842,144 @@ function onCatchFlee() {
   catchCtx = null;
   setMode('playing');
 }
+
+// ---- Free Catch ---------------------------------------------------------------------------------
+// One room, seven Pokemon, a fixed bag, nothing at stake — see freecatch.js for the room itself.
+//
+// The bag goes in a SANDBOX `state.run`, built here and thrown away on exit. That is what lets the
+// catch minigame, the ball picker and every inventory call work unchanged: they all read and spend
+// from state.run.bag, and none of them needs to know this is not a dungeon run. It is safe because
+// Free Catch can only be opened when there is NO real run (Settings disables the button mid-run), and
+// because the sandbox never reaches any of the places a run is recorded:
+//   - nothing here calls enterFloor, which is the only caller of saveRun — so no save slot is touched;
+//   - a catch here does NOT go through inv.addCaught, which is what adds to the party and writes the
+//     lifetime record (pokemonCaught, seenDex, caughtDex) — so the Pokedex and stats are untouched;
+//   - its runMode is 'freecatch', which is in no list of run modes.
+// Nothing caught in Free Catch joins a team or the Pokedex. With a Legendary guaranteed in every
+// room, letting it count would make filling the Pokedex a matter of rerolling this screen.
+const FREE_CATCH_BALLS = { 'poke-ball': 30, 'great-ball': 15, 'ultra-ball': 5 };
+// The floor number the catch minigame tunes its ring speed by. 2: a little brisker than a run's
+// first floor, well short of its deepest.
+const FREE_CATCH_RING_FLOOR = 2;
+let freeCatchCaught = [];   // dex numbers, in the order they were caught
+
+function openFreeCatch() {
+  if (state.run && state.run.runMode !== 'freecatch') return;   // never over a live run
+  endCatch();
+  catchCtx = null;
+  const room = startFreeCatchRoom();
+  state.run = {
+    runMode: 'freecatch',
+    floor: room.floor, floorIndex: FREE_CATCH_RING_FLOOR - 1,
+    party: [], bag: { ...FREE_CATCH_BALLS }, coins: 0, activeBall: null,
+    attackBonus: 0, attackBonusUntil: 0, repelUntil: 0, revives: 0, caught: 0, pendingCatch: null,
+    themeIds: [room.theme.id], shopFloors: new Set(), chanseyFloors: new Set(),
+    fixturesThrough: 0, lastRandomShop: -10,
+  };
+  freeCatchCaught = [];
+  // The room's own theme from the top, as arriving on a floor of it would.
+  restartMusic(room.theme.id);
+  setMode('freecatch');
+}
+
+function exitFreeCatch() {
+  endCatch();
+  catchCtx = null;
+  disposeFreeCatchRoom();
+  state.run = null;
+  freeCatchCaught = [];
+  setMode('settings');
+}
+
+// What the HUD draws. `over` is derived rather than stored, so it can never disagree with the room:
+// cleared when nobody is left in it, empty when the bag is.
+function freeCatchSummary() {
+  const room = freeCatchRoom();
+  const left = wildsLeft();
+  return {
+    themeName: room?.theme?.name || '',
+    caught: freeCatchCaught.slice(),
+    total: room ? room.floor.wilds.length : 0,
+    left,
+    balls: { 'poke-ball': inv.countOf('poke-ball'), 'great-ball': inv.countOf('great-ball'),
+             'ultra-ball': inv.countOf('ultra-ball') },
+    legendaryLeft: !!room?.floor.wilds.some(w => w.legendary && !w.gone),
+    over: !room ? null : left === 0 ? 'cleared' : inv.totalBalls() === 0 ? 'empty' : null,
+  };
+}
+
+function beginFreeCatch(wild) {
+  const ballId = inv.activeBall();
+  if (!ballId) { setMode('freecatch'); return; }   // the HUD shows the out-of-balls panel
+  catchCtx = { wild, free: true };
+  ui.resetCatchGrade();
+  ui.clearCatchNote();
+  startCatch({
+    dex: wild.dex,
+    ballId,
+    ballsLeft: inv.countOf(ballId),
+    floorNumber: FREE_CATCH_RING_FLOOR,
+    // Staged as the room's own dungeon, exactly as a run's catch is staged as its floor.
+    theme: freeCatchRoom().theme,
+    shadow: false,
+    ...throwHandlers(wild),
+    onResult: onCatchResult,
+    // Out of balls mid-encounter: say so on the catch screen, let the last ball land, and go back to
+    // the room — where the HUD's end panel takes it from there. The Pokemon stays in the room; it is
+    // the bag that ran out, not the encounter.
+    onEmpty: () => {
+      ui.catchNote('You are out of Pokeballs');
+      setTimeout(() => {
+        if (state.mode !== 'catch') return;
+        endCatch();
+        ui.clearCatchNote();
+        catchCtx = null;
+        setMode('freecatch');
+      }, 1600);
+    },
+  });
+  setMode('catch');
+  ui.renderCatchUI({ dex: wild.dex, activeBall: ballId });
+}
+
+function onFreeCatchResult(res) {
+  const wild = catchCtx.wild;
+  if (res.caught) {
+    sfx('caught');
+    freeCatchCaught.push(wild.dex);
+    removeFromRoom(wild);
+    // Same beat as a run's catch: the lock click, its shimmer and the fanfare all land first.
+    setTimeout(() => {
+      endCatch();
+      catchCtx = null;
+      setMode('freecatch');
+    }, 1500);
+    return;
+  }
+  sfx(res.reason === 'broke' ? 'broke' : res.reason === 'deflect' ? 'deflect' : 'select');
+  ui.renderCatchUI({ dex: wild.dex, activeBall: inv.activeBall() });
+}
+
+// A TAP on the room, as opposed to a drag: under 14px of travel between press and release. Judged on
+// release so a thumb that lands, wobbles and lifts still counts, and a scroll-like swipe does not.
+let freeCatchPress = null;
+canvas.addEventListener('pointerdown', (e) => {
+  freeCatchPress = state.mode === 'freecatch' ? { x: e.clientX, y: e.clientY } : null;
+});
+canvas.addEventListener('pointerup', (e) => {
+  const press = freeCatchPress;
+  freeCatchPress = null;
+  if (state.mode !== 'freecatch' || !press) return;
+  if (Math.hypot(e.clientX - press.x, e.clientY - press.y) > 14) return;
+  // Room over (cleared, or the bag is empty): no more catches. Redraw rather than just ignore the
+  // tap, so the end panel is guaranteed to be up whatever emptied the bag.
+  const summary = freeCatchSummary();
+  if (summary.over) { ui.renderFreeCatch(summary); return; }
+  const wild = pickWildAt(e.clientX, e.clientY);
+  if (!wild) return;
+  sfx('encounter');
+  beginFreeCatch(wild);
+});
 
 // ---- The playing-mode frame -------------------------------------------------------------------
 function updatePlaying(dt) {
@@ -1149,6 +1307,10 @@ Object.assign(uiHooks, {
   },
   battleContinue: onBattleContinue,
   catchFlee: onCatchFlee,
+  // Free Catch, from Settings. New Room rebuilds the room with a fresh bag in place.
+  openFreeCatch: () => openFreeCatch(),
+  exitFreeCatch: () => exitFreeCatch(),
+  freeCatchNewRoom: () => openFreeCatch(),
   chooseBall: (id) => {
     inv.itemApi.setActiveBall(id);
     setCatchBall(id, inv.countOf(id));
@@ -1248,6 +1410,7 @@ function tick(dtMs) {
     case 'battle': updateBattleFrame(dtMs); break;
     case 'catch': updateCatch(dt); break;
     case 'title': updateTitle(dt); break;
+    case 'freecatch': updateFreeCatch(dt); break;
     default: break;
   }
 
@@ -1257,6 +1420,8 @@ function tick(dtMs) {
   // the full gradient precisely so this shows through it.
   if (state.mode === 'catch') renderer.render(catchScene, catchCamera);
   else if (state.mode === 'title') renderer.render(titleScene, titleCamera);
+  // Free Catch's room lives in the dungeon's own scene but has its own camera (see freecatch.js).
+  else if (state.mode === 'freecatch') renderer.render(scene, freeCatchCamera);
   else renderer.render(scene, camera);
 }
 

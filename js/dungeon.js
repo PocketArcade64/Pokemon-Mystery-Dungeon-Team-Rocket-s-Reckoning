@@ -1682,7 +1682,9 @@ export function buildFloor(floor) {
   // the flight is a slab wedged between the treads. The cells stay FLOOR in floor.cells, which is
   // what collision and the tap-to-move pathfinder read; nothing ever stands there because
   // atStairs() takes the ascent at 1.3 units out, half a cell short of the lip.
-  const inStairPit = (x, y) =>
+  // A floor with no `stairsCell` has no stairwell at all — Free Catch's single room (freecatch.js)
+  // is the one such floor: there is nowhere to go down to.
+  const inStairPit = !floor.stairsCell ? () => false : (x, y) =>
     Math.abs(x - floor.stairsCell.x) <= STAIR_PIT_R && Math.abs(y - floor.stairsCell.y) <= STAIR_PIT_R;
   for (let y = 0; y < H; y++) {
     for (let x = 0; x < W; x++) {
@@ -1819,11 +1821,13 @@ export function buildFloor(floor) {
     }
   }
 
-  const stairs = makeStairs();
-  const sw = cellToWorld(floor, floor.stairsCell.x, floor.stairsCell.y);
-  stairs.position.set(sw.x, 0, sw.z);
-  group.add(stairs);
-  floor.stairsObj = stairs;
+  if (floor.stairsCell) {
+    const stairs = makeStairs();
+    const sw = cellToWorld(floor, floor.stairsCell.x, floor.stairsCell.y);
+    stairs.position.set(sw.x, 0, sw.z);
+    group.add(stairs);
+    floor.stairsObj = stairs;
+  }
 
   if (floor.shop) {
     const stall = makeShopStall();
@@ -1861,7 +1865,9 @@ export function buildFloor(floor) {
     // models already know how big each species is relative to the rest; the stage table was
     // throwing that away and then guessing it back.
     const obj = createMonObject(wild.dex, {
-      height: WORLD_MON_BASE, fit: 'world', tint: TYPE_COLOR[c?.types?.[0]] || 0x888888,
+      // `floor.monBase` lets a floor draw its Pokemon bigger than a dungeon floor does — Free Catch
+      // does, because its room is a stage you tap things on rather than a map you walk across.
+      height: floor.monBase ?? WORLD_MON_BASE, fit: 'world', tint: TYPE_COLOR[c?.types?.[0]] || 0x888888,
       // The shadow aura is built around the REAL body, so it waits for the model. It used to be
       // made at spawn from the requested height, which was the actual height only because every
       // model was forced to it; under the world fit a Kabuto is half that and a Vibrava is far

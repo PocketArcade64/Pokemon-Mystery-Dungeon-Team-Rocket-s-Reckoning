@@ -290,6 +290,7 @@ export function musicForMode(mode, { themeId = null, battleKind = null } = {}) {
     case 'pause':
     case 'bag':
     case 'swap':
+    case 'freecatch':   // the room's own dungeon theme
       return themeId && TRACKS[themeId] ? themeId : currentKey;
     case 'battle':
       if (battleKind === 'giovanni') return 'giovanni';

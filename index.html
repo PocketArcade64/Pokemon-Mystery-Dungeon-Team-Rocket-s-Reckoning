@@ -631,6 +631,98 @@
     .mode-card .mc-platform { height: 11px; }
   }
 
+  /* ---- Free Catch HUD -----------------------------------------------------------------------
+     Over a live 3D room, so it is the one screen with NO ground of its own and NO pointer events
+     outside its controls: a tap anywhere that is not a button falls through to the canvas, which is
+     how a Pokemon gets picked (main.js). Everything readable sits on its own dark translucent chip,
+     because the room behind it can be any of eleven palettes, from snow to lava. */
+  #screen-freecatch { pointer-events: none; }
+  #screen-freecatch button, #screen-freecatch .fc-end.open { pointer-events: auto; }
+  .fc-top {
+    flex: 0 0 auto;
+    display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px;
+  }
+  .fc-top .btn { width: auto; margin: 0; padding-left: 0.9rem; padding-right: 0.9rem; }
+  .fc-heading {
+    justify-self: center; text-align: center;
+    background: rgba(8,10,20,0.62); border: 1px solid var(--edge); border-radius: 12px;
+    padding: 5px 12px 6px; min-width: 0;
+  }
+  .fc-name {
+    font-weight: 700; font-size: 1.04rem; line-height: 1.3; color: var(--gold);
+    text-shadow: 0 2px 0 rgba(0,0,0,0.5);
+  }
+  .fc-theme {
+    font-size: 0.78rem; color: var(--ink); opacity: 0.85;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .fc-tally {
+    background: rgba(8,10,20,0.62); border: 1px solid var(--edge); border-radius: 12px;
+    padding: 6px 10px; text-align: center; line-height: 1.1;
+  }
+  .fc-tally .fct-n { display: block; font-weight: 700; font-size: 1.43rem; color: var(--gold); text-shadow: 0 2px 0 rgba(0,0,0,0.5); }
+  .fc-tally .fct-of { font-size: 0.715rem; color: var(--ink-dim); }
+  /* The three balls and how many of each are left. A ball tier at zero dims rather than vanishing,
+     so the row never changes shape mid-session. */
+  .fc-balls {
+    flex: 0 0 auto; align-self: center;
+    display: flex; gap: 8px; margin-top: 8px;
+  }
+  .fc-ball {
+    display: flex; align-items: center; gap: 5px;
+    background: rgba(8,10,20,0.62); border: 1px solid var(--edge); border-radius: 10px;
+    padding: 4px 9px 4px 6px;
+    font-weight: 700; font-size: 0.936rem; color: var(--ink);
+  }
+  .fc-ball img, .fc-ball svg { width: 22px; height: 22px; display: block; image-rendering: pixelated; }
+  .fc-ball.out { opacity: 0.4; }
+  /* Pinned to the bottom of the screen by the auto margin, and hidden once the room is over. */
+  .fc-hint {
+    margin-top: auto; align-self: center; text-align: center;
+    background: rgba(8,10,20,0.62); border: 1px solid var(--edge); border-radius: 12px;
+    padding: 7px 14px; font-size: 0.936rem; color: var(--ink);
+  }
+  /* The end panel: room cleared or bag empty. Same scrim-and-panel as the evolution picker. */
+  .fc-end {
+    position: absolute; inset: 0; z-index: 4;
+    display: none; align-items: center; justify-content: center;
+    padding: calc(var(--sat) + 14px) calc(var(--sar) + 14px) calc(var(--sab) + 20px) calc(var(--sal) + 14px);
+    background: rgba(8,10,20,0.72);
+  }
+  .fc-end.open { display: flex; }
+  .fc-end-panel {
+    width: 100%; max-width: 400px; max-height: 100%; overflow-y: auto;
+    background: linear-gradient(180deg, rgba(20,26,50,0.98), rgba(34,18,50,0.98));
+    border: 1px solid var(--edge-lt); border-radius: 14px;
+    box-shadow: 0 6px 0 rgba(0,0,0,0.45);
+    padding: 18px 14px 12px; text-align: center;
+  }
+  .fc-end-title {
+    margin: 0; font-weight: 700; font-size: 1.56rem; line-height: 1.35;
+    color: var(--gold); text-shadow: 0 2px 0 rgba(0,0,0,0.5);
+  }
+  .fc-end-sub { color: var(--ink-dim); font-size: 0.975rem; margin: 3px 0 14px; }
+  /* The haul: up to seven, four across. The Legendary, if it was caught, is edged in gold — as
+     `.is-legend`, NOT `.legend`: that name is already the Pokedex's colour key (a flex row in dim
+     ink), and it silently restyled this card into one, name and all. */
+  .fc-end-caught {
+    display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 7px; margin-bottom: 16px;
+  }
+  .fc-got {
+    min-width: 0; background: rgba(255,255,255,0.07);
+    border: 2px solid transparent; border-radius: 9px; padding: 4px 3px 5px;
+  }
+  .fc-got.is-legend { border-color: var(--gold); background: rgba(255,213,79,0.16); }
+  .fc-got img, .fc-got .fc-got-art {
+    display: block; width: 100%; aspect-ratio: 1; border-radius: 6px; background: rgba(0,0,0,0.3);
+  }
+  .fc-got-name {
+    margin-top: 4px; font-weight: 700; font-size: 0.65rem; line-height: 1.35;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .fc-got-none { grid-column: 1 / -1; color: var(--ink-dim); padding: 10px 0; }
+  .fc-end-panel .btn-col > .btn { margin-bottom: 8px; }
+
   /* ---- Starter select ----------------------------------------------------------------------- */
   /* The preview canvas is transparent, so this is just the recessed well Rumble puts behind its
      roster: a dark translucent ground, one hairline edge, rounded. */
@@ -2388,6 +2480,12 @@
           your Pokemon paths toward it. Keyboard arrows / WASD always work as well.
         </div>
       </div>
+      <!-- Free Catch: a sandbox room. renderSettings disables it mid-run and says why. -->
+      <div class="setting">
+        <label>Free Catch</label>
+        <button class="btn small" id="btn-free-catch">Free Catch Mode</button>
+        <div class="setting-note" id="free-catch-note"></div>
+      </div>
       <!-- Erasing is guarded by a typed password rather than by a second press. It is the only
            irreversible button in Settings, and unlike Abandon Run (which arms on a first press)
            there is nothing on screen to warn you what you are about to lose — so it asks you to
@@ -2471,6 +2569,34 @@
       <div class="empty-note" id="dex-empty" style="display:none">Nothing recorded yet. Finish a run - win or lose - and it shows up here.</div>
     </div>
     <button class="btn secondary" id="btn-dex-back" style="margin-top:14px">Back</button>
+  </div>
+
+  <!-- ============ FREE CATCH ============
+       The HUD over Free Catch's 3D room (js/freecatch.js). Transparent and click-through apart from
+       its controls, so a tap on the room reaches the canvas. ui-screens.js renderFreeCatch fills it.
+  -->
+  <div class="screen" id="screen-freecatch">
+    <div class="fc-top">
+      <button class="btn secondary small" id="btn-fc-exit">Exit</button>
+      <div class="fc-heading">
+        <div class="fc-name">Free Catch</div>
+        <div class="fc-theme" id="fc-theme">-</div>
+      </div>
+      <div class="fc-tally" id="fc-tally" aria-label="Caught"></div>
+    </div>
+    <div class="fc-balls" id="fc-balls"></div>
+    <div class="fc-hint" id="fc-hint"></div>
+    <div class="fc-end" id="fc-end" role="dialog" aria-modal="true" aria-labelledby="fc-end-title">
+      <div class="fc-end-panel">
+        <h3 class="fc-end-title" id="fc-end-title">Room Cleared!</h3>
+        <div class="fc-end-sub" id="fc-end-sub"></div>
+        <div class="fc-end-caught" id="fc-end-caught"></div>
+        <div class="btn-col">
+          <button class="btn" id="btn-fc-new">New Room</button>
+          <button class="btn secondary small" id="btn-fc-end-exit">Exit</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- ============ BATTLE ============
