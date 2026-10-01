@@ -5,7 +5,7 @@
 // function. Nothing here knows about the game loop — main.js registers callbacks on `uiHooks` and
 // this module only ever calls those.
 import * as THREE from 'three';
-import { state, MAX_PARTY, RUN_MODES, saveSettings, saveStats, resetStats } from './state.js';
+import { state, MAX_PARTY, RUN_MODES, saveSettings, saveStats, resetStats, resetEggs } from './state.js';
 import { ITEMS, ITEM_BY_ID, BALL_IDS } from './data/items.js';
 import { CATALOG_BY_DEX } from './data/pokemon-catalog.js';
 import { typeIconPath } from './data/type-chart.js';
@@ -572,8 +572,8 @@ function renderPartnerPicker() {
   const grid = $('partner-options');
   grid.innerHTML = list.length
     ? list.map(partnerCell).join('')
-    : `<div class="partner-empty">No partners yet. Eggs turn up on dungeon floors in place of a
-       present - finish the run you found one in, then hatch it from the title screen.</div>`;
+    : `<div class="partner-empty">No partners yet. Eggs turn up on dungeon floors - finish the run
+       you found one in, then hatch it from the title screen.</div>`;
   grid.querySelectorAll('.evo-option').forEach(el => {
     el.addEventListener('click', () => {
       selectPartner(Number(el.dataset.dex));
@@ -667,22 +667,24 @@ export function renderEggs() {
     el.addEventListener('click', () => { sfx('confirm'); uiHooks.openHatch(); });
   });
 
+  // Only ever the "all done" note now. An empty box with the sub-line above it saying so is enough
+  // on its own; the explanation of where eggs come from that used to sit here was taken out.
   const note = $('eggs-empty');
-  note.hidden = n > 0;
-  note.textContent = have >= total
-    ? 'You have hatched every Pokemon an egg can hold. Eggs no longer turn up in the dungeon.'
-    : 'Eggs turn up on dungeon floors in place of a present. Finish the run you found one in - win or lose - and it is ready to hatch here.';
+  note.hidden = !(n === 0 && have >= total);
+  note.textContent = 'You have hatched every Pokemon an egg can hold. Eggs no longer turn up in the dungeon.';
 
   const pct = total ? Math.round((have / total) * 100) : 0;
   $('eggs-progress').innerHTML = `
-    <div class="ep-line"><span>Partners hatched</span><span class="ep-val">${have} / ${total}</span></div>
+    <div class="ep-line"><span>Pokemon hatched</span><span class="ep-val">${have} / ${total}</span></div>
     <div class="ep-bar"><i style="width:${pct}%"></i></div>
     ${inRuns ? `<div class="ep-note">+${inRuns} more egg${inRuns === 1 ? '' : 's'} waiting in a run in progress</div>` : ''}`;
 }
 
 // ---- The hatch screen ----------------------------------------------------------------------------
-// The egg on a lit stage, three pips under it for the three taps, and the reveal under those once it
-// is open. The 3D is js/hatch.js; this is the DOM around it and the sounds.
+// The egg on a lit stage, and once it is open the Pokemon's name and types at the top of that same
+// stage, where it can be turned with a finger like the starter preview. The 3D (and the turning) is
+// js/hatch.js; this is the DOM around it and the sounds. How far along the hatch is shows in the egg
+// itself — its cracks and the glow behind it — and in the line under the title.
 //
 // The egg is NOT spent until the shell actually breaks (onBreak, below). Backing out before then
 // leaves it in the box, and from the third tap until the Pokemon is out the Back button is disabled —
@@ -695,10 +697,6 @@ const HATCH_LINES = [
   'Here it comes...',
 ];
 
-function setHatchPips(n) {
-  $('hatch-pips').querySelectorAll('i').forEach((el, i) => el.classList.toggle('on', i < n));
-}
-
 export function renderHatch() {
   initHatchView($('hatch-canvas'));
   const dex = rollHatch();
@@ -707,8 +705,8 @@ export function renderHatch() {
   stage.classList.remove('open');
   $('hatch-flash').classList.remove('flash');
   $('hatch-title').textContent = 'Hatching';
-  setHatchPips(0);
   $('hatch-reveal').classList.remove('shown');
+  $('hatch-note').classList.remove('shown');
   $('btn-hatch-next').hidden = true;
   hatchCommitted = false;
   const back = $('btn-hatch-back');
@@ -752,7 +750,7 @@ function onHatchEmerged(dex) {
   $('hatch-tag').textContent = !hatchCommitted ? 'This egg had already been hatched.'
     : c?.stage === 'Legendary' ? 'Legendary!' : 'New partner!';
   $('hatch-tag').classList.toggle('legend', hatchCommitted && c?.stage === 'Legendary');
-  $('hatch-note').hidden = !hatchCommitted;
+  $('hatch-note').classList.toggle('shown', hatchCommitted);
   $('hatch-reveal').classList.add('shown');
   const back = $('btn-hatch-back');
   back.disabled = false;
@@ -767,7 +765,6 @@ function onHatchTap() {
   sfx('eggtap');
   if (n >= 2) sfx('eggcrack');
   try { navigator.vibrate?.(n >= HATCH_TAPS ? 40 : 18); } catch { /* no vibration here */ }
-  setHatchPips(n);
   $('hatch-stage').dataset.cracks = String(n);
   $('hatch-sub').textContent = HATCH_LINES[Math.min(n, HATCH_LINES.length - 1)];
   if (n >= HATCH_TAPS) $('btn-hatch-back').disabled = true;
@@ -2129,10 +2126,12 @@ export function bindUI() {
   });
   click('btn-reset-go', () => {
     if (!passOk()) return;
+    // A start from scratch: the lifetime record, and every egg and hatched partner with it.
     resetStats();
     saveStats();
+    resetEggs();
     sfx('back');
-    toast('Lifetime record erased.');
+    toast('Records, eggs and hatched partners erased.');
     setResetGate(false);
     renderSettings();
   });

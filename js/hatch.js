@@ -6,17 +6,25 @@
 // offscreen stage — so this screen costs no WebGL context of its own. The page is allowed two, and a
 // third gets the dungeon's killed by the browser.
 //
-// The DOM side (the pips, the name, the buttons, the sounds) is ui-screens.js's. This module only
-// knows the scene, and talks back through the two callbacks handed to beginHatch.
+// The DOM side (the name and types over the stage, the buttons, the sounds) is ui-screens.js's. This
+// module only knows the scene — and turning the hatched Pokemon under a finger — and talks back
+// through the two callbacks handed to beginHatch.
 import * as THREE from 'three';
-import { createModelView } from './modelstage.js';
+import { createModelView, DRAG_RADIANS_PER_PX } from './modelstage.js';
 import { setPreviewModel, EGG_MODEL } from './models.js';
 
 export const HATCH_TAPS = 3;
 
 const EGG_H = 1.3;         // the egg's height in view units
 const MON_H = 1.4;         // the Pokemon's, fitted 'contain' so a wide one still fits the frame
-const MON_ASPECT = 1.45;   // how wide (x MON_H) the Pokemon may sweep as it turns — see containScale
+const MON_ASPECT = 1.3;    // how wide (x MON_H) the Pokemon may sweep as it turns — see containScale
+// The frame: at least FRAME_HALF_H units above and below the look point, and at least FRAME_W units
+// across. A phone's stage is much taller than it is wide, so it is the WIDTH that binds there — a
+// frame sized by height alone showed only ~1.9 units across on a 390x844 screen, and a wide Pokemon
+// turning in it (Beldum) ran off both sides. The spare height lands above the Pokemon, which is where
+// the name and types are drawn over the stage.
+const FRAME_HALF_H = 1.6;
+const FRAME_W = 2.5;
 // The egg's cream comes out a muddy beige under the shared stage's rig at 1.0 — the same lift the
 // cached egg icon gets (see requestPathPortrait in ui-screens.js), so the two match.
 const EGG_BRIGHTEN = 1.35;
@@ -52,12 +60,45 @@ let shadow = null;
 let decals = [];           // { mesh, ctx, tex, cracks }
 let shards = [];
 let s = null;              // per-hatch state, rebuilt by beginHatch
+let hatchCanvas = null;
+let drag = null;           // { lastX } while a finger is turning the hatched Pokemon
+
+// DRAG TO TURN, once the Pokemon is out — the starter preview's feel exactly: the yaw follows the
+// finger at the same rate, the idle spin pauses while it is down and picks up from wherever it was
+// left, and there is no snap-back or inertia. It is NOT createModelView's `draggable`, because that
+// turns the whole view; here only the Pokemon turns, and only after the egg has gone — before that a
+// press on the canvas is a tap on the egg (ui-screens.js onHatchTap), and must not twist it.
+// Tracked from clientX rather than movementX for the reason modelstage.js gives: iOS Safari leaves
+// movementX at 0 on touch-derived pointer events.
+function bindMonDrag(canvas) {
+  canvas.style.touchAction = 'none';
+  canvas.addEventListener('pointerdown', (e) => {
+    if (s?.phase !== 'done') return;
+    drag = { lastX: e.clientX };
+    canvas.style.cursor = 'grabbing';
+    try { canvas.setPointerCapture(e.pointerId); } catch { /* not capturable: no matter */ }
+  });
+  canvas.addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    monHolder.rotation.y += (e.clientX - drag.lastX) * DRAG_RADIANS_PER_PX;
+    drag.lastX = e.clientX;
+  });
+  const endDrag = () => {
+    if (!drag) return;
+    drag = null;
+    canvas.style.cursor = s?.phase === 'done' ? 'grab' : '';
+  };
+  canvas.addEventListener('pointerup', endDrag);
+  canvas.addEventListener('pointercancel', endDrag);
+  canvas.addEventListener('lostpointercapture', endDrag);
+}
 
 export function initHatchView(canvas) {
   if (view) return view;
-  // A wide frame for the egg's size: on a phone the stage is taller than it is wide, and the egg
-  // needs room on both sides for the burst and above it for the Pokemon's hop out.
-  view = createModelView(canvas, { frustum: 1.6, camY: 1.35, camZ: 5, lookY: 0.95 });
+  hatchCanvas = canvas;
+  bindMonDrag(canvas);
+  // The frustum here is only the starting value: updateHatch widens it to FRAME_W every frame.
+  view = createModelView(canvas, { frustum: FRAME_HALF_H, camY: 1.35, camZ: 5, lookY: 0.95 });
   root = new THREE.Group();
   view.holder.add(root);
 
@@ -249,6 +290,8 @@ function stepShards(dt) {
 export function beginHatch(dex, { onBreak = null, onEmerged = null } = {}) {
   if (!view) return;
   clearShards();
+  drag = null;
+  hatchCanvas.style.cursor = '';       // back to the stylesheet's pointer: the egg is for tapping
   s = { dex, taps: 0, phase: 'loading', rock: 0, rockT: 9, rockDir: 1, squashT: 9, idleT: 0,
         shudderT: 0, emergeT: 0, onBreak, onEmerged };
   pivot.visible = true;
@@ -337,12 +380,17 @@ export function updateHatch(dt) {
     monHolder.position.y = Math.sin(t * Math.PI) * 0.28;
     if (s.phase === 'emerge' && t >= 1) {
       s.phase = 'done';
+      hatchCanvas.style.cursor = 'grab';
       s.onEmerged?.(s.dex);
     }
-    // Then it turns slowly on the spot, like the starter and Pokedex previews.
-    if (s.phase === 'done') monHolder.rotation.y += dt * 0.6;
+    // Then it turns slowly on the spot at the starter preview's rate, and yields to a finger.
+    if (s.phase === 'done' && !drag) monHolder.rotation.y += dt * 0.7;
   }
   stepShards(dt);
+  // renderToStage reads the half-height off userData on every render, so the frame follows the
+  // stage's own shape — a rotation or a resize included.
+  const aspect = hatchCanvas.clientWidth / Math.max(1, hatchCanvas.clientHeight);
+  view.camera.userData.frustum = Math.max(FRAME_HALF_H, FRAME_W / (2 * Math.max(aspect, 0.1)));
   view.render();
 }
 
@@ -351,4 +399,5 @@ export function updateHatch(dt) {
 export function endHatch() {
   clearShards();
   s = null;
+  drag = null;
 }

@@ -3,8 +3,8 @@
 // is every rule about it, so main.js, dungeon generation and the UI all ask the same questions here.
 //
 // THE LIFECYCLE
-//   1. A floor may lay ONE egg down, in place of one of its presents (EGG_CHANCE per present, never
-//      more than one per floor — see generateFloor's `eggChance`).
+//   1. A floor may lay ONE egg down, in place of any one of its pickups — a present, a ball lot or a
+//      coin (EGG_CHANCE per pickup, never more than one per floor — see generateFloor's egg pass).
 //   2. Picking it up puts it in the RUN (`run.eggs`), which rides in the floor-arrival snapshot like
 //      the bag does. An egg is not ready to hatch while the run it was found in is still going.
 //   3. When the run ends — a win, a wipe, an abandon, or a saved run being thrown away by starting a
@@ -16,15 +16,21 @@
 //
 // WHAT AN EGG CAN HOLD: a Basic or a Legendary, never a Stage 1 or Stage 2 — and never one already
 // hatched, so every egg is a new partner. That makes the pool FINITE, and the spawn gate below is
-// what keeps a found egg from ever being one the pool cannot fill.
+// what keeps a found egg from ever being one the pool cannot fill. ("Legendary" is the catalog's
+// stage for the Mythicals too — Mew, Celebi, Jirachi, Arceus and the rest all carry it.)
 import { state, saveEggs, saveStats, recordDex, RUN_MODES } from './state.js';
 import { POKEMON_CATALOG, CATALOG_BY_DEX } from './data/pokemon-catalog.js';
 import { hasModelForDex } from './models.js';
 
-// The chance any one present on a floor is an egg instead. A floor lays 10 + 3n presents (13 on B1F,
-// 25 on B5F) and stops at the first egg, so this works out to roughly a 49% chance of an egg on B1F
-// rising to about 72% on B5F — two or three eggs across a five-floor run.
+// The chance any one pickup on a floor — present, ball lot or coin — is an egg instead, one egg a
+// floor at most. A floor lays roughly 28 pickups on B1F and 48 on B5F, so this works out to about a
+// 76% chance of an egg on B1F rising to about 92% on B5F: most floors have one.
 export const EGG_CHANCE = 1 / 20;
+
+// How often an egg holds a Legendary or Mythical: about one egg in ten. Left to an even draw over
+// the pool they would come out about one in five (46 of 212), which made them the ordinary result
+// of an egg rather than the rare one.
+export const LEGENDARY_HATCH_CHANCE = 1 / 10;
 
 // Everything an egg can hold, in dex order. A species without a Quest model is left out for the same
 // reason the wild pools leave it out: a hatch has to have something to show coming out of the shell.
@@ -98,12 +104,23 @@ export function bankSavedEggs(runMode) {
 // Decide what the next egg holds, WITHOUT spending it. The hatch screen asks this when it opens, so
 // the Pokemon's model can load while the egg is being tapped and be ready the instant the shell
 // breaks. Nothing is written until commitHatch — backing out of the screen leaves the egg whole, and
-// the next open rolls again. Uniform over what is left: a Legendary is exactly as likely as any Basic.
+// the next open rolls again.
+//
+// Two draws: first WHICH KIND (a Legendary or Mythical one time in ten, a Basic otherwise), then an
+// even draw within that kind among the ones not yet hatched. Once either kind is all hatched, every
+// egg is the other — so the last eggs of a finished Basic set are all Legendaries, and that is right:
+// an egg always holds something new.
+const pick = (list) => list[Math.floor(Math.random() * list.length)];
+
 export function rollHatch() {
   if (state.eggs.ready <= 0) return null;
   const left = unhatched();
   if (!left.length) return null;
-  return left[Math.floor(Math.random() * left.length)];
+  const legends = left.filter(d => CATALOG_BY_DEX.get(d)?.stage === 'Legendary');
+  const basics = left.filter(d => CATALOG_BY_DEX.get(d)?.stage !== 'Legendary');
+  if (!legends.length) return pick(basics);
+  if (!basics.length) return pick(legends);
+  return pick(Math.random() < LEGENDARY_HATCH_CHANCE ? legends : basics);
 }
 
 // The shell has broken: spend the egg and unlock `dex`. Refuses a dex that is not in the pool or is

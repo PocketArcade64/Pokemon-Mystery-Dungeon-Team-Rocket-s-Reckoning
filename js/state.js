@@ -212,8 +212,7 @@ export function savedRunSummary(runMode) {
 // for the rules; this is only the storage.
 //   ready    eggs banked from finished runs, waiting on the Hatch Eggs screen
 //   hatched  dex numbers already hatched, in the order they came out. An egg never repeats one.
-// Kept apart from the stats on purpose, so Erase Records (which only ever cleared a record that
-// "never affected gameplay") cannot take partners away.
+// Its own key rather than part of the stats, but Erase Records clears both (see resetEggs).
 const EGGS_KEY = 'pmd-trr.eggs.v1';
 
 function loadEggs() {
@@ -244,6 +243,21 @@ export const state = {
 export function resetStats() {
   state.stats = { ...DEFAULT_STATS, seenDex: [], caughtDex: [], winnerDex: [] };
   saveStats();
+}
+
+// Erase Records' other half: every egg and every hatched partner, as if the game had never been
+// played. "Every egg" includes the ones the live run and the saved runs are carrying — leaving those
+// would bring eggs straight back the moment one of those runs ended. The saved runs themselves (party,
+// floor, bag) are kept, as Erase Records has always kept them.
+export function resetEggs() {
+  state.eggs = { ready: 0, hatched: [] };
+  saveEggs();
+  if (state.run && RUN_MODES.includes(state.run.runMode)) state.run.eggs = 0;
+  let touched = false;
+  for (const m of RUN_MODES) {
+    if (state.saves[m]?.eggs) { state.saves[m].eggs = 0; touched = true; }
+  }
+  if (touched) writeSaves();
 }
 
 // Push a dex number onto one of the stats lists, keeping it unique and sorted.

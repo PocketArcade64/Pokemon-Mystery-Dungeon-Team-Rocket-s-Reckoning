@@ -936,29 +936,35 @@
     opacity: 0; transition: opacity 0.7s ease-out;
   }
   .hatch-flash.flash { opacity: 1; transition: none; }
-  .hatch-pips { flex: 0 0 auto; display: flex; justify-content: center; gap: 12px; margin: 12px 0 4px; }
-  .hatch-pips i {
-    width: 14px; height: 14px; border-radius: 50%;
-    background: var(--void-2); box-shadow: inset 0 0 0 2px var(--edge-lt);
-    transition: background 0.15s, transform 0.15s;
-  }
-  .hatch-pips i.on { background: var(--gold-mid); box-shadow: inset 0 0 0 2px var(--gold-lt); transform: scale(1.18); }
-  /* The reveal keeps its height while hidden, so the stage above it does not jump the moment the
-     Pokemon is out — enough for the note to wrap onto a second line on a narrow phone. */
+  /* The reveal: the tag, the name and the types, top centre in the stage, in the head room the
+     camera leaves above the Pokemon (js/hatch.js frames it so even the tallest clears it). It is an
+     overlay, so showing it moves nothing — the stage never resizes under the Pokemon. */
   .hatch-reveal {
-    flex: 0 0 auto; text-align: center; min-height: 8.7rem;
-    opacity: 0; transform: translateY(6px);
+    position: absolute; z-index: 3; top: 12px; left: 10px; right: 10px;
+    text-align: center; pointer-events: none;
+    opacity: 0; transform: translateY(-6px);
     transition: opacity 0.3s ease, transform 0.3s ease;
   }
   .hatch-reveal.shown { opacity: 1; transform: none; }
-  .hatch-reveal .starter-name { margin: 0.1rem 0 0.15rem; }
-  .hatch-reveal .starter-meta { margin-bottom: 4px; }
   .hatch-tag {
-    font-weight: 700; font-size: 0.91rem; letter-spacing: 1.5px; text-transform: uppercase;
-    color: #a9e3ad;
+    font-weight: 700; font-size: 0.91rem; line-height: 1.4; letter-spacing: 1.5px; text-transform: uppercase;
+    color: #a9e3ad; text-shadow: 0 2px 0 rgba(0,0,0,0.5);
   }
   .hatch-tag.legend { color: var(--gold); }
-  .hatch-note { color: var(--ink-dim); font-size: 0.91rem; line-height: 1.45; }
+  .hatch-name {
+    font-weight: 700; font-size: 1.69rem; line-height: 1.3; margin: 0.05rem 0 0.3rem;
+    color: var(--gold); text-shadow: 0 2px 0 rgba(0,0,0,0.5);
+  }
+  /* The starter screen's headline size for the types, not the 15px card size. */
+  .hatch-types .type-badges { gap: 6px; }
+  .hatch-types .type-badges img { height: 24px; }
+  /* The hint under the stage holds its two lines' height while hidden, for the same reason. */
+  .hatch-note {
+    flex: 0 0 auto; min-height: 2.7rem; margin-top: 10px;
+    color: var(--ink-dim); font-size: 0.91rem; line-height: 1.45; text-align: center;
+    opacity: 0; transition: opacity 0.3s ease;
+  }
+  .hatch-note.shown { opacity: 1; }
   .hatch-actions { flex: 0 0 auto; padding-top: 10px; }
 
   /* The end screen's egg line, under the stats. Mint, so it is not mistaken for one of them. */
@@ -2567,17 +2573,18 @@
   <div class="screen sheet" id="screen-hatch">
     <h2 class="screen-title" id="hatch-title">Hatching</h2>
     <div class="screen-sub" id="hatch-sub">-</div>
+    <!-- The reveal sits INSIDE the stage, top centre, over the Pokemon's head room — and is
+         pointer-through, so a drag that starts on the name still turns the Pokemon. -->
     <div class="hatch-stage" id="hatch-stage" data-cracks="0">
       <canvas id="hatch-canvas"></canvas>
       <div class="hatch-flash" id="hatch-flash"></div>
+      <div class="hatch-reveal" id="hatch-reveal" aria-live="polite">
+        <div class="hatch-tag" id="hatch-tag"></div>
+        <div class="hatch-name" id="hatch-name">-</div>
+        <div class="hatch-types" id="hatch-types"></div>
+      </div>
     </div>
-    <div class="hatch-pips" id="hatch-pips" aria-hidden="true"><i></i><i></i><i></i></div>
-    <div class="hatch-reveal" id="hatch-reveal" aria-live="polite">
-      <div class="hatch-tag" id="hatch-tag"></div>
-      <div class="starter-name" id="hatch-name">-</div>
-      <div class="starter-meta" id="hatch-types"></div>
-      <div class="hatch-note" id="hatch-note">Pick it from the egg on the partner screen to start a run with it.</div>
-    </div>
+    <div class="hatch-note" id="hatch-note">Pick it from the egg on the partner screen to start a run with it.</div>
     <!-- One row, so the button area is the same height before the hatch (Back alone) and after it
          (Done beside Next Egg): a second row appearing would shrink the stage mid-reveal. -->
     <div class="btn-row hatch-actions">
@@ -2770,7 +2777,7 @@
             <button class="btn secondary small" id="btn-reset-cancel">Cancel</button>
           </div>
         </div>
-        <div class="setting-note">Clears your lifetime record only. It never affected gameplay.</div>
+        <div class="setting-note">Starts everything from scratch: your lifetime record, every egg and every Pokemon hatched from one.</div>
       </div>
       <!-- The debug menu's door. Gated the same way Erase Records is, for a different reason: not
            "did you mean it" but "you are not meant to be in here" - it hands out items and money,

@@ -84,8 +84,9 @@ export function renderToStage(holder, camera, aspect) {
 // Radians of yaw per CSS pixel of drag. Straight from Rumble Run's Pokedex preview, which is the
 // feel this is meant to match: about 57 px of travel for a quarter turn, so a thumb-width flick
 // turns a model far enough to see its side and a full sweep of the screen goes most of the way
-// round.
-const DRAG_RADIANS_PER_PX = 0.013;
+// round. Exported for the hatch screen (js/hatch.js), which turns only its Pokemon and not the whole
+// view, so it runs its own drag — at this same rate, so it feels the same as the starter preview.
+export const DRAG_RADIANS_PER_PX = 0.013;
 
 export function createModelView(targetCanvas, {
   frustum = 1.5, camY = 1.7, camZ = 4.4, lookY = 0.75, draggable = false,

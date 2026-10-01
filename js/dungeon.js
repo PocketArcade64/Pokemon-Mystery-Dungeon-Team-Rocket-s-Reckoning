@@ -373,7 +373,7 @@ function keepLargestComponent(m, w, h) {
 //   - the landmark pass (scatterOutcrops) enforces SIGHT_RADIUS, which is what keeps the camera
 //     where it is
 // `shadows: false` is Easy mode: no wild on the floor is generated aggressive (see the wild loop).
-// `eggChance` is the chance each present is an egg instead (js/eggs.js EGG_CHANCE), or 0 when the
+// `eggChance` is the chance each pickup is an egg instead (js/eggs.js EGG_CHANCE), or 0 when the
 // floor may not lay one at all — main.js decides that, because only it can see every egg in play.
 export function generateFloor(floorNumber, theme, { shop = false, chansey = false, shadows = true,
                                                     eggChance = 0 } = {}) {
@@ -617,21 +617,8 @@ export function generateFloor(floorNumber, theme, { shop = false, chansey = fals
   };
 
   // Field items, as wrapped presents. Balls are deliberately NOT in this draw — see below.
-  //
-  // Each present has an `eggChance` shot at being an EGG instead, and the first one to come up ends
-  // the rolling: one egg a floor at most. The egg takes that present's place rather than being laid
-  // on top of the count, so a floor with an egg on it has one present fewer and nothing else changes
-  // — in particular not the ball quota, which is why balls and coins never roll for one.
   const itemCount = 10 + floorNumber * 3;
-  let eggLaid = !(eggChance > 0);
-  for (let i = 0; i < itemCount; i++) {
-    if (!eggLaid && Math.random() < eggChance) {
-      addPickup({ kind: 'egg', qty: 1 });
-      eggLaid = true;
-      continue;
-    }
-    addPickup({ kind: 'item', itemId: randomFieldItemId(), qty: 1 });
-  }
+  for (let i = 0; i < itemCount; i++) addPickup({ kind: 'item', itemId: randomFieldItemId(), qty: 1 });
 
   // Poke Balls, GUARANTEED to total at least BALLS_PER_FLOOR across the floor. Each pickup holds
   // 1-5 balls of one type, so the pass keeps placing until the running total clears the floor's
@@ -642,18 +629,23 @@ export function generateFloor(floorNumber, theme, { shop = false, chansey = fals
   // one is pinned to a single ball rather than the usual 1-5: a marker holding five guaranteed
   // catches is not a rare find, it is the rest of the run. It still counts toward the quota, so
   // finding one costs the floor an ordinary ball and nothing more.
+  //
+  // A function rather than one loop because the egg pass below can call it again: an egg that takes
+  // a ball pickup's place takes its balls off the total, and the quota is topped back up elsewhere.
   let ballTotal = 0;
-  for (let guard = 0; ballTotal < BALLS_PER_FLOOR && guard < 40; guard++) {
-    const itemId = randomBallId();
-    const qty = itemId === 'master-ball'
-      ? 1
-      : Math.min(rndInt(1, 5), BALLS_PER_FLOOR * 2 - ballTotal);
-    const before = floor.items.length;
-    addPickup({ kind: 'ball', itemId, qty });
-    if (floor.items.length === before) break;      // nowhere left to put one
-    ballTotal += qty;
-  }
-  floor.ballTotal = ballTotal;
+  const layBalls = () => {
+    for (let guard = 0; ballTotal < BALLS_PER_FLOOR && guard < 40; guard++) {
+      const itemId = randomBallId();
+      const qty = itemId === 'master-ball'
+        ? 1
+        : Math.min(rndInt(1, 5), BALLS_PER_FLOOR * 2 - ballTotal);
+      const before = floor.items.length;
+      addPickup({ kind: 'ball', itemId, qty });
+      if (floor.items.length === before) break;      // nowhere left to put one
+      ballTotal += qty;
+    }
+  };
+  layBalls();
 
   // Coins. The economy these feed is documented next to COINS in js/data/items.js.
   const coinCount = 7 + floorNumber * 2;
@@ -661,6 +653,28 @@ export function generateFloor(floorNumber, theme, { shop = false, chansey = fals
     const coinId = randomCoinId();
     addPickup({ kind: 'coin', coinId, qty: 1 });
   }
+
+  // THE EGG. Every pickup on the floor — present, ball lot or coin alike — has an `eggChance` shot at
+  // being an egg instead, and a floor holds one egg at most. Rolled AFTER everything is laid down,
+  // over the whole list at once: the chance that at least one of N pickups comes up is
+  // 1 - (1 - eggChance)^N, and which one it is is then drawn evenly from all of them. Rolling each
+  // pickup as it was placed and stopping at the first hit would hand the egg to a present far more
+  // often than to a coin, purely because presents are placed first.
+  //
+  // The egg takes that pickup's spot and the pickup is gone — one present or one coin fewer. A ball
+  // lot is the one exception to "gone": the floor's ball GUARANTEE still holds, so its balls come off
+  // the total and layBalls tops the quota back up somewhere else on the floor.
+  if (eggChance > 0 && floor.items.length
+      && Math.random() < 1 - Math.pow(1 - eggChance, floor.items.length)) {
+    const i = Math.floor(Math.random() * floor.items.length);
+    const was = floor.items[i];
+    floor.items[i] = { x: was.x, y: was.y, taken: false, obj: null, bob: was.bob, kind: 'egg', qty: 1 };
+    if (was.kind === 'ball') {
+      ballTotal -= was.qty;
+      layBalls();
+    }
+  }
+  floor.ballTotal = ballTotal;
 
   // Wild pool: species whose typing matches the theme, so a Frozen Grotto reads as an ice floor.
   //
@@ -1485,7 +1499,8 @@ const PICKUP_RING = {
 };
 
 // The egg stands a little taller than a present (0.46) so it is the one thing on a cluttered floor
-// that catches the eye, and is centred on the spin pivot like the others.
+// that catches the eye, and is centred on the spin pivot like the others. It can stand where a
+// present, a ball lot or a coin would have been — see the egg pass in generateFloor.
 const EGG_PICKUP_HEIGHT = 0.56;
 
 function makeFloorPickup(entry) {
