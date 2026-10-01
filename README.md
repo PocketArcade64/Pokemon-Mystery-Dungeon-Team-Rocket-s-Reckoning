@@ -130,17 +130,18 @@ _____________
 
 ✅ On the title screen, Add an easy mode (place this option to the left of classic mode) with no shadow pokemon (the icon is just 1 team Rocket grunt pixel art sprite). Now that Choose a Mode screen will have horizontal scrolling - keep the same sizes of each card on that screen.
 
-Add the egg sprite from Pokemon Quest and there is a 1/20 chance of finding an egg instead of any other item on the floor. (Max 1 egg per floor) When you are done with a run, you can hatch the eggs and the pokemon that emerges, you can now start the run with that pokemon. Only basic pokemon can be pulled from the eggs (no stage 1, not stage 2, but you can pull legendaries) On the starter select screen, on the top right there is an egg icon that opens a menu showing all the pokemon you have unlocked. 
-- Keep the start run button in the same position and add a new button “Hatch Eggs” below the Pokédex button - (shift down items and settings) while keeping all the buttons the same size
-    - On this button show an icon of the 3d egg and a number beside it to indicate how many eggs you have
-- In the Hatch Eggs menu it shows like an inventory with 3 columns and however many rows you need. When you click on an egg, a new screen opens where you have to click the egg 3 times (egg wobbles with feedback and sound after each click) then it breaks into pieces and a Pokemon emerges 
+Add the egg sprite from Pokemon Quest (this file already exists as the “Egg” folder within the “Extra 3D Models” folder on GitHub - look there) and there is a 1/20 chance of finding an egg instead of any other item on the floor. (Max 1 egg per floor) When you are done with a run, you can hatch the eggs and the pokemon that emerges, you can now start the run with that pokemon. Only basic pokemon can be pulled from the eggs (no stage 1, not stage 2, but you can pull legendaries) On the starter select screen, on the top right there is an egg icon that opens a menu showing all the pokemon you have unlocked. 
+- On the title screen, keep the start run button in the same position and add a new button “Hatch Eggs” below the Pokédex button - (shift down items and settings) while keeping all the buttons the same size
+    - On this button show an icon of the 3d egg and a number beside it to indicate how many eggs you have ready to hatch
+- In the Hatch Eggs menu it shows like an inventory with 3 columns and however many rows you need. When you click on an egg, a new screen opens where you have to click the egg 3 times (egg wobbles with feedback and sound after each click and the egg gradually adds more cracks after each tap) then the egg breaks into pieces and a Pokemon emerges 
 - Eggs can only hatch pokemon you have not acquired from eggs previously (eggs always give new pokemon)
 - After you unlock all pokemon available in eggs (or your egg count would get you there once you hatch them), the eggs no longer appear in the dungeon. 
 
-Please change the Pokédex to be exactly like Pokemon Rumble Run. Please just look how Pokemon Rumble Run handles that in the Pokédex in the Reference Material from Old Project folder. But keep the relevant stats for the context of this game, like times seen, times caught, runs won for each pokemon. If you win a run with a pokemon in your party, change their Pokédex square icon background to gold. 
+Please change the Pokédex to be exactly like Pokemon Rumble Run. Please just look how Pokemon Rumble Run handles that in the Pokédex in the Reference Material from Old Project folder. But keep the relevant stats for the context of this game, like times seen, times caught, runs won for each pokemon. If you win a run with a pokemon in your party, change their Pokédex square icon border to be gold. 
 - At the top of the Pokédex have general stats like total runs, wins, pokemon caught, team rocket grunts defeated, best endless floor reached - but make all these fit on one line
 - Under each pokemon name, use their type icons PNGs
 - On the top right of each eligible pokemon to be caught from eggs have a png of the 3d egg sprite be blacked out if not unlocked yet or show the sprite if the pokemon has been hatched from an egg
+- Add the same filter system from Pokemon Rumble Run but make the filters applicable to this game (add egg filter, no Mega filter, etc)
 
 ✅ What happens for a split evolution line when I evolve? Are there any eligible pokemon that fit this edge case? Like eevee?
 
