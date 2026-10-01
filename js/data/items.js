@@ -145,12 +145,17 @@ export const ITEMS = [
     use: (api, mon) => healResult(api.heal(mon, Infinity), mon, () => `${mon.name} was fully restored.`),
   },
   {
-    id: 'rare-candy', name: 'Rare Candy', kind: 'boost', needsTarget: true, spawnWeight: 8, shopPrice: 55,
+    // `chooseBranch`: on a species that evolves more than one way (Eevee, Clamperl, Charcadet), the
+    // bag asks which branch BEFORE using this, rather than leaving it to chance — see openEvoPicker.
+    id: 'rare-candy', name: 'Rare Candy', kind: 'boost', needsTarget: true, chooseBranch: true,
+    spawnWeight: 8, shopPrice: 55,
     desc: 'Evolves one eligible party Pokemon on the spot. Has no effect on a Pokemon with nowhere left to evolve.',
     shopDesc: 'Evolves one eligible party Pokemon on the spot.',
     icon: spriteIcon('rare-candy'),
-    use: (api, mon) => {
-      const newName = api.evolve(mon);
+    // `opts.targetDex` is the branch picked in the bag's evolution picker, for the species that
+    // evolve more than one way; everything else evolves along its one line and passes nothing.
+    use: (api, mon, opts = {}) => {
+      const newName = api.evolve(mon, opts.targetDex ?? null);
       return newName
         ? { ok: true, msg: `Congratulations! It evolved into ${newName}!` }
         : { ok: false, msg: `${mon.name} cannot evolve any further.` };

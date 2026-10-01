@@ -57,10 +57,20 @@ const TARGET_Z = -5.6;            // depth plane the Pokemon stands on
 // The Pokemon's on-screen HEIGHT as a fraction of the screen, by evolution stage. Vertical FOV is
 // fixed, so a height fraction is aspect-independent — which a world-unit height is not.
 const MON_SCREEN_FRAC = { Basic: 0.26, Stage1: 0.30, Stage2: 0.34, Legendary: 0.36 };
-// ...and a cap on its on-screen WIDTH. Models are fitted by height, so a wide flat species comes
-// out wider than it is tall: Kabuto and Wailmer filled the screen edge to edge and buried the
-// whole stage. Anything over this gets scaled down to fit.
+// ...and a cap on its on-screen WIDTH. Under the old height fit a flat species came out far wider
+// than tall — Kabuto and Wailmer filled the screen edge to edge and buried the whole stage. The
+// 'world' fit (models.js) removes most of that by sizing from volume, but the frame is narrow and a
+// long species can still exceed it, so anything over this is still scaled down to fit.
 const MON_SCREEN_W = 0.52;
+// The MODEL's size, separately from the stage fractions above. Those still set the capture circle
+// (captureRadius below), and deliberately so: under the 'world' fit a Kabuto is drawn at about half
+// the size of a Charizard, and if the circle followed the body the smallest species would become
+// the hardest catches in the game — a difficulty change by species that nobody asked for. So the
+// circle keeps the stage's nominal size, centred on the body that is actually there.
+// The model starts from the Stage 1 fraction and the world fit scales it by species; the cap stops
+// the largest from filling the frame (a Legendary used to get 0.36).
+const MON_SCREEN_BASE = 0.30;
+const MON_SCREEN_H_MAX = 0.42;
 const CAPTURE_OF_HEIGHT = 0.56;   // white capture circle radius, as a fraction of the Pokemon
 const MIN_RING_RATIO = 0.13;      // how far the target ring shrinks before it resets
 
@@ -743,7 +753,9 @@ export function startCatch({ dex, ballId, ballsLeft, onResult, onThrow, onGrade,
   });
   refreshRingColor();
 
-  const monObj = createMonObject(dex, { height, onReady: fitMonToFrame });
+  const monObj = createMonObject(dex, {
+    height: MON_SCREEN_BASE * 2 * halfHeightAt(targetDepth()), fit: 'world', onReady: fitMonToFrame,
+  });
   monObj.position.set(0, 0, TARGET_Z);
   monHolder.add(monObj);
   catchState.monObj = monObj;
@@ -766,8 +778,8 @@ export function startCatch({ dex, ballId, ballsLeft, onResult, onThrow, onGrade,
   spawnBall();
 }
 
-// Shrink the loaded model until it fits the frame sideways, and re-centre the rings on whatever
-// height that leaves. Called once, when the real model replaces the placeholder.
+// Shrink the loaded model until it fits the frame, and re-centre the rings on whatever height that
+// leaves. Called once, when the real model replaces the placeholder.
 //
 // `captureRadius` is deliberately NOT recomputed. It stays on the NOMINAL height for the species'
 // stage, so shrinking a wide Pokemon to fit does not also make it a harder target — the circle
@@ -783,8 +795,11 @@ function fitMonToFrame(group) {
   group.scale.setScalar(1);
   group.updateMatrixWorld(true);
   _fitBox.setFromObject(group).getSize(_fitSize);
+  // Width AND height. The width cap predates the world fit; the height one is new with it, because
+  // the largest species are now genuinely taller than the rest rather than all forced to one height.
   const maxW = MON_SCREEN_W * 2 * halfWidthAt(targetDepth());
-  s.monFit = _fitSize.x > maxW ? maxW / _fitSize.x : 1;
+  const maxH = MON_SCREEN_H_MAX * 2 * halfHeightAt(targetDepth());
+  s.monFit = Math.min(1, maxW / _fitSize.x, maxH / _fitSize.y);
   group.scale.setScalar(s.monFit);
   const visualH = Math.max(0.2, _fitSize.y * s.monFit);
   s.monBodyY = visualH * 0.55;
@@ -811,8 +826,12 @@ function fitMonToFrame(group) {
   // the same place as the capture and target rings, which are what the throw is aimed at. The
   // puffs alone carry the marker here.
   if (s.shadow && !s.monAura) {
-    const spread = THREE.MathUtils.clamp(1.25 * Math.max(0.2, _fitSize.x) / (2.07 * s.monHeight), 0.4, 1);
-    s.monAura = makeAura(s.monHeight, { spread, ring: false });
+    // From the measured body (_fitSize, in the group's own units — the aura is its child, so monFit
+    // applies to both), not from monHeight: that is the stage's NOMINAL height, which matched the
+    // body only while every model was forced to it.
+    const bodyH = Math.max(0.2, _fitSize.y);
+    const spread = THREE.MathUtils.clamp(1.25 * Math.max(0.2, _fitSize.x) / (2.07 * bodyH), 0.4, 1.6);
+    s.monAura = makeAura(bodyH, { spread, ring: false });
     group.add(s.monAura);
   }
 }

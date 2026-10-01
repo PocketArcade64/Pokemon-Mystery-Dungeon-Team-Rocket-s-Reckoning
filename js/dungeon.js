@@ -11,7 +11,7 @@
 import * as THREE from 'three';
 import {
   createMonObject, createBallObject, createModelObject, disposeObject,
-  GIFT_BOX_MODEL, KECLEON_MODEL, COIN_MODEL_PATHS,
+  GIFT_BOX_MODEL, KECLEON_MODEL, COIN_MODEL_PATHS, WORLD_MON_BASE,
 } from './models.js';
 import { randomFieldItemId, randomBallId, randomCoinId, COIN_BY_ID } from './data/items.js';
 import { CATALOG_BY_DEX, POKEMON_CATALOG, LEGENDARY_DEX } from './data/pokemon-catalog.js';
@@ -1854,23 +1854,33 @@ export function buildFloor(floor) {
 
   for (const wild of floor.wilds) {
     const c = CATALOG_BY_DEX.get(wild.dex);
-    // Legendary is FIRST, not last. The chain used to end in a bare 0.85 default, which caught
-    // 'Basic' and 'Legendary' alike — harmless while Legendaries never wandered, and wrong the
-    // moment they could: the rarest thing on the floor would have stood there as the smallest.
-    const height = !c ? 0.85
-      : c.stage === 'Legendary' ? 1.45
-      : c.stage === 'Stage2' ? 1.15
-      : c.stage === 'Stage1' ? 1.0 : 0.85;
-    const obj = createMonObject(wild.dex, { height, tint: TYPE_COLOR[c?.types?.[0]] || 0x888888 });
+    // Sized by the species' own body ('world' fit, see models.js), at the same base as the player
+    // so the two share one scale. This used to be a height per evolution STAGE (Basic 0.85 up to
+    // Legendary 1.45) fitted by height alone, which is what drew Vibrava 3.6 tiles across and made
+    // Mew, one of the smallest things in the game, the biggest thing on the floor. The authored
+    // models already know how big each species is relative to the rest; the stage table was
+    // throwing that away and then guessing it back.
+    const obj = createMonObject(wild.dex, {
+      height: WORLD_MON_BASE, fit: 'world', tint: TYPE_COLOR[c?.types?.[0]] || 0x888888,
+      // The shadow aura is built around the REAL body, so it waits for the model. It used to be
+      // made at spawn from the requested height, which was the actual height only because every
+      // model was forced to it; under the world fit a Kabuto is half that and a Vibrava is far
+      // wider than it is tall, and an aura sized by number rather than by body would swallow the
+      // first and sit inside the second. The puffs orbit at ~0.62 x 2.07 x height, so spread is
+      // solved to put that ring about a quarter outside the body's widest side — the same rule the
+      // catch screen uses for the same reason. Until the model lands (a frame or two once it is
+      // cached) the wild simply has no aura yet; spinAura is already null-safe.
+      onReady: wild.aggressive ? (g) => {
+        if (wild.aura || !g.userData.fit) return;
+        const { height, width, depth } = g.userData.fit;
+        const spread = THREE.MathUtils.clamp(1.25 * Math.max(width, depth) / (2.07 * height), 1, 2.6);
+        wild.aura = makeAura(height, { spread });
+        g.add(wild.aura);
+      } : null,
+    });
     obj.position.set(wild.x, 0, wild.z);
     group.add(obj);
     wild.obj = obj;
-    wild.height = height;
-    if (wild.aggressive) {
-      const aura = makeAura(height);
-      obj.add(aura);
-      wild.aura = aura;
-    }
   }
 
   floor.group = group;

@@ -5,7 +5,7 @@ import { state, makeMon, saveSettings, saveStats, recordDex, FLOORS_PER_RUN, MAX
          ENDLESS_BOSS_EVERY, RUN_MODES, isFiveFloorMode, saveRun, clearSave,
          savedRunSummary } from './state.js';
 import { renderer, scene, camera, canvas, followCamera, resetCameraFollow, onViewportChange } from './three-setup.js';
-import { createMonObject, disposeObject, preloadDex, preloadPickupModels } from './models.js';
+import { createMonObject, disposeObject, preloadDex, preloadPickupModels, WORLD_MON_BASE } from './models.js';
 import { STARTER_DEX, CATALOG_BY_DEX } from './data/pokemon-catalog.js';
 import { ITEM_BY_ID, COIN_BY_ID } from './data/items.js';
 import {
@@ -448,8 +448,10 @@ function syncPlayerModel() {
   if (!lead) return;
   if (playerObj && playerObjDex === lead.dex) return;
   if (playerObj) disposeObject(playerObj);
-  const height = lead.stage === 'Stage2' ? 1.15 : lead.stage === 'Stage1' ? 1.0 : 0.88;
-  playerObj = createMonObject(lead.dex, { height, tint: 0xf5c74a });
+  // Same base and the same 'world' fit as the wilds (see dungeon.js), so the Pokemon you are walking
+  // around as is drawn at exactly the size it was when it was wandering the floor. It used to be a
+  // per-stage height on its own slightly different table (Basic 0.88 here, 0.85 for a wild).
+  playerObj = createMonObject(lead.dex, { height: WORLD_MON_BASE, fit: 'world', tint: 0xf5c74a });
   playerObj.position.set(player.x, 0, player.z);
   scene.add(playerObj);
   playerObjDex = lead.dex;
@@ -1126,8 +1128,8 @@ Object.assign(uiHooks, {
     ui.toast(`Added ${n} coins.`);
   },
   back: () => setMode(state.returnTo === 'playing' && !state.run ? 'title' : state.returnTo),
-  useItem: (itemId, mon) => {
-    const res = inv.useItem(itemId, mon);
+  useItem: (itemId, mon, opts = {}) => {
+    const res = inv.useItem(itemId, mon, opts);
     ui.toast(res.msg);
     if (res.ok) {
       const item = ITEM_BY_ID.get(itemId);

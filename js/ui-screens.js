@@ -42,7 +42,8 @@ export const uiHooks = {
   debugGive: (_itemId, _n) => {},
   debugGiveCoins: (_n) => {},
   back: () => {},
-  useItem: (_itemId, _mon) => {},
+  // `opts` is `{ targetDex }` when the evolution picker chose a branch; empty otherwise.
+  useItem: (_itemId, _mon, _opts) => {},
   setControls: (_mode) => {},
   battleContinue: () => {},
   catchFlee: () => {},
@@ -499,7 +500,10 @@ function selectStarter(i) {
     el.classList.toggle('selected', idx === i);
   });
   starterPreview.holder.rotation.y = 0;
-  setPreviewModel(starterPreview.holder, starterPick, 1.5);
+  // 'contain': fits whatever the species' shape, measured across its horizontal diagonal because the
+  // preview spins (see containScale in models.js). Every starter is upright, so in practice this is
+  // the old height fit exactly — it is here so the two spinning previews follow one rule.
+  setPreviewModel(starterPreview.holder, starterPick, 1.5, null, { fit: 'contain' });
 }
 
 // ---- Poke Ball strips ---------------------------------------------------------------------------
@@ -614,9 +618,68 @@ function setHpBar(el, hp, maxHp) {
 let bagSelectedItem = null;
 let bagSelectedMon = null;
 
+// ---- The evolution picker ----------------------------------------------------------------------
+// Opened from the bag when a Rare Candy is used on a species that evolves more than one way. Three
+// do: Eevee (eight branches), Clamperl and Charcadet (two each). Every branch of each is the same
+// stage, so HP and damage come out identical and the only difference is TYPE — the one lever in a
+// fight — which is why it is the player's call and not a coin flip (it used to be one).
+//
+// Pick, then confirm: tapping a branch selects it and the Evolve button commits. It is the starter
+// screen's pattern for the same reason — the choice is permanent and spends the candy, so one
+// stray tap must not make it. Cancel spends nothing.
+//
+// Portraits are the cached flat PNGs from portraits.js, not live 3D (the page's WebGL budget is
+// about two contexts, see modelstage.js). A branch whose portrait has not rendered yet shows an
+// empty frame and the picker redraws as each one lands, keeping the current selection.
+let evoPick = null;   // { mon, itemId, choice } while open
+
+function openEvoPicker(mon, itemId) {
+  evoPick = { mon, itemId, choice: null };
+  renderEvoPicker();
+  $('evo-picker').classList.add('open');
+  preloadPortraits(mon.evolvesInto, () => { if (evoPick?.mon === mon) renderEvoPicker(); });
+}
+
+function closeEvoPicker() {
+  evoPick = null;
+  $('evo-picker')?.classList.remove('open');
+}
+
+function renderEvoPicker() {
+  if (!evoPick) return;
+  const { mon, choice } = evoPick;
+  const branches = mon.evolvesInto.map(d => CATALOG_BY_DEX.get(d)).filter(Boolean);
+  $('evo-title').textContent = `Evolve ${mon.name}`;
+  $('evo-sub').textContent = `Choose what ${mon.name} becomes.`;
+  const grid = $('evo-options');
+  // Four across at most: Eevee's eight make two rows of four, and a two-way split gets two wide
+  // cards rather than two narrow ones lost in a row of four.
+  grid.style.setProperty('--cols', String(Math.min(branches.length, 4)));
+  grid.innerHTML = branches.map(c => {
+    const art = portraitFor(c.dex);
+    const on = choice === c.dex;
+    return `<button class="evo-option ${on ? 'selected' : ''}" data-dex="${c.dex}" aria-pressed="${on}">
+      ${art ? `<img class="eo-art" src="${art}" alt="" />` : '<div class="eo-art"></div>'}
+      <div class="eo-name">${c.name}</div>
+      ${typeBadges(c.types)}
+    </button>`;
+  }).join('');
+  grid.querySelectorAll('.evo-option').forEach(el => {
+    el.addEventListener('click', () => {
+      sfx('select');
+      evoPick.choice = Number(el.dataset.dex);
+      renderEvoPicker();
+    });
+  });
+  const go = $('btn-evo-go');
+  go.disabled = choice == null;
+  go.textContent = choice == null ? 'Evolve' : `Evolve into ${CATALOG_BY_DEX.get(choice)?.name || ''}`;
+}
+
 export function renderBag() {
   bagSelectedItem = null;
   bagSelectedMon = null;
+  closeEvoPicker();
   renderTeamStrip($('bag-team'), { onPick: (i) => { bagSelectedMon = i; renderBag2(); } });
   renderBagItems();
   renderBagDetail();
@@ -731,9 +794,14 @@ function renderBagDetail() {
       ? `<div class="id-desc" style="color:var(--gold)">Will bring ${target.name} back at half HP.</div>`
       : `<div class="id-desc" style="color:var(--gold)">Nobody fainted selected - this will go into reserve for the next Pokemon to faint in battle. Pick a fainted Pokemon above to revive it now.</div>`;
   } else if (needsTarget) {
-    note = target
-      ? `<div class="id-desc" style="color:var(--gold)">Target: ${target.name}</div>`
-      : `<div class="id-desc" style="color:var(--gold)">Pick a Pokemon above first.</div>`;
+    // A split species says so before the button is pressed, so the picker that follows is
+    // expected rather than a surprise.
+    const branches = item.chooseBranch && target ? (target.evolvesInto?.length || 0) : 0;
+    note = !target
+      ? `<div class="id-desc" style="color:var(--gold)">Pick a Pokemon above first.</div>`
+      : branches > 1
+        ? `<div class="id-desc" style="color:var(--gold)">Target: ${target.name} - it can evolve ${branches} ways, and you choose which.</div>`
+        : `<div class="id-desc" style="color:var(--gold)">Target: ${target.name}</div>`;
   }
   detail.innerHTML = `<div class="id-name">${item.name}</div><div class="id-desc">${item.desc}</div>${note}`;
   useBtn.disabled = needsTarget && !target;
@@ -888,7 +956,9 @@ function selectDex(dex) {
     el.classList.toggle('selected', Number(el.dataset.dex) === dex);
   });
   dexPreview.holder.rotation.y = 0;
-  if (hasModelForDex(dex)) setPreviewModel(dexPreview.holder, dex, 1.5);
+  // 'contain', not 'height': the Pokedex shows every species, flat ones included, and under the
+  // height fit Vibrava came out ~6 units across in a frame ~3.3 wide. Upright species are unchanged.
+  if (hasModelForDex(dex)) setPreviewModel(dexPreview.holder, dex, 1.5, null, { fit: 'contain' });
 }
 
 // ---- Battle -----------------------------------------------------------------------------------
@@ -901,9 +971,9 @@ let foeShownDex = null, youShownDex = null;
 let fieldBob = 0;
 
 // Half-height of the fighters' ortho box, with the camera dead level on the origin. A model is
-// fitted to 1.0 tall and then dropped so its FEET sit just above the frame's bottom edge — see
-// placeFighter. Aiming the camera above the model instead left it floating in the middle of the
-// frame with its ground shadow stranded underneath it.
+// sized by the world fit (FIGHTER_BASE) and then dropped so its FEET sit just above the frame's
+// bottom edge — see placeFighter. Aiming the camera above the model instead left it floating in the
+// middle of the frame with its ground shadow stranded underneath it.
 const FIGHTER_FRUSTUM = 0.62;
 
 function ensureBattlePreviews() {
@@ -912,15 +982,29 @@ function ensureBattlePreviews() {
   if (!youPreview) youPreview = createModelView($('you-model'), opts);
 }
 
-// Stand a freshly loaded fighter on the bottom of its frame, shrinking it if it is wider than the
-// frame is. Models are fitted by HEIGHT, so a wide species (Marowak with its bone, Gyarados) comes
-// out wider than tall and would otherwise run off both sides.
+// The size a fighter is drawn at, before the frame has its say. Fighters use the same 'world' fit
+// as the dungeon (see models.js), so a Snorlax looms over a Pikachu here too — but the frame is a
+// fixed square, so this base is a little under the dungeon's: the median species lands at ~0.94 of
+// the 1.0 every fighter used to be forced to, which leaves the larger half of the roster room to be
+// larger before placeFighter's height cap catches them.
+const FIGHTER_BASE = 0.9;
+
+// Stand a freshly loaded fighter on the bottom of its frame, shrinking it if it would not fit.
+//
+// BOTH axes now. Under the old height fit every fighter was exactly 1.0 tall, so only width could
+// overflow (Marowak's bone, Gyarados). Under the world fit the big species are genuinely taller,
+// and the frame only has 1.86 x FIGHTER_FRUSTUM between the feet line below and its top edge — so
+// anything taller is brought down to fit. That flattens the top of the size range in battle (the
+// largest species all stand near the ceiling) while the bottom and the middle keep their real
+// differences, which is the honest trade for a fixed frame.
 function placeFighter(fitted) {
   if (!fitted) return;
   const box = new THREE.Box3().setFromObject(fitted);
   const w = box.max.x - box.min.x;
-  const limit = FIGHTER_FRUSTUM * 2 * 0.94;
-  const shrink = w > limit ? limit / w : 1;
+  const h = box.max.y - box.min.y;
+  const limitW = FIGHTER_FRUSTUM * 2 * 0.94;
+  const limitH = FIGHTER_FRUSTUM * 1.86 * 0.92;
+  const shrink = Math.min(1, limitW / w, limitH / h);
   if (shrink < 1) fitted.scale.setScalar(shrink);
   fitted.position.y = -FIGHTER_FRUSTUM * 0.86;
 }
@@ -1023,6 +1107,8 @@ const FACING = { you: Math.PI * 0.75, foe: -Math.PI * 0.25 };
 // runs off both sides, clipped mid-arc, which reads as a rendering fault rather than as an aura.
 // At 0.52 the ring comes out ~1.08 wide, so it surrounds the body with margin left over on both
 // sides. The frames are square (`aspect-ratio: 1`), so that arithmetic holds at every screen size.
+// Under the world fit this is the FLOOR, not the value: syncFighter widens it for a flat body and
+// caps it at what the frame can show, because fighters are no longer all 1.0 tall.
 const FIGHTER_AURA_SPREAD = 0.52;
 // Both sides' auras, so updateBattleField can turn whichever one exists. `you` is in here for one
 // reason only: so that a side that has no aura is explicitly recorded as having none, and the last
@@ -1042,13 +1128,21 @@ function syncFighter(side, mon, preview, getShown, setShown) {
   // detached — one is built per lead, and a six-strong Giovanni team would otherwise leave five.
   disposeAura(fighterAura[side]);
   fighterAura[side] = null;
-  setPreviewModel(preview.holder, mon.dex, 1.0).then(fitted => {
+  setPreviewModel(preview.holder, mon.dex, FIGHTER_BASE, null, { fit: 'world' }).then(fitted => {
     placeFighter(fitted);
     // A shadow Pokemon keeps its aura for the whole fight. Only a wild is ever flagged aggressive,
     // and only the foe's side can hold one — a caught Pokemon is rebuilt without the flag, so
     // your own fighters have nothing to draw (see aura.js).
     if (!fitted || !mon.aggressive) return;
-    const aura = makeAura(1.0, { spread: FIGHTER_AURA_SPREAD });
+    // Sized from the body that was actually drawn rather than from a fixed 1.0, now that fighters
+    // are not all 1.0 tall. It is a child of `fitted`, so placeFighter's shrink applies to it too
+    // and the fit's own numbers are already in the right space. Spread is widened for a flat body
+    // the same way the dungeon does it, but never past what the frame can show.
+    const f = fitted.userData.fit;
+    const frameSpread = (FIGHTER_FRUSTUM * 2 * 0.94) / (2.07 * f.height);
+    const spread = Math.min(frameSpread,
+      Math.max(FIGHTER_AURA_SPREAD, 1.25 * Math.max(f.width, f.depth) / (2.07 * f.height)));
+    const aura = makeAura(f.height, { spread });
     fitted.add(aura);
     fighterAura[side] = aura;
   });
@@ -1611,7 +1705,23 @@ export function bindUI() {
   click('btn-bag-use', () => {
     if (!bagSelectedItem) return;
     const mon = bagSelectedMon !== null ? inv.party()[bagSelectedMon] : null;
+    // A Rare Candy on a species with more than one evolution asks which one first. Nothing is
+    // spent until the picker's Evolve button — Cancel leaves the candy in the bag.
+    const item = ITEM_BY_ID.get(bagSelectedItem);
+    if (item?.chooseBranch && mon && (mon.evolvesInto?.length || 0) > 1) {
+      sfx('select');
+      openEvoPicker(mon, bagSelectedItem);
+      return;
+    }
     uiHooks.useItem(bagSelectedItem, mon);
+    renderBag2();
+  });
+  click('btn-evo-cancel', () => { sfx('back'); closeEvoPicker(); });
+  click('btn-evo-go', () => {
+    if (!evoPick || evoPick.choice == null) return;
+    const { itemId, mon, choice } = evoPick;
+    closeEvoPicker();
+    uiHooks.useItem(itemId, mon, { targetDex: choice });
     renderBag2();
   });
 

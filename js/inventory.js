@@ -89,9 +89,20 @@ export function revive(mon) {
 // Evolves in place, preserving the fraction of HP the Pokemon was on. Only targets listed in the
 // catalog's `evolvesInto` are possible, and that list only ever contains species that actually
 // have a Quest model — so an evolution can never produce a Pokemon we cannot render.
-export function evolve(mon) {
+//
+// SPLIT LINES: three species in the catalog can evolve more than one way — Eevee (eight), Clamperl
+// and Charcadet (two each) — and every branch of each is the same stage, so HP and damage come out
+// identical and the only difference is TYPE, which is the one lever in a fight. That makes it the
+// player's choice, not a coin flip: the bag opens a picker for these (see openEvoPicker in
+// ui-screens.js) and passes the chosen dex here as `targetDex`. A `targetDex` that is not one of
+// this species' own branches is refused rather than honoured, so nothing can evolve a Pokemon into
+// something it does not evolve into. With no choice given, a single-branch species takes its one
+// branch, and a split one falls back to a random branch — no caller does that today, but it is
+// the old behaviour and better than refusing.
+export function evolve(mon, targetDex = null) {
   if (!mon || !mon.evolvesInto || mon.evolvesInto.length === 0) return null;
-  const targetDex = mon.evolvesInto[Math.floor(Math.random() * mon.evolvesInto.length)];
+  if (targetDex != null && !mon.evolvesInto.includes(targetDex)) return null;
+  if (targetDex == null) targetDex = mon.evolvesInto[Math.floor(Math.random() * mon.evolvesInto.length)];
   const c = CATALOG_BY_DEX.get(targetDex);
   if (!c) return null;
   const ratio = mon.hp / mon.maxHp;
@@ -250,12 +261,14 @@ export const itemApi = {
 // Use one item out of the bag. `mon` is required for items with needsTarget.
 // The item is only consumed when its effect reports ok:true, so a Rare Candy on a fully-evolved
 // Pokemon (or an Oran Berry on a healthy one) is not wasted.
-export function useItem(itemId, mon = null) {
+// `opts` carries anything the item needs beyond its target — today only the Rare Candy's chosen
+// branch, `{ targetDex }`, for a species that evolves more than one way.
+export function useItem(itemId, mon = null, opts = {}) {
   const item = ITEM_BY_ID.get(itemId);
   if (!item) return { ok: false, msg: 'Nothing happened.' };
   if (countOf(itemId) <= 0) return { ok: false, msg: `You have no ${item.name}.` };
   if (item.needsTarget && !mon) return { ok: false, msg: `Choose a Pokemon to use the ${item.name} on.` };
-  const res = item.use(itemApi, mon) || { ok: false, msg: 'Nothing happened.' };
+  const res = item.use(itemApi, mon, opts) || { ok: false, msg: 'Nothing happened.' };
   if (res.ok) removeItem(itemId, 1);
   return res;
 }

@@ -1500,6 +1500,70 @@
     display: grid; place-items: center;
     box-shadow: -2px -2px 0 rgba(0,0,0,0.45);
   }
+  /* ---- The evolution picker, over the bag ------------------------------------------------------
+     A scrim over the whole bag sheet and one panel centred on it. Rumble's control language, not
+     the satchel's: this is a decision being made, so the branches are the same rounded, hard-dropped
+     cards the starter screen uses for the same kind of choice, gold when picked. */
+  .evo-picker {
+    position: absolute; inset: 0; z-index: 6;
+    display: none; align-items: center; justify-content: center;
+    padding: calc(var(--sat) + 14px) calc(var(--sar) + 14px) calc(var(--sab) + 20px) calc(var(--sal) + 14px);
+    background: rgba(8,10,20,0.80);
+  }
+  .evo-picker.open { display: flex; }
+  .evo-panel {
+    width: 100%; max-width: 440px;
+    max-height: 100%; overflow-y: auto;
+    background: linear-gradient(180deg, rgba(20,26,50,0.98), rgba(34,18,50,0.98));
+    border: 1px solid var(--edge-lt);
+    border-radius: 14px;
+    box-shadow: 0 6px 0 rgba(0,0,0,0.45);
+    padding: 16px 14px 12px;
+  }
+  .evo-title {
+    margin: 0; text-align: center;
+    font-weight: 700; font-size: 1.43rem; line-height: 1.35;
+    color: var(--gold); text-shadow: 0 2px 0 rgba(0,0,0,0.5);
+  }
+  .evo-sub { text-align: center; color: var(--ink-dim); font-size: 0.936rem; margin: 2px 0 14px; }
+  /* `--cols` is set by renderEvoPicker: min(branches, 4). */
+  .evo-options {
+    display: grid; grid-template-columns: repeat(var(--cols, 4), minmax(0, 1fr));
+    gap: 8px; margin-bottom: 16px;
+  }
+  .evo-option {
+    min-width: 0;
+    font: inherit; color: var(--ink);
+    background: rgba(255,255,255,0.07);
+    border: 2px solid transparent;
+    border-radius: 10px;
+    box-shadow: 0 4px 0 var(--silver-dark);
+    padding: 6px 4px 7px;
+    text-align: center; cursor: pointer;
+    transition: transform 0.08s;
+  }
+  .evo-option.selected {
+    border-color: var(--gold);
+    background: rgba(255,213,79,0.22);
+    box-shadow: 0 4px 0 var(--gold-dark);
+    transform: translateY(-3px);
+  }
+  .evo-option .eo-art {
+    display: block; width: 100%; aspect-ratio: 1;
+    background: rgba(0,0,0,0.30); border-radius: 7px;
+  }
+  .evo-option .eo-name {
+    margin-top: 5px;
+    font-weight: 700; font-size: 0.715rem; line-height: 1.4;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  /* The type icons are the point of the card — they are the whole difference between branches —
+     so they sit at their native 32x14 (see .mon-box .mb-types for why they are never scaled), with
+     a 1px gap so a dual type still fits a quarter-width card. */
+  .evo-option .type-badges { margin-top: 4px; gap: 1px; flex-wrap: wrap; }
+  .evo-option .type-badges img { height: 14px; }
+  .evo-panel .btn-col > .btn { margin-bottom: 8px; }
+
   .item-detail { margin-top: 12px; min-height: 82px; font-size: 1.04rem; }
   .item-detail .id-name {
     font-weight: 700; font-size: 1.235rem; color: var(--gold);
@@ -2276,6 +2340,20 @@
     <div class="btn-row" style="margin-top:12px">
       <button class="btn" id="btn-bag-use" disabled>Use</button>
       <button class="btn secondary" id="btn-bag-close" style="flex:0 0 40%">Close</button>
+    </div>
+    <!-- The evolution picker: a Rare Candy on a species that evolves more than one way opens this
+         over the bag. ui-screens.js openEvoPicker fills it. Evolve stacks above Cancel because its
+         label names the choice ("Evolve into Armarouge") and needs the full width. -->
+    <div class="evo-picker" id="evo-picker" role="dialog" aria-modal="true" aria-labelledby="evo-title">
+      <div class="evo-panel">
+        <h3 class="evo-title" id="evo-title">Evolve</h3>
+        <div class="evo-sub" id="evo-sub"></div>
+        <div class="evo-options" id="evo-options"></div>
+        <div class="btn-col">
+          <button class="btn" id="btn-evo-go" disabled>Evolve</button>
+          <button class="btn secondary small" id="btn-evo-cancel">Cancel</button>
+        </div>
+      </div>
     </div>
   </div>
 

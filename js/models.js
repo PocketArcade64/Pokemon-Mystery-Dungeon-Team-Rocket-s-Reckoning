@@ -122,26 +122,115 @@ function recenterOnBase(obj) {
     }
   });
   const c = base.isEmpty() ? full.getCenter(new THREE.Vector3()) : base.getCenter(new THREE.Vector3());
-  return { x: -c.x, z: -c.z, minY: full.min.y, height: Math.max(full.max.y - full.min.y, 0.001) };
+  return {
+    x: -c.x, z: -c.z, minY: full.min.y,
+    height: Math.max(full.max.y - full.min.y, 0.001),
+    width: Math.max(full.max.x - full.min.x, 0.001),
+    depth: Math.max(full.max.z - full.min.z, 0.001),
+  };
 }
 
-// Scale a freshly cloned model to `targetHeight` world units and sit it with its feet at y=0,
-// centred on its base footprint. Returns a wrapper Group whose origin is that footprint centre.
+// ---- How big a model is drawn ------------------------------------------------------------------
+// Three fits, chosen by the CALLER, because the right answer depends on what the model is for:
+//
+//   'height'   Scale until the model is exactly `target` tall, ignoring width and depth. The
+//              original fit and still the default, so every caller that does not ask for anything
+//              else is unchanged. THE TITLE SCREEN USES THIS ON PURPOSE — its diorama was composed
+//              around it and is meant to stay exactly as it is.
+//              Its flaw is the reason the other two exist: a flat species is short, so forcing it
+//              up to `target` drags its length up by the same factor. Measured across all 386
+//              models, Vibrava came out 3.57x as wide as it is tall, Magikarp 2.28x and Kabuto
+//              1.68x against Pikachu's 0.85x — in the dungeon, Vibrava stood 3.6 tiles across.
+//
+//   'world'    Everything moving around in a game scene: the dungeon's wilds and the player, the
+//              battle fighters, the catch target. Sized from the model's VOLUME, keeping the
+//              species' own relative size. See worldScale below.
+//
+//   'contain'  A single model inspected in its own frame (the starter and Pokedex previews, which
+//              both spin). Fit the whole model in, whatever its shape. See containScale below.
+//
+// fitModel records what it actually produced on `wrap.userData.fit` ({height, width, depth}, in
+// world units, before any rotation), so a caller can build things around the real body — the
+// dungeon's shadow aura is sized from it — instead of around the number it asked for.
+
+// The constants behind 'world', all in units of the caller's `target`:
+//   REF       the "ordinary" size — the median Stage 1 model's geometric size. A species this size
+//             is drawn at exactly `target`.
+//   K         how much of the species' own size difference survives. 1 would keep the models'
+//             authored proportions outright (Snorlax 3.7x Kabuto); 0 would make everything the same
+//             size. The square root keeps big things bigger without shrinking small ones to specks,
+//             and on average reproduces the old Basic : Stage 2 height spread (0.85 : 1.15) —
+//             except per species, and without the flatness distortion.
+//   MIN/MAX   the clamp on that, so no species is a speck or a wall.
+//   H_MAX     the tallest anything may stand. Needed separately because a tall, thin model has a
+//             small volume for its height and would otherwise slip under MAX and still tower.
+//   FOOT_MAX  the widest anything may be across the floor — 1.9 tiles, so nothing blocks a
+//             corridor. Measured: 23 species exceeded 2 tiles under 'height'; none can now.
+export const WORLD_SIZE = { REF: 2.43, K: 0.5, MIN: 0.62, MAX: 1.55, H_MAX: 1.6, FOOT_MAX: 1.9 };
+
+// The `target` the dungeon passes for every Pokemon on the floor — the wilds AND the player, which
+// is the point of it being one number: the two must be on the same scale or a caught Pokemon would
+// change size the moment it became the lead. One tile.
+export const WORLD_MON_BASE = 1.0;
+
+// Models drawn at the WRONG scale relative to the rest of the set. Everything else was checked:
+// each stage's median size is near-identical across all nine generations, and evolution lines grow
+// in order (Charmander 1.47 > Charmeleon 2.06 > Charizard 4.03). These two are the exceptions, both
+// authored at roughly 2.2x — Gliscor at 3.2x its stage's median, Floragato larger than its own
+// evolution. The factor corrects the model's authored size before anything else is computed, so
+// they go through the same formula as everyone else rather than being hand-placed.
+const AUTHORED_SCALE_FIX = new Map([
+  [472, 0.44],   // Gliscor
+  [907, 0.45],   // Floragato — lands between Sprigatito and Meowscarada, where it belongs
+]);
+
+// The 'world' scale, applied to the RAW model. Volume, not height, is what is measured: the
+// geometric mean of the three extents is an object's size however that size is distributed, so a
+// flat species cannot be inflated by being flat.
+function worldScale(info, target, dex) {
+  const fix = AUTHORED_SCALE_FIX.get(dex) ?? 1;
+  const h = info.height * fix, w = info.width * fix, d = info.depth * fix;
+  const { REF, K, MIN, MAX, H_MAX, FOOT_MAX } = WORLD_SIZE;
+  const g = Math.cbrt(w * h * d);
+  const G = THREE.MathUtils.clamp(Math.pow(g / REF, K), MIN, MAX);
+  let s = target * G / g;
+  if (h * s > target * H_MAX) s = target * H_MAX / h;
+  const foot = Math.max(w, d);
+  if (foot * s > target * FOOT_MAX) s = target * FOOT_MAX / foot;
+  return s * fix;
+}
+
+// The 'contain' scale: as tall as `target` unless that would make the model too wide, in which case
+// as wide as the frame allows. Width is measured as the HORIZONTAL DIAGONAL, because both previews
+// that use this spin — a model turning on the spot sweeps a circle that wide, so that is the width
+// it needs at every angle, not just the one it loaded at. `aspect` is how wide that sweep may be as
+// a multiple of `target`. An upright species never reaches it, so for most of the roster this is
+// the 'height' fit exactly.
+function containScale(info, target, aspect) {
+  const sweep = Math.hypot(info.width, info.depth);
+  return target / Math.max(info.height, sweep / aspect);
+}
+
+// Scale a freshly cloned model and sit it with its feet at y=0, centred on its base footprint.
+// Returns a wrapper Group whose origin is that footprint centre. `fit` picks how big — see above.
 //
 // `strip` removes matching child objects BEFORE anything is measured — the order matters. The
 // standalone ball models ship a display pedestal (object "bd<Name>Model_Base"), and a ball in
 // flight must not be carrying its shop stand around; stripping it after the fit would leave the
 // ball scaled and offset for a bounding box it no longer has.
-function fitModel(model, targetHeight, { strip = null } = {}) {
+function fitModel(model, target, { strip = null, fit = 'height', dex = null, aspect = 2 } = {}) {
   const wrap = new THREE.Group();
   const m = model.clone(true);
   if (strip) {
     for (const child of [...m.children]) if (strip.test(child.name || '')) m.remove(child);
   }
   const info = recenterOnBase(m);
-  const s = targetHeight / info.height;
+  const s = fit === 'world' ? worldScale(info, target, dex)
+    : fit === 'contain' ? containScale(info, target, aspect)
+    : target / info.height;
   m.scale.setScalar(s);
   m.position.set(info.x * s, -info.minY * s, info.z * s);
+  wrap.userData.fit = { height: info.height * s, width: info.width * s, depth: info.depth * s };
   wrap.add(m);
   return wrap;
 }
@@ -172,11 +261,14 @@ export function hasModelForDex(dex) { return questByDex.has(dex); }
 // dungeon population never stalls the frame loop.
 const PLACEHOLDER_COLOR = 0x8a8fa8;
 
-// `onReady` fires once the real model has replaced the placeholder. The catch minigame needs it:
-// models are fitted by HEIGHT, so a wide, flat species (Kabuto, Wailmer) comes out far wider than
-// it is tall and overflows the encounter frame — and there is no way to know how wide until the
-// model is actually loaded and measured.
-export function createMonObject(dex, { height = 1.0, tint = PLACEHOLDER_COLOR, onReady = null } = {}) {
+// `onReady` fires once the real model has replaced the placeholder. A species' real size is only
+// known once its model is loaded and measured, so anything built around the body — the catch
+// frame's fit, the dungeon's shadow aura — waits for this.
+//
+// `fit` is passed straight to fitModel ('height' unless asked). Once the real model is in,
+// `group.userData.fit` holds what was actually drawn, so `onReady` can read the real size.
+export function createMonObject(dex, { height = 1.0, tint = PLACEHOLDER_COLOR, onReady = null,
+                                       fit = 'height' } = {}) {
   const group = new THREE.Group();
   group.userData.shared = true;
   const ph = new THREE.Mesh(
@@ -193,7 +285,9 @@ export function createMonObject(dex, { height = 1.0, tint = PLACEHOLDER_COLOR, o
     if (!model || group.userData.disposed) return;
     group.remove(ph);
     ph.geometry.dispose(); ph.material.dispose();
-    group.add(fitModel(model, height));
+    const fitted = fitModel(model, height, { fit, dex });
+    group.add(fitted);
+    group.userData.fit = fitted.userData.fit;
     group.userData.ready = true;
     onReady?.(group);
   });
@@ -351,13 +445,16 @@ function brightenInstance(root, k) {
 // `brighten` scales this instance's diffuse colours (see brightenInstance). Kecleon needs it: his
 // texture is a dark green and he stands alone in a small panel with no dungeon light on him, so
 // under the shared preview rig he reads as a silhouette rather than as a shopkeeper.
-export function setPreviewModel(holder, dex, height = 1.6, explicitPath = null, { brighten = 1 } = {}) {
+//
+// `fit` / `aspect` go straight to fitModel; the default 'height' keeps every existing caller as-is.
+export function setPreviewModel(holder, dex, height = 1.6, explicitPath = null,
+                                { brighten = 1, fit = 'height', aspect = 2 } = {}) {
   while (holder.children.length) holder.remove(holder.children[0]);
   const path = explicitPath || modelPathForDex(dex);
   const token = (holder.userData.token = (holder.userData.token || 0) + 1);
   return loadModelOrNull(path).then(model => {
     if (!model || holder.userData.token !== token) return null;
-    const fitted = fitModel(model, height);
+    const fitted = fitModel(model, height, { fit, dex, aspect });
     if (brighten !== 1) brightenInstance(fitted, brighten);
     holder.add(fitted);
     return fitted;
