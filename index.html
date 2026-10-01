@@ -295,22 +295,49 @@
   }
 
   /* ---- Mode select -------------------------------------------------------------------------- */
-  /* TWO COLUMNS AT EVERY WIDTH: Classic on the left, Endless on the right. Side by side is the
-     point of the screen — the two modes are being compared, and a player scrolling from one stacked
-     card to another is reading them one at a time instead.
-     That is what sets the type on this screen. At 320px, the narrowest phone, two columns of a
-     14px-padded screen with a 10px gutter leave a 144px card and about 125px of text inside it, so
-     the rules run at 0.78rem and each one is written to fit two of those lines (see MODE_CARDS in
-     js/ui-screens.js — the rules are deliberately terse, not summarised). Lengthen a rule and it
-     is this column it has to fit.
+  /* THREE CARDS IN ONE HORIZONTAL ROW, TWO ON SCREEN AT A TIME: Easy, Classic, Endless, left to
+     right, and the row scrolls sideways to reach the third.
+     Each card is EXACTLY the width it was when the screen held two — `grid-auto-columns` is half
+     the row's content box less half the 10px gutter, which is the arithmetic `1fr 1fr` was doing —
+     so adding a mode did not shrink anything. That width is what sets the type on this screen: at
+     320px, the narrowest phone, it is a ~139px card with about 125px of text inside it, so the rules
+     run at 0.78rem and each one is written to fit one line (see MODE_CARDS in js/ui-screens.js).
+     Lengthen a rule and it is this column it has to fit.
+     The `min()` cap is the old `max-width: 720px` carried over: on a tablet a card stops at 355px,
+     the width it reached at the old 720px ceiling, instead of filling half a very wide screen.
      Rumble's panel language rather than the satchel's: these are controls, so they are rounded and
      lit by a smooth gradient with one hard drop underneath. */
+  #screen-mode .scroll {
+    /* EDGE TO EDGE. The pane bleeds out through the screen's 14px side padding, so a card being
+       swiped slides off the actual edge of the phone instead of being sliced off by an invisible
+       line 14px in from it. .mode-cards puts the same 14px back as padding, which keeps the cards
+       exactly where they were at rest. */
+    margin-left: calc(-1 * (var(--sal) + 14px));
+    margin-right: calc(-1 * (var(--sar) + 14px));
+    /* .scroll is `pan-y` everywhere else; this pane holds a sideways scroller. */
+    touch-action: pan-x pan-y;
+  }
   .mode-cards {
-    display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
-    padding: 2px 2px 8px;
-    /* On a tablet or in landscape the cards would otherwise stretch to half a very wide screen and
-       leave two columns of mostly empty panel. */
-    max-width: 720px; margin: 0 auto;
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: min(calc((100% - 10px) / 2), 355px);
+    gap: 10px;
+    padding: 2px calc(var(--sar) + 16px) 8px calc(var(--sal) + 16px);
+    overflow-x: auto; overflow-y: hidden;
+    /* One card at a time, snapping to a card's leading edge, and the snap stops respect the padding
+       so a snapped card sits where it would at rest rather than flush against the glass. */
+    scroll-snap-type: x mandatory;
+    scroll-padding: 0 calc(var(--sar) + 16px) 0 calc(var(--sal) + 16px);
+    overscroll-behavior-x: contain;
+    touch-action: pan-x pan-y;
+    -webkit-overflow-scrolling: touch;
+    /* No scrollbar: the dots under the row are the position indicator, and a desktop scrollbar
+       under three rounded cards is the one un-designed thing that would be left on the screen. */
+    scrollbar-width: none;
+    /* On a screen wide enough to hold all three (a desktop window), centre them; `safe` falls back
+       to the start whenever they do NOT fit, because a centred overflowing row is clipped on its
+       left and that part can never be scrolled to. */
+    justify-content: safe center;
     /* The grid BOX fills the pane, and the row of cards is centred inside it. Two things are going
        on and they are easy to confuse:
          - `min-height: 100%` makes the grid as tall as the scroll pane, so there is no dead band
@@ -329,7 +356,31 @@
     min-height: 100%;
     align-content: center;
   }
+  .mode-cards::-webkit-scrollbar { display: none; }
+  /* The position dots under the row: one per card, gold while that card is mostly in view (see
+     updateModeDots in js/ui-screens.js), and each one a button that brings its card into view.
+     The hit area is the 24px button, not the 8px dot drawn inside it — a dot alone is too small a
+     target for a thumb. */
+  .mode-dots {
+    flex: 0 0 auto;
+    display: flex; justify-content: center; gap: 2px;
+    margin-top: 4px;
+  }
+  .mode-dot {
+    width: 24px; height: 24px; padding: 0;
+    background: none; border: 0; cursor: pointer;
+    display: grid; place-items: center;
+  }
+  .mode-dot::before {
+    content: ''; width: 8px; height: 8px; border-radius: 4px;
+    background: var(--edge-lt);
+    transition: background 0.15s, width 0.15s;
+  }
+  /* Lit dots stretch into a short pill as well as turning gold, so "which two are on screen" reads
+     by shape and not by colour alone. */
+  .mode-dot.on::before { width: 18px; background: var(--gold-mid); }
   .mode-card {
+    scroll-snap-align: start;
     display: flex; flex-direction: column; min-width: 0;
     background: var(--panel);
     border: 1px solid var(--edge-lt);
@@ -2088,6 +2139,9 @@
     <div class="scroll" style="min-height:0">
       <div class="mode-cards" id="mode-cards"></div>
     </div>
+    <!-- One dot per card; renderModeSelect fills it. Outside the scroll pane so it stays put while
+         the row slides. -->
+    <div class="mode-dots" id="mode-dots"></div>
     <button class="btn secondary small" id="btn-mode-back" style="margin-top:14px">Back</button>
   </div>
 

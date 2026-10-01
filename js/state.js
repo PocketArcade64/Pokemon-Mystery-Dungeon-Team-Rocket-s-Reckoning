@@ -11,15 +11,22 @@ import { CATALOG_BY_DEX, DAMAGE_BY_STAGE } from './data/pokemon-catalog.js';
 export const MAX_PARTY = 6;
 export const FLOORS_PER_RUN = 5;
 
-// ---- The two run modes -------------------------------------------------------------------------
+// ---- The three run modes -----------------------------------------------------------------------
 // 'classic' is the original run and the brief's: five floors, Giovanni on the fifth, and beating
-// him WINS. 'endless' has no end — it keeps handing out floors until the party wipes, with
-// Giovanni standing on every fifth one as a checkpoint boss rather than as the finish line.
+// him WINS. 'easy' is classic with no shadow Pokemon — not one wild is generated aggressive, so
+// nothing chases you and every wild encounter goes straight to the catch — and is otherwise the
+// same five floors and the same Giovanni. 'endless' has no end — it keeps handing out floors until
+// the party wipes, with Giovanni standing on every fifth one as a checkpoint boss rather than as
+// the finish line.
 //
 // The mode is a property of the RUN (`state.run.runMode`), not a setting, because everything that
-// reads it is deciding what the next floor looks like. Both modes keep their own save slot and
-// their own headline number on the mode-select cards — Wins for classic, deepest floor for endless.
-export const RUN_MODES = ['classic', 'endless'];
+// reads it is deciding what the next floor looks like. Every mode keeps its own save slot and its
+// own headline number on the mode-select cards. The order here is the cards' order on screen.
+export const RUN_MODES = ['easy', 'classic', 'endless'];
+
+// The two modes that are a fixed five floors and end on a Giovanni WIN. Asked in one place because
+// "is this run finite" is the question beginRun, continueRun and advanceFloor all actually ask.
+export const isFiveFloorMode = (runMode) => runMode === 'classic' || runMode === 'easy';
 export const ENDLESS_BOSS_EVERY = 5;
 
 // Damage comes straight from the design brief; HP is our own scale, tuned so a Basic starter
@@ -64,7 +71,10 @@ export function saveSettings() {
 const STATS_KEY = 'pmd-trr.stats.v1';
 const DEFAULT_STATS = {
   runsPlayed: 0,
-  runsWon: 0,
+  runsWon: 0,          // classic wins
+  // Easy wins, counted apart from classic's. Folding them into runsWon would let the Classic card's
+  // headline number be raised by winning the easier mode.
+  easyRunsWon: 0,
   bestFloor: 0,
   // Endless keeps its own depth record. `bestFloor` above counts every mode and tops out at 5 in
   // classic, so it cannot answer "how deep have I ever gone" once Endless exists — and the Endless

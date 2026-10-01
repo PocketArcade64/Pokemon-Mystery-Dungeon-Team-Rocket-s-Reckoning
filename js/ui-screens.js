@@ -269,9 +269,27 @@ const GIOVANNI_SPRITE = 'Giovanni.png';
 // ones flanking him, and `flip` mirrors a sprite so the pair face inward — there is exactly one
 // Grunt sprite in the folder, and two unmirrored copies read as the same image pasted twice.
 //
-// The headline number is what the mode is measured in, and they are different questions on purpose:
-// Classic can be WON, so it counts wins; Endless cannot, so it records how deep you got.
+// `stat` is the headline number along the bottom, and the three are different questions on
+// purpose: Easy and Classic can be WON, so they count their own wins — separately, since an Easy
+// win is not a Classic one — and Endless cannot, so it records how deep you got.
+//
+// The array order IS the on-screen order, left to right: Easy, Classic, Endless.
 const MODE_CARDS = [
+  {
+    runMode: 'easy',
+    name: 'Easy',
+    tagline: 'A gentler descent.',
+    // One Grunt and nobody else — the smallest threat in the game, standing where Giovanni stands
+    // on the other two cards. Easy still ends with Giovanni on B5F; the card shows who you will
+    // meet most, not who you meet last.
+    cast: [{ sprite: GRUNT_SPRITE, role: 'boss' }],
+    rules: [
+      '5 floors, all different',
+      'No shadow Pokemon',
+      'Giovanni on B5F to win',
+    ],
+    stat: () => ['Wins', state.stats.easyRunsWon || 0],
+  },
   {
     runMode: 'classic',
     name: 'Classic',
@@ -287,6 +305,7 @@ const MODE_CARDS = [
       'A Grunt on every stairwell',
       'Giovanni on B5F to win',
     ],
+    stat: () => ['Wins', state.stats.runsWon || 0],
   },
   {
     runMode: 'endless',
@@ -306,6 +325,7 @@ const MODE_CARDS = [
       'Giovanni every 5th floor',
       'Harder the deeper you go',
     ],
+    stat: () => ['Deepest Floor', 'B' + (state.stats.endlessBestFloor || 1) + 'F'],
   },
 ];
 
@@ -352,13 +372,47 @@ function savedTeamStrip(saved) {
   </div>`;
 }
 
-export function renderModeSelect(saves = {}) {
+// ---- The row's position dots -------------------------------------------------------------------
+// Three cards in a row that shows two at a time, so the third is always off-screen and nothing
+// about a card says "there is another one past the edge". The dots are that signal: one per card,
+// lit while that card is mostly in view, and each one a button that brings its card into view.
+//
+// "Mostly" is 60% of the card's width inside the row's own visible box — a card sliding out mid-
+// swipe goes dark before it is gone, which is what makes the dots read as tracking the swipe.
+function updateModeDots() {
+  const row = $('mode-cards');
+  const dots = $('mode-dots');
+  if (!row || !dots) return;
+  const view = row.getBoundingClientRect();
+  [...row.querySelectorAll('.mode-card')].forEach((card, i) => {
+    const r = card.getBoundingClientRect();
+    const shown = Math.max(0, Math.min(r.right, view.right) - Math.max(r.left, view.left));
+    dots.children[i]?.classList.toggle('on', shown >= r.width * 0.6);
+  });
+}
+
+function renderModeDots() {
+  const dots = $('mode-dots');
+  dots.innerHTML = MODE_CARDS.map((card, i) =>
+    `<button class="mode-dot" data-i="${i}" aria-label="Show ${card.name}"></button>`).join('');
+  dots.querySelectorAll('.mode-dot').forEach(el => {
+    el.addEventListener('click', () => {
+      const card = $('mode-cards').children[Number(el.dataset.i)];
+      // `inline: 'nearest'` scrolls just far enough to show it, so tapping the dot of a card that
+      // is already in view does nothing rather than shoving the row along by a card.
+      card?.scrollIntoView({ behavior: 'smooth', inline: 'nearest', block: 'nearest' });
+    });
+  });
+}
+
+// `fresh` is true when the screen is being OPENED and false when it is redrawing itself in place
+// (a saved party's portrait landing). Only a fresh open puts the row back at the start, because the
+// redraw can arrive mid-swipe and snapping the row back under the player's finger would be a bug.
+export function renderModeSelect(saves = {}, { fresh = true } = {}) {
   const wrap = $('mode-cards');
   wrap.innerHTML = MODE_CARDS.map(card => {
     const saved = saves[card.runMode] || null;
-    const stat = card.runMode === 'classic'
-      ? ['Wins', state.stats.runsWon || 0]
-      : ['Deepest Floor', 'B' + (state.stats.endlessBestFloor || 1) + 'F'];
+    const stat = card.stat();
     // With a run waiting, the primary button continues it and starting fresh is the secondary one
     // — and it says what it costs, because it throws that run away.
     const buttons = saved
@@ -389,9 +443,17 @@ export function renderModeSelect(saves = {}) {
   const dexes = Object.values(saves).filter(Boolean).flatMap(s => s.party.map(m => m.dex));
   if (dexes.length) {
     preloadPortraits(dexes, () => {
-      if ($('screen-mode').classList.contains('visible')) renderModeSelect(saves);
+      if ($('screen-mode').classList.contains('visible')) renderModeSelect(saves, { fresh: false });
     });
   }
+
+  // Easy and Classic on screen, Endless past the right-hand edge — the order of the cards, and the
+  // same view every time the screen is opened.
+  if (fresh) {
+    wrap.scrollLeft = 0;
+    renderModeDots();
+  }
+  updateModeDots();
 }
 
 // ---- Starter select ----------------------------------------------------------------------------
@@ -406,7 +468,8 @@ export function renderStarterSelect(offer, { runMode = 'classic' } = {}) {
   // silently, and Endless and Classic want different Pokemon out of the same three.
   // Lowercase "run": the MODE is called Classic or Endless (that is what the cards say), and this
   // line is prose about what is being started rather than a second heading for it.
-  $('starter-mode').textContent = runMode === 'endless' ? 'Endless run' : 'Classic run';
+  $('starter-mode').textContent = { easy: 'Easy run', classic: 'Classic run', endless: 'Endless run' }[runMode]
+    || 'Classic run';
   const row = $('starter-row');
   row.innerHTML = offer.map((dex, i) => {
     const c = CATALOG_BY_DEX.get(dex);
@@ -782,10 +845,10 @@ let dexSelected = null;
 export function renderDex() {
   ensurePreviews();
   const s = state.stats;
-  // Seven tiles now, not six: the two modes' depth records are separate figures (see enterFloor)
-  // and a lifetime record that showed only one of them would be hiding half the game.
+  // Eight tiles: each mode's own headline figure is here, because a lifetime record that showed only
+  // some of them would be hiding part of the game. "Wins" is classic's; Easy's are counted apart.
   $('dex-stats').innerHTML = [
-    ['Runs', s.runsPlayed], ['Wins', s.runsWon],
+    ['Runs', s.runsPlayed], ['Wins', s.runsWon], ['Easy Wins', s.easyRunsWon || 0],
     ['Best Floor', s.bestFloor ? 'B' + s.bestFloor + 'F' : '-'],
     ['Endless Best', s.endlessBestFloor ? 'B' + s.endlessBestFloor + 'F' : '-'],
     ['Giovanni KOs', s.giovanniDefeats], ['Grunts KOd', s.gruntsDefeated], ['Caught', s.pokemonCaught],
@@ -1228,9 +1291,13 @@ export function renderEnd({ won, floorReached, caught, partyNames, abandoned = f
   $('end-stats').innerHTML = [
     ['Floor', 'B' + floorReached + 'F'],
     ['Caught', caught],
+    // Easy has no depth record of its own (it tops out at B5F like classic, and writing classic's
+    // would let an Easy run claim it), so its third tile is the figure its card is measured in.
     endless
       ? ['Deepest', state.stats.endlessBestFloor ? 'B' + state.stats.endlessBestFloor + 'F' : '-']
-      : ['Best Ever', state.stats.bestFloor ? 'B' + state.stats.bestFloor + 'F' : '-'],
+      : runMode === 'easy'
+        ? ['Easy Wins', state.stats.easyRunsWon || 0]
+        : ['Best Ever', state.stats.bestFloor ? 'B' + state.stats.bestFloor + 'F' : '-'],
   ].map(([l, v]) => `<div class="stat-tile"><div class="sv">${v}</div><div class="sl">${l}</div></div>`).join('');
 }
 
@@ -1500,6 +1567,9 @@ export function bindUI() {
   // Back out of starter select goes to the mode CARDS, not to the title: the cards are the screen
   // it was reached from, and a run has not been created yet, so nothing is lost by going back one.
   click('btn-mode-back', () => { sfx('back'); uiHooks.goTitle(); });
+  // Bound once, here, because #mode-cards is the one element on that screen that is never
+  // replaced — renderModeSelect only rewrites its children.
+  $('mode-cards').addEventListener('scroll', updateModeDots, { passive: true });
   click('btn-starter-back', () => { sfx('back'); uiHooks.startRun(); });
 
   click('btn-bag', () => { sfx('select'); uiHooks.openBag(); });

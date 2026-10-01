@@ -372,7 +372,8 @@ function keepLargestComponent(m, w, h) {
 //     shape can break
 //   - the landmark pass (scatterOutcrops) enforces SIGHT_RADIUS, which is what keeps the camera
 //     where it is
-export function generateFloor(floorNumber, theme, { shop = false, chansey = false } = {}) {
+// `shadows: false` is Easy mode: no wild on the floor is generated aggressive (see the wild loop).
+export function generateFloor(floorNumber, theme, { shop = false, chansey = false, shadows = true } = {}) {
   // sqrt(5) per side is exactly 5x the area: 78, 89, 101, 112, 123 against the old 35..55.
   const W = Math.round((30 + floorNumber * 5) * Math.sqrt(5));
   const H = W;
@@ -693,7 +694,9 @@ export function generateFloor(floorNumber, theme, { shop = false, chansey = fals
       // HP against a lone 30 HP starter dealing 5. That is not a hard fight, it is a run ended by
       // a 1-in-100 coin flip. Peaceful, it is what it should be: something you walk up to, with
       // the whole encounter riding on the balls in your bag and the throw.
-      aggressive: legendary ? false : Math.random() < aggroChance,
+      //
+      // And in Easy mode none are: `shadows` off means the purple-aura Pokemon simply do not exist.
+      aggressive: legendary || !shadows ? false : Math.random() < aggroChance,
       legendary,
       homeX: c.x, homeY: c.y,
       x: c.x - W / 2 + 0.5, z: c.y - H / 2 + 0.5,

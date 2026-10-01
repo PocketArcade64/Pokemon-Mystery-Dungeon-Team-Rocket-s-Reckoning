@@ -2,7 +2,8 @@
 // whole game; everything else is a self-contained system it drives.
 import * as THREE from 'three';
 import { state, makeMon, saveSettings, saveStats, recordDex, FLOORS_PER_RUN, MAX_PARTY,
-         ENDLESS_BOSS_EVERY, saveRun, clearSave, savedRunSummary } from './state.js';
+         ENDLESS_BOSS_EVERY, RUN_MODES, isFiveFloorMode, saveRun, clearSave,
+         savedRunSummary } from './state.js';
 import { renderer, scene, camera, canvas, followCamera, resetCameraFollow, onViewportChange } from './three-setup.js';
 import { createMonObject, disposeObject, preloadDex, preloadPickupModels } from './models.js';
 import { STARTER_DEX, CATALOG_BY_DEX } from './data/pokemon-catalog.js';
@@ -56,10 +57,7 @@ function setMode(next, { returnTo = null } = {}) {
       teardownRun();
       break;
     case 'mode':
-      ui.renderModeSelect({
-        classic: savedRunSummary('classic'),
-        endless: savedRunSummary('endless'),
-      });
+      ui.renderModeSelect(Object.fromEntries(RUN_MODES.map(m => [m, savedRunSummary(m)])));
       break;
     case 'starter':
       ui.renderStarterSelect(offerStarters(), { runMode: pendingRunMode });
@@ -166,7 +164,10 @@ function beginRun(starterDex, runMode = pendingRunMode) {
   // it has to be here rather than on the mode-select screen: the player can back out of starter
   // select, and backing out must not have eaten the run they were offered a Continue for.
   clearSave(runMode);
-  const classic = runMode === 'classic';
+  // Classic and Easy are both a fixed five floors decided up front; only Endless builds as it goes.
+  // (Named `classic` because Easy IS classic's run with the shadow Pokemon taken out — see the
+  // `shadows` flag handed to generateFloor in enterFloor.)
+  const classic = isFiveFloorMode(runMode);
   state.run = {
     runMode,
     // Theme ids by floor, `themeIds[n - 1]` for floor n. Ids rather than theme objects so the
@@ -243,7 +244,7 @@ function continueRun(runMode) {
     // floors it at FLOORS_PER_RUN rather than trusting the field: classic decided every floor in
     // beginRun, so "all of them" is true by construction and a snapshot missing the field (or
     // written by an older build) cannot make classic start rolling Endless's schedule.
-    fixturesThrough: runMode === 'classic'
+    fixturesThrough: isFiveFloorMode(runMode)
       ? FLOORS_PER_RUN
       : Math.max(0, snap.fixturesThrough | 0),
     lastRandomShop: snap.lastRandomShop ?? -10,
@@ -342,6 +343,11 @@ function enterFloor(index) {
   const floor = generateFloor(floorNumber, theme, {
     shop: run.shopFloors.has(floorNumber),
     chansey: run.chanseyFloors.has(floorNumber),
+    // EASY MODE IS THIS ONE LINE. With shadows off, no wild on the floor is generated aggressive,
+    // so nothing chases the player, no wild forces a battle, and every encounter opens straight
+    // into the catch. Everything downstream already keys off `wild.aggressive`, so there is no
+    // second place to change.
+    shadows: run.runMode !== 'easy',
   });
   run.floor = floor;
   run.floorIndex = index;
@@ -393,8 +399,11 @@ function enterFloor(index) {
   //
   // Both are written on ARRIVAL rather than on death, so reaching B30F counts even if the app is
   // closed there.
-  const depthKey = run.runMode === 'endless' ? 'endlessBestFloor' : 'bestFloor';
-  if (floorNumber > state.stats[depthKey]) state.stats[depthKey] = floorNumber;
+  //
+  // Easy writes NEITHER. It tops out at B5F like classic, so letting it write `bestFloor` would let
+  // the easier mode claim classic's record; its card is measured in wins instead.
+  const depthKey = { classic: 'bestFloor', endless: 'endlessBestFloor' }[run.runMode];
+  if (depthKey && floorNumber > state.stats[depthKey]) state.stats[depthKey] = floorNumber;
   saveStats();
 
   // THE ONE SAVE POINT IN THE GAME. Taken here, on arrival, with the floor built and the player
@@ -424,7 +433,7 @@ function advanceFloor() {
   const run = state.run;
   // Endless has no floor to run out of: there is no winRun in it, only the next floor, until the
   // party wipes. Classic stops at FLOORS_PER_RUN, which is the floor Giovanni was on.
-  if (run.runMode === 'classic' && run.floorIndex + 1 >= FLOORS_PER_RUN) { winRun(); return; }
+  if (isFiveFloorMode(run.runMode) && run.floorIndex + 1 >= FLOORS_PER_RUN) { winRun(); return; }
   // The descending-stairs sound, then straight into the next floor's card — PMD shows ONE title
   // card per floor, so the old "Floor Clear / Up the stairs" banner that used to play first is
   // gone. enterFloor puts the card up itself.
@@ -448,7 +457,10 @@ function syncPlayerModel() {
 
 function winRun() {
   const run = state.run;
-  state.stats.runsWon++;
+  // Each winnable mode keeps its own tally (see easyRunsWon in state.js). The Pokedex's "won with"
+  // marker is about the Pokemon, not the mode, so both count toward it.
+  if (run.runMode === 'easy') state.stats.easyRunsWon = (state.stats.easyRunsWon || 0) + 1;
+  else state.stats.runsWon++;
   for (const m of inv.partyAlive()) recordDex('winnerDex', m.dex);
   saveStats();
   // The run is over, so there is nothing left to come back to.
