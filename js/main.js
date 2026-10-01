@@ -21,7 +21,8 @@ import { startCatch, endCatch, updateCatch, setCatchBall, catchState, catchScene
          catchPointerDown, catchPointerMove, catchPointerUp } from './catch.js';
 import { titleScene, titleCamera, updateTitle } from './titlescene.js';
 import { startFreeCatchRoom, disposeFreeCatchRoom, freeCatchRoom, updateFreeCatch, freeCatchCamera,
-         pickWildAt, removeFromRoom, wildsLeft, turnFreeCatchView } from './freecatch.js';
+         pickWildAt, removeFromRoom, wildsLeft, turnFreeCatchView, zoomFreeCatchView,
+         beginFreeCatchPinch, pinchFreeCatchView } from './freecatch.js';
 import * as inv from './inventory.js';
 import * as ui from './ui-screens.js';
 import { uiHooks } from './ui-screens.js';
@@ -1011,30 +1012,72 @@ function onFreeCatchResult(res) {
   ui.renderCatchUI({ dex: wild.dex, activeBall: inv.activeBall() });
 }
 
-// The room takes two gestures, told apart by how far the finger travels:
-//   - a TAP (under 14px from press to release) picks the Pokemon under it and opens the catch;
-//   - a DRAG turns the view round the room, horizontally, the moment the finger has moved 10px.
-// Judged this way so a thumb that lands, wobbles and lifts still counts as a tap, and a turn never
-// opens a catch it happened to finish over. Pointer capture keeps a drag that leaves the canvas (onto
-// the HUD, or off the edge of the screen) still turning until the finger lifts.
-let freeCatchPress = null;   // { id, x, y, lastX, dragging }
+// The room's gestures, told apart by how many fingers are down and how far they travel:
+//   - a TAP (one finger, under 14px from press to release) picks the Pokemon under it and opens the
+//     catch;
+//   - a one-finger DRAG turns the view round the room, horizontally, once the finger has moved 10px;
+//   - TWO fingers pinch to zoom, about the point between them, and pan as their midpoint moves — the
+//     way Pokemon GO's map zooms. On a desktop the mouse wheel zooms about the cursor.
+// A press that ever had a second finger down is never a tap, however it ends, so letting go of a
+// pinch cannot open a catch on whatever was under the last finger to lift. Pointer capture keeps a
+// gesture that wanders onto the HUD or off the canvas still tracking until the fingers lift.
+const freeCatchPointers = new Map();   // pointerId -> { x, y }
+let freeCatchGesture = null;           // { startX, startY, lastX, dragging, multi }
+const pinchOf = () => {
+  const [a, b] = [...freeCatchPointers.values()];
+  return { mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2, span: Math.hypot(a.x - b.x, a.y - b.y) };
+};
+let freeCatchPinch = null;             // the two fingers as the pinch began: { mx, my, span }
+// A pinch is measured from where it began (see pinchFreeCatchView), so it starts afresh whenever the
+// pair of fingers changes.
+const startFreeCatchPinch = () => {
+  freeCatchPinch = pinchOf();
+  beginFreeCatchPinch(freeCatchPinch.mx, freeCatchPinch.my);
+};
+
 canvas.addEventListener('pointerdown', (e) => {
-  if (state.mode !== 'freecatch') { freeCatchPress = null; return; }
-  freeCatchPress = { id: e.pointerId, x: e.clientX, y: e.clientY, lastX: e.clientX, dragging: false };
+  if (state.mode !== 'freecatch') { freeCatchPointers.clear(); freeCatchGesture = null; return; }
+  freeCatchPointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
   try { canvas.setPointerCapture(e.pointerId); } catch { /* not every pointer can be captured */ }
+  if (freeCatchPointers.size === 1) {
+    freeCatchGesture = { startX: e.clientX, startY: e.clientY, lastX: e.clientX, dragging: false, multi: false };
+  } else if (freeCatchPointers.size === 2) {
+    if (freeCatchGesture) freeCatchGesture.multi = true;
+    startFreeCatchPinch();
+  }
 });
 canvas.addEventListener('pointermove', (e) => {
-  const p = freeCatchPress;
-  if (!p || e.pointerId !== p.id || state.mode !== 'freecatch') return;
-  if (!p.dragging && Math.hypot(e.clientX - p.x, e.clientY - p.y) > 10) p.dragging = true;
-  if (p.dragging) turnFreeCatchView(e.clientX - p.lastX);
-  p.lastX = e.clientX;
+  if (state.mode !== 'freecatch' || !freeCatchPointers.has(e.pointerId)) return;
+  freeCatchPointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  const g = freeCatchGesture;
+  if (freeCatchPointers.size >= 2 && freeCatchPinch) {
+    const now = pinchOf();
+    if (freeCatchPinch.span > 0 && now.span > 0) pinchFreeCatchView(now.span / freeCatchPinch.span, now.mx, now.my);
+    return;
+  }
+  if (!g || g.multi) return;
+  if (!g.dragging && Math.hypot(e.clientX - g.startX, e.clientY - g.startY) > 10) g.dragging = true;
+  if (g.dragging) turnFreeCatchView(e.clientX - g.lastX);
+  g.lastX = e.clientX;
 });
-canvas.addEventListener('pointerup', (e) => {
-  const p = freeCatchPress;
-  freeCatchPress = null;
-  if (!p || e.pointerId !== p.id || state.mode !== 'freecatch') return;
-  if (p.dragging || Math.hypot(e.clientX - p.x, e.clientY - p.y) > 14) return;
+const endFreeCatchPointer = (e, cancelled) => {
+  const g = freeCatchGesture;
+  const wasDown = freeCatchPointers.delete(e.pointerId);
+  // Down to one finger after a pinch: re-anchor, so the finger left behind does not register the
+  // whole pinch as one enormous drag.
+  if (freeCatchPointers.size === 1) {
+    freeCatchPinch = null;
+    const [p] = freeCatchPointers.values();
+    if (g) g.lastX = p.x;
+    return;
+  }
+  // A third finger lifted: the pinch carries on with the two still down, measured from here.
+  if (freeCatchPointers.size === 2) { startFreeCatchPinch(); return; }
+  if (freeCatchPointers.size > 0) return;
+  freeCatchGesture = null;
+  freeCatchPinch = null;
+  if (cancelled || !wasDown || !g || g.multi || g.dragging || state.mode !== 'freecatch') return;
+  if (Math.hypot(e.clientX - g.startX, e.clientY - g.startY) > 14) return;
   // Room over: no more catches. Redraw rather than just ignore the tap, so the end panel is
   // guaranteed to be up whatever emptied the bag.
   const summary = freeCatchSummary();
@@ -1043,8 +1086,15 @@ canvas.addEventListener('pointerup', (e) => {
   if (!wild) return;
   sfx('encounter');
   beginFreeCatch(wild);
-});
-canvas.addEventListener('pointercancel', () => { freeCatchPress = null; });
+};
+canvas.addEventListener('pointerup', (e) => endFreeCatchPointer(e, false));
+canvas.addEventListener('pointercancel', (e) => endFreeCatchPointer(e, true));
+// The mouse wheel, for a desktop window: about 12% a notch, toward wherever the cursor is.
+canvas.addEventListener('wheel', (e) => {
+  if (state.mode !== 'freecatch') return;
+  e.preventDefault();
+  zoomFreeCatchView(Math.exp(-e.deltaY * 0.0012), e.clientX, e.clientY);
+}, { passive: false });
 
 // ---- The playing-mode frame -------------------------------------------------------------------
 function updatePlaying(dt) {

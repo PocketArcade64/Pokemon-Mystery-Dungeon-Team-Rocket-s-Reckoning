@@ -43,14 +43,16 @@ function shuffled(arr) {
 // Round suits it twice over. The view can be TURNED (drag), and a circle looks right from every
 // angle where a long room would swing wide; and the framing below can then fit the room's
 // circumscribed circle, which bounds it at every angle the view can reach.
-const ROOM_R = 4.6;
+// 40% wider than the 4.6 it was, which is just under double the floor (55-66 cells became ~110-135):
+// seven Pokemon in the smaller room had nowhere to go but into each other.
+const ROOM_R = 6.45;
 // How far the solid rock reaches from the room's centre, in every direction. FAR further than the
-// room: at the dungeon's angle the camera sees the ground ~21 units out along its view direction on a
-// portrait phone, and the view TURNS, so that direction can be any direction. Stopping short of it
-// showed the edge of the rock as a hard diamond against the void. Out at 24 the rock runs on into
-// the theme's fog (which starts 22 out from the camera) and fades instead of ending. That is ~2400
-// solid cells, which buildFloor instances in three draw calls the way it does a 15000-cell floor.
-const ROCK_REACH = 24;
+// room: fully zoomed out on a portrait phone the camera sees the ground ~29 units out along its view
+// direction, and the view TURNS, so that direction can be any direction. Stopping short of it showed
+// the edge of the rock as a hard diamond against the void. Out at 32 the rock runs on into the
+// theme's fog and fades instead of ending. That is ~4200 solid cells, which buildFloor instances in
+// three draw calls the way it does a 15000-cell dungeon floor.
+const ROCK_REACH = 32;
 const GRID = 2 * ROCK_REACH + 1;                            // square and odd, so it has a centre cell
 // Pokemon are drawn bigger than on a dungeon floor (WORLD_MON_BASE, 1.0). The 'world' fit keeps their
 // proportions either way; this is a stage you tap on, and at the dungeon's angle a round room on a
@@ -321,10 +323,18 @@ export function startFreeCatchRoom() {
   dirLight.target.position.set(0, 0, 0);
   dirLight.target.updateMatrixWorld();
   room = { floor, theme, frameR };
-  // Every room opens on the dungeon's own view; a turn from the last room does not carry over.
-  viewYaw = 0;
-  placeCamera();
+  // The camera sits further back than the dungeon's (see CAM_DIST), so the fog buildFloor just set
+  // for the dungeon's distance is pushed back by the difference — it starts and ends at the same
+  // depth relative to the room as it does on a floor.
+  if (scene.fog) {
+    scene.fog.near += CAM_DIST - CAM_DUNGEON_DIST;
+    scene.fog.far += CAM_DIST - CAM_DUNGEON_DIST;
+  }
+  // Every room opens on the dungeon's own view, fully zoomed out on the room's centre; a turn or a
+  // zoom from the last room does not carry over.
+  resetView();
   frameCamera();
+  placeCamera();
   return room;
 }
 
@@ -348,58 +358,134 @@ export function wildsLeft() {
 }
 
 // ---- The camera ----------------------------------------------------------------------------------
-// THE DUNGEON'S ANGLE. Built from CAM_OFFSET in three-setup.js — the same diagonal, the same pitch
-// (atan(13 / 15.56), ~40 degrees), the same ~20.3 distance, orthographic like the dungeon's — so a
-// room in here looks exactly like a room on a floor. The only differences are that it orbits the
-// room's centre rather than following a player, and that a horizontal DRAG turns it (main.js routes
-// the drag to turnFreeCatchView). Same distance means the theme's fog sits where it was tuned.
+// THE DUNGEON'S ANGLE. Built from CAM_OFFSET in three-setup.js — the same diagonal and the same pitch
+// (atan(13 / 15.56), ~40 degrees), orthographic like the dungeon's — so a room in here looks exactly
+// like a room on a floor. What it adds is three gestures (main.js routes them here):
+//   - a one-finger horizontal DRAG turns the view round the point it is looking at;
+//   - a PINCH (or the mouse wheel) zooms, about the point between the fingers, as Pokemon GO does;
+//   - a two-finger DRAG pans, so that zoomed in, any part of the room can be brought into view.
 //
-// The frustum is solved every frame from the canvas's aspect. It frames the room's CIRCUMSCRIBED
-// circle, not its outline at the current angle: the circle bounds the room at every angle the view
-// can turn to, so turning never slides the room off the edge of the screen and the zoom never
-// changes while you turn. On a portrait phone the width is what binds; on a landscape window, the
-// height.
-export const freeCatchCamera = new THREE.OrthographicCamera(-10, 10, 10, -10, 0.1, 200);
-const CAM_RADIUS = Math.hypot(CAM_OFFSET.x, CAM_OFFSET.z);
-const CAM_HEIGHT = CAM_OFFSET.y;
+// Fully zoomed out it frames the room's CIRCUMSCRIBED circle, not its outline at the current angle:
+// the circle bounds the room at every angle the view can turn to, so at that zoom every part of the
+// room is always on screen however it is turned. Zooming in narrows the view by `zoom`, and the
+// point being looked at is free to move — clamped so it can travel exactly far enough for the rim to
+// reach the middle of the screen and no further, so nothing in the room is ever out of reach and the
+// view can never be dragged off into the rock.
+//
+// It sits FURTHER BACK along its own line of sight than the dungeon's camera (CAM_DIST 34 against
+// ~20.3). Orthographic, so distance changes nothing about what is drawn or how big — but the room is
+// big enough now that fully zoomed out on a phone, the bottom edge of the view would start BELOW the
+// floor from the old distance, and see nothing. The theme's fog is pushed back by the same amount in
+// startFreeCatchRoom, so it still sits where it was tuned relative to what is on screen.
+export const freeCatchCamera = new THREE.OrthographicCamera(-10, 10, 10, -10, 0.1, 300);
+const CAM_PITCH = Math.atan2(CAM_OFFSET.y, Math.hypot(CAM_OFFSET.x, CAM_OFFSET.z));
 const CAM_BASE_YAW = Math.atan2(CAM_OFFSET.x, CAM_OFFSET.z);
-const CAM_PITCH = Math.atan2(CAM_HEIGHT, CAM_RADIUS);
-// Radians of turn per pixel dragged: a drag across the full width of a phone is a little over one
-// full turn, so the whole room can be walked round in one sweep without being twitchy.
-const TURN_PER_PX = 0.018;
+export const CAM_DIST = 34;
+export const CAM_DUNGEON_DIST = CAM_OFFSET.length();
+// Radians of turn per pixel dragged. Halved from 0.018: a drag across a phone's width is now a little
+// over half a turn, so the view can be set precisely rather than swung.
+const TURN_PER_PX = 0.009;
+// How far in a pinch can go: three times the fully-zoomed-out size, which takes the median Pokemon
+// from ~33px tall to ~100px on a phone.
+const ZOOM_MAX = 3;
 // The top HUD (title, tally, balls) takes about the top eighth of a phone and there is nothing along
 // the bottom, so the room sits a little below the screen's middle — in the middle of what is left.
 const FRAME_SHIFT = 0.12;
 let viewYaw = 0;
-let framedAspect = 0;
+let zoom = 1;
+const look = new THREE.Vector3();      // the point on the floor the camera is looking at
+let framedAspect = 0, framedZoom = 0;
 
 function placeCamera() {
   const a = CAM_BASE_YAW + viewYaw;
-  freeCatchCamera.position.set(CAM_RADIUS * Math.sin(a), CAM_HEIGHT, CAM_RADIUS * Math.cos(a));
-  freeCatchCamera.lookAt(0, 0, 0);
+  const h = CAM_DIST * Math.cos(CAM_PITCH);
+  freeCatchCamera.position.set(look.x + h * Math.sin(a), CAM_DIST * Math.sin(CAM_PITCH), look.z + h * Math.cos(a));
+  freeCatchCamera.lookAt(look);
   freeCatchCamera.updateMatrixWorld(true);
 }
 placeCamera();
 
-// Turn the view by a horizontal drag of `dxPx` pixels. The sign is chosen so the floor under the
-// finger travels WITH the finger, which is what makes it feel like turning the room rather than
-// steering a camera.
+function resetView() {
+  viewYaw = 0;
+  zoom = 1;
+  look.set(0, 0, 0);
+}
+
+// Keep the look point inside the room: at full zoom-out it is pinned to the centre, and every step in
+// lets it travel further, up to the distance that brings the room's rim to the middle of the screen.
+function clampLook() {
+  const R = (room?.frameR || 7) - 0.7;
+  const reach = Math.max(0, R * (1 - 1 / zoom));
+  const d = Math.hypot(look.x, look.z);
+  if (d > reach) { look.x *= reach / d; look.z *= reach / d; }
+}
+
+// Turn the view by a horizontal drag of `dxPx` pixels, about the point it is looking at. The sign is
+// chosen so the floor under the finger travels WITH the finger, which is what makes it feel like
+// turning the room rather than steering a camera.
 export function turnFreeCatchView(dxPx) {
   viewYaw -= dxPx * TURN_PER_PX;
+  placeCamera();
+}
+
+// The point on the floor under a screen position (y = 0), or null if the ray misses it.
+const _ray = new THREE.Raycaster();
+const _floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+const _hit = new THREE.Vector3();
+function floorAt(clientX, clientY) {
+  const el = document.getElementById('game-canvas');
+  const r = el.getBoundingClientRect();
+  _ray.setFromCamera({ x: ((clientX - r.left) / r.width) * 2 - 1, y: -((clientY - r.top) / r.height) * 2 + 1 }, freeCatchCamera);
+  return _ray.ray.intersectPlane(_floorPlane, _hit) ? _hit.clone() : null;
+}
+
+// Zoom by `factor` (>1 is in) about a screen point — the floor under that point stays under it, which
+// is what makes a pinch feel like it is pulling the room toward the fingers.
+export function zoomFreeCatchView(factor, clientX, clientY) {
+  const before = floorAt(clientX, clientY);
+  zoom = THREE.MathUtils.clamp(zoom * factor, 1, ZOOM_MAX);
+  frameCamera(true);
+  placeCamera();
+  const after = floorAt(clientX, clientY);
+  if (before && after) { look.x += before.x - after.x; look.z += before.z - after.z; }
+  clampLook();
+  placeCamera();
+}
+
+// A two-finger pinch, which zooms and pans at once. Worked out ABSOLUTELY from where the pinch began
+// — the zoom then, and the spot of floor that was under the fingers' midpoint — not step by step.
+// Each finger reports its moves separately, so between one finger's event and the other's the span
+// briefly shrinks; applied step by step, that dip zoomed out for an instant, the edge clamp pulled the
+// view in, and nothing gave the distance back, so panning toward the rim crept to a halt short of it.
+// From the start, the spot of floor first touched simply follows the midpoint, and a dip is undone by
+// the very next event.
+let pinchStart = null;   // { zoom, anchor }
+export function beginFreeCatchPinch(clientX, clientY) {
+  const anchor = floorAt(clientX, clientY);
+  pinchStart = anchor ? { zoom, anchor } : null;
+}
+export function pinchFreeCatchView(spanRatio, clientX, clientY) {
+  if (!pinchStart) return;
+  zoom = THREE.MathUtils.clamp(pinchStart.zoom * spanRatio, 1, ZOOM_MAX);
+  frameCamera(true);
+  placeCamera();
+  const under = floorAt(clientX, clientY);
+  if (under) { look.x += pinchStart.anchor.x - under.x; look.z += pinchStart.anchor.z - under.z; }
+  clampLook();
   placeCamera();
 }
 
 function frameCamera(force = true) {
   const el = document.getElementById('game-canvas');
   const aspect = (el?.clientWidth || window.innerWidth) / (el?.clientHeight || window.innerHeight);
-  if (!force && Math.abs(aspect - framedAspect) < 1e-3) return;
-  framedAspect = aspect;
+  if (!force && Math.abs(aspect - framedAspect) < 1e-3 && zoom === framedZoom) return;
+  framedAspect = aspect; framedZoom = zoom;
   const R = room?.frameR || 7;
   const needW = (2 * R) / (2 * aspect * 0.94);
   // A circle of radius R on the ground is 2R across and 2R x sin(pitch) tall on screen; the 2.2 is
   // headroom for the tallest Pokemon standing on the far rim.
   const needH = (2 * R * Math.sin(CAM_PITCH) + 2.2 * Math.cos(CAM_PITCH)) / (2 * 0.70);
-  const f = Math.max(needW, needH);
+  const f = Math.max(needW, needH) / zoom;
   freeCatchCamera.left = -f * aspect; freeCatchCamera.right = f * aspect;
   freeCatchCamera.top = f * (1 + FRAME_SHIFT); freeCatchCamera.bottom = -f * (1 - FRAME_SHIFT);
   freeCatchCamera.updateProjectionMatrix();
