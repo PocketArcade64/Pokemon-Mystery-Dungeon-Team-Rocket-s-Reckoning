@@ -2091,7 +2091,11 @@
   .dex-slot .thumb { display: block; width: 55px; max-width: 86%; aspect-ratio: 1; height: auto; image-rendering: auto; }
   .dex-slot.unseen .thumb { filter: brightness(0); }
   .dex-slot .nm { line-height: 1.15; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .dex-slot .tp { display: flex; gap: 1px; justify-content: center; max-width: 100%; }
+  /* `width: 100%`, not just a max-width: the icons' half-a-row cap is a percentage of THIS box, and
+     when the row was only as wide as its contents that percentage went circular — a lone icon was
+     capped at half of itself and drew at ~11px while a pair drew at the full 23px. As wide as the
+     slot, half the row is always half the slot, so one icon and two come out the same size. */
+  .dex-slot .tp { display: flex; gap: 1px; justify-content: center; width: 100%; }
   .dex-slot .tp img { display: block; width: 23px; max-width: calc(50% - 1px); height: auto; image-rendering: pixelated; }
   /* The egg, on every species an egg can hold: blacked out until one has hatched it. */
   .dex-slot .egg-badge { position: absolute; top: 2px; right: 2px; width: 15px; height: 15px; }
