@@ -470,6 +470,27 @@ export function sfx(name) {
     // a fanfare — a rising major triad plus its octave, on sine, overlapping rather than stepped.
     case 'heal':     [523, 659, 784, 1047].forEach((f, i) =>
                        tone({ freq: f, dur: 0.42, type: 'sine', gain: 0.16, delay: i * 0.07 })); break;
+    // Picking an egg up off the floor. Rounder and softer than 'pickup' — a sine bloop rising into
+    // two bell notes — because it is the one find that outlives the run, and should not sound like
+    // just another present.
+    case 'egg':      tone({ freq: 523, endFreq: 784, dur: 0.12, type: 'sine', gain: 0.22 });
+                     [1047, 1319].forEach((f, i) =>
+                       tone({ freq: f, dur: 0.2, type: 'triangle', gain: 0.18, delay: 0.1 + i * 0.09 })); break;
+    // Tapping an egg on the hatch screen: a hollow knock on the shell, with a dry tick of a crack
+    // right behind it. 'eggcrack' is the louder split laid over the second and third taps, so the
+    // sound grows with the cracks you can see.
+    case 'eggtap':   tone({ freq: 260, endFreq: 170, dur: 0.11, type: 'triangle', gain: 0.24 });
+                     noise({ dur: 0.06, gain: 0.12, filterHz: 700 });
+                     noise({ dur: 0.05, gain: 0.16, filterHz: 5200, delay: 0.035 }); break;
+    case 'eggcrack': noise({ dur: 0.09, gain: 0.28, filterHz: 6500 });
+                     tone({ freq: 2600, endFreq: 1400, dur: 0.06, type: 'square', gain: 0.09 });
+                     noise({ dur: 0.07, gain: 0.18, filterHz: 3800, delay: 0.06 }); break;
+    // The shell giving way: a bright shatter over a softer spill of pieces, and a sparkle running up
+    // out of it. The Pokemon Joins jingle answers it once the Pokemon is out.
+    case 'hatch':    noise({ dur: 0.34, gain: 0.32, filterHz: 4200 });
+                     noise({ dur: 0.55, gain: 0.14, filterHz: 1300, delay: 0.06 });
+                     [1047, 1319, 1568, 2093].forEach((f, i) =>
+                       tone({ freq: f, dur: 0.22, type: 'sine', gain: 0.15, delay: 0.08 + i * 0.06 })); break;
     case 'stairs':   [659, 880].forEach((f, i) =>
                        tone({ freq: f, dur: 0.18, type: 'triangle', gain: 0.22, delay: i * 0.14 })); break;
     case 'victory':  [523, 659, 784, 1047, 1319].forEach((f, i) =>

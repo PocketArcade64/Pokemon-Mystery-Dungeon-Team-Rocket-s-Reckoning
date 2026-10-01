@@ -157,3 +157,54 @@ export function preloadPortraits(dexList, onEach = null) {
     requestPortrait(dex).then(url => { if (url && onEach) onEach(dex, url); });
   }
 }
+
+// ---- Portraits of a model that is not a species ------------------------------------------------
+// The same one-render-then-cache deal for a model reached by PATH — today only the egg, whose icon
+// is on the title screen's Hatch Eggs button, every egg on the Hatch Eggs screen, the starter
+// screen's partner button and the pickup popup. Live 3D in each of those would cost nothing in
+// contexts (modelstage blits) but a render per frame per icon; a cached PNG costs one render ever.
+//
+// Its own cache, keyed by path, so it can never collide with a dex number. It shares the dex
+// portraits' QUEUE, because it shares their holder: two renders overlapping would photograph each
+// other's model. `yaw` replaces the dex portraits' three-quarter turn — the egg reads best only a
+// little off square, where its front and one side both show their spots. `brighten` is
+// setPreviewModel's: under the stage's rig the egg's cream comes out a muddy beige at 1.0.
+const pathCache = new Map();   // path -> data URL, or null once the model is known to be missing
+const pathPending = new Map();
+
+export function portraitForPath(path) {
+  return pathCache.get(path) || null;
+}
+
+export function requestPathPortrait(path, { yaw = -0.3, brighten = 1 } = {}) {
+  if (pathCache.has(path)) return Promise.resolve(pathCache.get(path));
+  if (pathPending.has(path)) return pathPending.get(path);
+
+  const job = queue.then(async () => {
+    const r = ensureRig();
+    const fitted = await setPreviewModel(r.holder, null, 1.0, path, { brighten });
+    if (!fitted) { pathCache.set(path, null); return null; }
+    r.holder.rotation.y = yaw;
+    r.holder.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(fitted);
+    const w = box.max.x - box.min.x;
+    const limit = FRUSTUM * 2 * 0.92;
+    const shrink = w > limit ? limit / w : 1;
+    if (shrink < 1) fitted.scale.setScalar(shrink);
+    fitted.position.y = -0.5 * shrink;
+    await awaitTextures(fitted);
+    const shot = renderToStage(r.holder, r.camera, 1);
+    r.ctx.clearRect(0, 0, SIZE, SIZE);
+    r.ctx.drawImage(shot.canvas, shot.sx, shot.sy, shot.sw, shot.sh, 0, 0, SIZE, SIZE);
+    const url = r.canvas.toDataURL('image/png');
+    pathCache.set(path, url);
+    return url;
+  }).catch(() => { pathCache.set(path, null); return null; })
+    // The dex portraits all assume PORTRAIT_YAW on the shared holder, so it goes back either way.
+    .finally(() => { if (rig) rig.holder.rotation.y = PORTRAIT_YAW; });
+
+  queue = job.then(() => {}, () => {});
+  pathPending.set(path, job);
+  job.then(() => pathPending.delete(path), () => pathPending.delete(path));
+  return job;
+}

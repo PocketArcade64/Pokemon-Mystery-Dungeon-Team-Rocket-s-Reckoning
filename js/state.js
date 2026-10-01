@@ -1,5 +1,5 @@
-// Shared mutable game state + the three localStorage-backed slices (settings, lifetime stats and
-// the one saved run per mode).
+// Shared mutable game state + the four localStorage-backed slices (settings, lifetime stats, the
+// one saved run per mode, and the eggs and hatched partners that outlive every run).
 //
 // Permadeath is total: `state.run` is thrown away and rebuilt from scratch every run, so nothing
 // in it persists. Two things outlive a run — `state.stats`, a historical record shown on the
@@ -169,6 +169,10 @@ export function saveRun(run) {
     activeBall: run.activeBall,
     revives: run.revives,
     caught: run.caught,
+    // Eggs found so far this run. They are the run's until it ends (see js/eggs.js), so they ride in
+    // the snapshot like the bag does — and an egg picked up on a floor the app was then closed on is
+    // lost with the rest of that floor, which is the same honest answer the bag gets.
+    eggs: run.eggs | 0,
     savedAt: Date.now(),
   };
   writeSaves();
@@ -197,11 +201,35 @@ export function savedRunSummary(runMode) {
     // back in" than the floor number alone — and all three are already in the snapshot.
     caught: Math.max(0, s.caught | 0),
     coins: Math.max(0, s.coins | 0),
+    eggs: Math.max(0, s.eggs | 0),
     savedAt: s.savedAt || 0,
   };
 }
 
-// Declared after the loaders on purpose: all three are called right here during module evaluation,
+// ---- Eggs (kept across runs) -------------------------------------------------------------------
+// The one thing besides the lifetime record that outlives a run, and unlike the record it DOES feed
+// back into play: a hatched Pokemon can be picked as the partner for any later run. See js/eggs.js
+// for the rules; this is only the storage.
+//   ready    eggs banked from finished runs, waiting on the Hatch Eggs screen
+//   hatched  dex numbers already hatched, in the order they came out. An egg never repeats one.
+// Kept apart from the stats on purpose, so Erase Records (which only ever cleared a record that
+// "never affected gameplay") cannot take partners away.
+const EGGS_KEY = 'pmd-trr.eggs.v1';
+
+function loadEggs() {
+  try {
+    const raw = localStorage.getItem(EGGS_KEY);
+    const p = raw ? JSON.parse(raw) : null;
+    const hatched = Array.isArray(p?.hatched) ? p.hatched.filter(d => Number.isFinite(d)) : [];
+    return { ready: Math.max(0, p?.ready | 0), hatched: [...new Set(hatched)] };
+  } catch { return { ready: 0, hatched: [] }; }
+}
+
+export function saveEggs() {
+  try { localStorage.setItem(EGGS_KEY, JSON.stringify(state.eggs)); } catch { /* ignore */ }
+}
+
+// Declared after the loaders on purpose: all four are called right here during module evaluation,
 // so their consts have to exist first.
 export const state = {
   mode: 'boot',        // set by main.js's setMode() state machine
@@ -210,6 +238,7 @@ export const state = {
   settings: loadSettings(),
   stats: loadStats(),
   saves: loadSaves(),
+  eggs: loadEggs(),
 };
 
 export function resetStats() {

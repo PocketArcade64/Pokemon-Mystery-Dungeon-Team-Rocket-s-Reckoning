@@ -28,6 +28,7 @@ import * as ui from './ui-screens.js';
 import { uiHooks } from './ui-screens.js';
 import { unlockAudio, playMusic, playMusicExclusive, releaseMusicLock, musicForMode, prefetchMusic,
          releaseMusic, restartMusic, sfx, applyVolumes } from './audio.js';
+import { EGG_CHANCE, eggCanSpawn, bankRunEggs, bankSavedEggs } from './eggs.js';
 
 const PLAYER_SPEED = 4.7;
 const player = { x: 0, z: 0 };
@@ -58,6 +59,13 @@ function setMode(next, { returnTo = null } = {}) {
   switch (next) {
     case 'title':
       teardownRun();
+      ui.renderTitle();
+      break;
+    case 'eggs':
+      ui.renderEggs();
+      break;
+    case 'hatch':
+      ui.renderHatch();
       break;
     case 'mode':
       ui.renderModeSelect(Object.fromEntries(RUN_MODES.map(m => [m, savedRunSummary(m)])));
@@ -169,6 +177,9 @@ function beginRun(starterDex, runMode = pendingRunMode) {
   // A new run in a mode DISCARDS that mode's saved run. This is the point of no return for it, and
   // it has to be here rather than on the mode-select screen: the player can back out of starter
   // select, and backing out must not have eaten the run they were offered a Continue for.
+  // The discarded run's eggs are banked first: throwing a run away is abandoning it, and an
+  // abandoned run keeps what it found (see js/eggs.js).
+  bankSavedEggs(runMode);
   clearSave(runMode);
   // Classic and Easy are both a fixed five floors decided up front; only Endless builds as it goes.
   // (Named `classic` because Easy IS classic's run with the shadow Pokemon taken out — see the
@@ -203,6 +214,8 @@ function beginRun(starterDex, runMode = pendingRunMode) {
     repelUntil: 0,
     revives: 0,
     caught: 0,
+    // Eggs picked up this run. Banked for hatching when the run ends, however it ends.
+    eggs: 0,
     pendingCatch: null,
   };
   // The floor pickup models (balls, the present, the three coins) are wanted in bulk the instant
@@ -266,6 +279,7 @@ function continueRun(runMode) {
     repelUntil: 0,
     revives: Math.max(0, snap.revives | 0),
     caught: Math.max(0, snap.caught | 0),
+    eggs: Math.max(0, snap.eggs | 0),
     pendingCatch: null,
   };
   preloadPickupModels();
@@ -354,6 +368,10 @@ function enterFloor(index) {
     // into the catch. Everything downstream already keys off `wild.aggressive`, so there is no
     // second place to change.
     shadows: run.runMode !== 'easy',
+    // A floor only rolls for an egg while there are more Pokemon left to hatch than eggs already out
+    // there to hatch them (js/eggs.js), so every egg is guaranteed a new one — and once the eggs in
+    // hand would finish the set, floors stop laying them.
+    eggChance: eggCanSpawn(run) ? EGG_CHANCE : 0,
   });
   run.floor = floor;
   run.floorIndex = index;
@@ -471,7 +489,8 @@ function winRun() {
   else state.stats.runsWon++;
   for (const m of inv.partyAlive()) recordDex('winnerDex', m.dex);
   saveStats();
-  // The run is over, so there is nothing left to come back to.
+  // The run is over, so its eggs are ready to hatch, and there is nothing left to come back to.
+  const eggs = bankRunEggs(run);
   clearSave(run.runMode);
   // No sting here, and no playMusic call either: Victory! (Team Galactic) has been playing since
   // Giovanni went down and holds the music lock, so the win screen simply carries it over.
@@ -481,6 +500,7 @@ function winRun() {
     caught: run.caught,
     partyNames: inv.partyAlive().map(m => m.name),
     runMode: run.runMode,
+    eggs,
   });
   setMode('end');
 }
@@ -491,6 +511,11 @@ function loseRun({ abandoned = false } = {}) {
   // PERMADEATH, and this is the line that enforces it against the save slot. A wipe or an abandon
   // takes the run's snapshot with it, so there is no floor to reload and no way to retreat out of
   // a loss — which is the whole reason the only write is on ARRIVAL at a floor.
+  //
+  // Eggs are the one exception to "everything you were carrying is gone": they are banked for
+  // hatching whichever way the run ends. Endless can only ever end like this, and an egg that a loss
+  // took away would be an egg Endless could never hatch.
+  const eggs = bankRunEggs(run);
   clearSave(run.runMode);
   ui.renderEnd({
     won: false,
@@ -499,6 +524,7 @@ function loseRun({ abandoned = false } = {}) {
     caught: run.caught,
     partyNames: [],
     runMode: run.runMode,
+    eggs,
   });
   setMode('end');
   // You Lose answers the run the way Giovanni's fanfare answers a win: it OWNS the mixer from
@@ -1132,6 +1158,14 @@ function updatePlaying(dt) {
       const got = inv.addCoinPickup(it.coinId);
       sfx('money');
       ui.pickupPopup({ icon: coin.icon, name: coin.name, qty: `+${got}` });
+    } else if (it.kind === 'egg') {
+      // Not a bag item: it cannot be used down here, only carried out. The toast says when it can
+      // be hatched, because nothing else in the dungeon will — and stays one line, so it does not
+      // grow up into the pickup popup sitting just above it.
+      run.eggs = (run.eggs || 0) + 1;
+      sfx('egg');
+      ui.pickupPopup({ icon: ui.eggIcon(), name: 'Egg' });
+      ui.toast('Hatch it when this run ends!', 3200);
     } else {
       const item = ITEM_BY_ID.get(it.itemId);
       const qty = it.qty || 1;
@@ -1502,6 +1536,13 @@ Object.assign(uiHooks, {
     syncPlayerModel();
     setMode('playing');
   },
+  // Eggs, off the title screen. Both screens keep the title's own track (musicForMode has nothing
+  // for them, so whatever is playing carries on), and neither touches a run: hatching is only ever
+  // done between runs, which is the point of an egg being banked when its run ends.
+  openEggs: () => setMode('eggs'),
+  closeEggs: () => setMode('title'),
+  openHatch: () => setMode('hatch'),
+  closeHatch: () => setMode('eggs'),
   // Play Again goes back to the mode CARDS rather than straight to starter select. The run that
   // just ended took its save with it, so the cards are the honest place to land: they show what
   // that run did to the headline numbers and let the player switch modes without a trip via the

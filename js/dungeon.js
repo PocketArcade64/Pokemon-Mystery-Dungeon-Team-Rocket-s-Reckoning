@@ -11,7 +11,7 @@
 import * as THREE from 'three';
 import {
   createMonObject, createBallObject, createModelObject, disposeObject,
-  GIFT_BOX_MODEL, KECLEON_MODEL, COIN_MODEL_PATHS, WORLD_MON_BASE,
+  GIFT_BOX_MODEL, KECLEON_MODEL, COIN_MODEL_PATHS, EGG_MODEL, WORLD_MON_BASE,
 } from './models.js';
 import { randomFieldItemId, randomBallId, randomCoinId, COIN_BY_ID } from './data/items.js';
 import { CATALOG_BY_DEX, POKEMON_CATALOG, LEGENDARY_DEX } from './data/pokemon-catalog.js';
@@ -373,7 +373,10 @@ function keepLargestComponent(m, w, h) {
 //   - the landmark pass (scatterOutcrops) enforces SIGHT_RADIUS, which is what keeps the camera
 //     where it is
 // `shadows: false` is Easy mode: no wild on the floor is generated aggressive (see the wild loop).
-export function generateFloor(floorNumber, theme, { shop = false, chansey = false, shadows = true } = {}) {
+// `eggChance` is the chance each present is an egg instead (js/eggs.js EGG_CHANCE), or 0 when the
+// floor may not lay one at all — main.js decides that, because only it can see every egg in play.
+export function generateFloor(floorNumber, theme, { shop = false, chansey = false, shadows = true,
+                                                    eggChance = 0 } = {}) {
   // sqrt(5) per side is exactly 5x the area: 78, 89, 101, 112, 123 against the old 35..55.
   const W = Math.round((30 + floorNumber * 5) * Math.sqrt(5));
   const H = W;
@@ -614,8 +617,21 @@ export function generateFloor(floorNumber, theme, { shop = false, chansey = fals
   };
 
   // Field items, as wrapped presents. Balls are deliberately NOT in this draw — see below.
+  //
+  // Each present has an `eggChance` shot at being an EGG instead, and the first one to come up ends
+  // the rolling: one egg a floor at most. The egg takes that present's place rather than being laid
+  // on top of the count, so a floor with an egg on it has one present fewer and nothing else changes
+  // — in particular not the ball quota, which is why balls and coins never roll for one.
   const itemCount = 10 + floorNumber * 3;
-  for (let i = 0; i < itemCount; i++) addPickup({ kind: 'item', itemId: randomFieldItemId(), qty: 1 });
+  let eggLaid = !(eggChance > 0);
+  for (let i = 0; i < itemCount; i++) {
+    if (!eggLaid && Math.random() < eggChance) {
+      addPickup({ kind: 'egg', qty: 1 });
+      eggLaid = true;
+      continue;
+    }
+    addPickup({ kind: 'item', itemId: randomFieldItemId(), qty: 1 });
+  }
 
   // Poke Balls, GUARANTEED to total at least BALLS_PER_FLOOR across the floor. Each pickup holds
   // 1-5 balls of one type, so the pass keeps placing until the running total clears the floor's
@@ -1454,6 +1470,9 @@ export const STAIR_TOP = {
 //                 present is not knowable until you open it. WHICH item it was is revealed on
 //                 pickup, by its own pixel sprite (see the pickup popup in ui-screens.js).
 //   kind 'coin' — the matching coin denomination, silver / gold / big gold.
+//   kind 'egg'  — Pokemon Quest's egg, at most one a floor (see js/eggs.js). Shown as itself rather
+//                 than wrapped: an egg is the rarest thing on the floor and the one find that
+//                 outlives the run, so it is the last thing that should look like any other present.
 //
 // The model hangs off a `spin` child so the rotation and bob are applied to the model alone and
 // the ground ring underneath stays put; a ring that bobbed with the model would read as the floor
@@ -1462,7 +1481,12 @@ const PICKUP_RING = {
   item: 0xffe58a,          // gold, as the old gem markers were
   ball: 0xff9aa2,          // pale red
   coin: 0xfff0b0,          // pale gold
+  egg: 0xa8f0b4,           // the egg's own mint
 };
+
+// The egg stands a little taller than a present (0.46) so it is the one thing on a cluttered floor
+// that catches the eye, and is centred on the spin pivot like the others.
+const EGG_PICKUP_HEIGHT = 0.56;
 
 function makeFloorPickup(entry) {
   const g = new THREE.Group();
@@ -1478,12 +1502,16 @@ function makeFloorPickup(entry) {
     model = createModelObject(COIN_MODEL_PATHS[entry.coinId], {
       height: (coin?.height || 0.5) * 0.8, tint: 0xd8c070,
     });
+  } else if (entry.kind === 'egg') {
+    model = createModelObject(EGG_MODEL, { height: EGG_PICKUP_HEIGHT, tint: 0xc1efc1 });
   } else {
     model = createModelObject(GIFT_BOX_MODEL, { height: 0.46, tint: 0xe8e0d8 });
   }
   // fitModel sits a model with its feet at y=0; centre it on the spin pivot instead, or it
   // rotates about its own base corner and wobbles rather than turning.
-  model.position.y = entry.kind === 'coin' ? -((COIN_BY_ID.get(entry.coinId)?.height || 0.5) * 0.4) : -0.23;
+  model.position.y = entry.kind === 'coin' ? -((COIN_BY_ID.get(entry.coinId)?.height || 0.5) * 0.4)
+    : entry.kind === 'egg' ? -EGG_PICKUP_HEIGHT / 2
+    : -0.23;
   spin.add(model);
 
   const ring = new THREE.Mesh(
@@ -2023,8 +2051,8 @@ export function atShop(floor, player) {
 // otherwise static model read as something to walk over and collect. Speeds differ per kind on
 // purpose: a coin is a flat disc and spins fast (it is the same read as a coin spinning in any
 // Pokemon game), a present turns slowly like a display piece, a ball sits between them.
-const SPIN_SPEED = { coin: 2.6, item: 1.0, ball: 1.5 };
-const BOB_HEIGHT = { coin: 0.10, item: 0.07, ball: 0.09 };
+const SPIN_SPEED = { coin: 2.6, item: 1.0, ball: 1.5, egg: 0.9 };
+const BOB_HEIGHT = { coin: 0.10, item: 0.07, ball: 0.09, egg: 0.08 };
 
 export function updateFloorDecor(floor, dt, elapsed) {
   for (const it of floor.items) {
@@ -2300,7 +2328,7 @@ export function drawMap(ctx, floor, player, {
   const showEntity = (x, y) => floor.entitiesRevealed || isSeen(floor, x, y);
   const r = Math.max(1.8, scale * 0.62);
 
-  // Pickups. On the MINIMAP all three kinds share one gold loot dot: at 3px there is no room for
+  // Pickups. On the MINIMAP every kind shares one gold loot dot: at 3px there is no room for
   // a distinction, and what the minimap is for is "there is something over there". The pause map
   // (`detail`) is where knowing WHICH matters, and there each kind gets its own colour and shape.
   for (const it of floor.items) {
@@ -2318,6 +2346,16 @@ export function drawMap(ctx, floor, player, {
       dot(it.x, it.y, '#ffd54f', r, '#4a3208');
       ctx.fillStyle = '#4a3208';
       ctx.beginPath(); ctx.arc(px, py, Math.max(0.8, r * 0.36), 0, Math.PI * 2); ctx.fill();
+    } else if (it.kind === 'egg') {
+      // An upright cream oval with a mint spot — the egg's own colours — so it reads as the egg and
+      // not as one more present on a map that may be full of them.
+      const rx = r * 0.95, ry = r * 1.25;
+      ctx.fillStyle = '#17101f';
+      ctx.beginPath(); ctx.ellipse(px, py, rx + 1.2, ry + 1.2, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#fff2d3';
+      ctx.beginPath(); ctx.ellipse(px, py, rx, ry, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#7fd38e';
+      ctx.beginPath(); ctx.arc(px - rx * 0.2, py + ry * 0.15, Math.max(0.8, r * 0.42), 0, Math.PI * 2); ctx.fill();
     } else {
       ctx.save();
       ctx.translate(px, py);

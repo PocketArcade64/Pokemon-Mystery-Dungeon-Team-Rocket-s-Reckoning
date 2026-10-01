@@ -322,7 +322,7 @@ export const BALL_MODEL_PATHS = {
 };
 
 // ---- Models that are not part of the Quest roster ----------------------------------------------
-// These four came out of the old project's non-Quest rips and live under 'Extra 3D Models/' rather
+// The gift box, Kecleon and the coins came out of the old project's non-Quest rips and live under 'Extra 3D Models/' rather
 // than alongside the Quest set, because they are not Quest models and do not follow its naming.
 // The folder names are plain ASCII with no leading '#', unlike the Quest folders — see the
 // .nojekyll note in HANDOFF.md for why that matters on GitHub Pages.
@@ -339,6 +339,13 @@ export const GIFT_BOX_MODEL = XB + 'Gift Box/giftbox.obj';
 // deliberately reached by path rather than through modelPathForDex() — he is an NPC, never a
 // catchable species, and giving him a catalog entry would put him in the wild spawn pools.
 export const KECLEON_MODEL = XB + 'Kecleon/Kecleon.obj';
+
+// Pokemon Quest's egg: a cream voxel block with mint spots and a narrower block stacked on top,
+// taller than it is wide (2.40 x 1.87 in the rip's own units). One material and a four-colour palette, so
+// the Quest render fixes in loadModelOrNull apply to it unchanged. It is the floor pickup for an egg
+// (see js/eggs.js), the icon on every egg button (portraits.js renders it once), and the thing you
+// tap open on the hatch screen (js/hatch.js).
+export const EGG_MODEL = XB + 'Egg/Egg.obj';
 
 // Keyed by the coin ids in js/data/items.js, the same way BALL_MODEL_PATHS is keyed by item id.
 export const COIN_MODEL_PATHS = {
@@ -408,6 +415,8 @@ export function preloadDex(dexList) {
 // floor is a field of placeholder blocks.
 export function preloadPickupModels() {
   loadModelOrNull(GIFT_BOX_MODEL);
+  // At most one egg a floor, but like the Master Ball it is a pickup a player walks straight at.
+  loadModelOrNull(EGG_MODEL);
   for (const p of Object.values(COIN_MODEL_PATHS)) loadModelOrNull(p);
   // The Master Ball is in the list even though only about one floor in nine holds one. It is the
   // rarest thing a floor can put on the ground and the one pickup a player will walk straight at,

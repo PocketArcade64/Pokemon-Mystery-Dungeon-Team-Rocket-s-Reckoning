@@ -5,16 +5,18 @@
 // function. Nothing here knows about the game loop — main.js registers callbacks on `uiHooks` and
 // this module only ever calls those.
 import * as THREE from 'three';
-import { state, MAX_PARTY, saveSettings, saveStats, resetStats } from './state.js';
+import { state, MAX_PARTY, RUN_MODES, saveSettings, saveStats, resetStats } from './state.js';
 import { ITEMS, ITEM_BY_ID, BALL_IDS } from './data/items.js';
 import { CATALOG_BY_DEX } from './data/pokemon-catalog.js';
 import { typeIconPath } from './data/type-chart.js';
 import { createModelView } from './modelstage.js';
-import { setPreviewModel, hasModelForDex, KECLEON_MODEL } from './models.js';
+import { setPreviewModel, hasModelForDex, KECLEON_MODEL, EGG_MODEL } from './models.js';
 import { makeAura, spinAura, disposeAura } from './aura.js';
-import { portraitFor, preloadPortraits } from './portraits.js';
+import { portraitFor, preloadPortraits, portraitForPath, requestPathPortrait } from './portraits.js';
 import * as inv from './inventory.js';
 import { sfx, applyVolumes } from './audio.js';
+import { eggsReady, hatchedDex, hatchProgress, rollHatch, commitHatch, debugAddEggs } from './eggs.js';
+import { initHatchView, beginHatch, tapHatchEgg, updateHatch, endHatch, HATCH_TAPS } from './hatch.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -72,6 +74,11 @@ export const uiHooks = {
   mapRotate: (_delta) => {},
   mapZoom: (_factor, _originX, _originY) => {},
   mapPan: (_dx, _dy) => {},
+  // Eggs, from the title screen: the Hatch Eggs inventory, one egg's hatch screen, and back out.
+  openEggs: () => {},
+  closeEggs: () => {},
+  openHatch: () => {},
+  closeHatch: () => {},
 };
 
 const SCREEN_FOR_MODE = {
@@ -92,6 +99,8 @@ const SCREEN_FOR_MODE = {
   chansey: 'screen-chansey',
   freecatch: 'screen-freecatch',
   end: 'screen-end',
+  eggs: 'screen-eggs',
+  hatch: 'screen-hatch',
 };
 
 export function showScreen(mode) {
@@ -244,6 +253,8 @@ export function updatePreviews(dt, mode) {
     chanseyPreview.render();
   } else if (mode === 'battle') {
     updateBattleField(dt);
+  } else if (mode === 'hatch') {
+    updateHatch(dt);
   }
 }
 
@@ -375,7 +386,7 @@ function savedTeamStrip(saved) {
   return `<div class="ms-saved">
     <div class="ms-saved-head">Run in progress &mdash; B${saved.floorNumber}F</div>
     <div class="ms-team">${cells}</div>
-    <div class="ms-saved-foot">${saved.party.length} on the team &middot; ${saved.caught} caught &middot; ${saved.coins} coins</div>
+    <div class="ms-saved-foot">${saved.party.length} on the team &middot; ${saved.caught} caught &middot; ${saved.coins} coins${saved.eggs ? ` &middot; ${saved.eggs} egg${saved.eggs === 1 ? '' : 's'}` : ''}</div>
   </div>`;
 }
 
@@ -466,11 +477,16 @@ export function renderModeSelect(saves = {}, { fresh = true } = {}) {
 // ---- Starter select ----------------------------------------------------------------------------
 let starterOffer = [];
 let starterPick = null;
+// True while the pick came out of the hatched-partner picker rather than off one of the three cards.
+let starterFromEgg = false;
 
 export function renderStarterSelect(offer, { runMode = 'classic' } = {}) {
   ensurePreviews();
   starterOffer = offer;
   starterPick = null;
+  starterFromEgg = false;
+  closePartnerPicker();
+  renderStarterEggButton();
   // Which run this partner is being picked for. Two screens back is a long way to carry a mode
   // silently, and Endless and Classic want different Pokemon out of the same three.
   // Lowercase "run": the MODE is called Classic or Endless (that is what the cards say), and this
@@ -493,6 +509,8 @@ export function renderStarterSelect(offer, { runMode = 'classic' } = {}) {
 
 function selectStarter(i) {
   starterPick = starterOffer[i];
+  starterFromEgg = false;
+  $('btn-starter-eggs').classList.remove('picked');
   sfx('select');
   const c = CATALOG_BY_DEX.get(starterPick);
   $('starter-name').textContent = c.name;
@@ -510,6 +528,249 @@ function selectStarter(i) {
   // preview spins (see containScale in models.js). Every starter is upright, so in practice this is
   // the old height fit exactly — it is here so the two spinning previews follow one rule.
   setPreviewModel(starterPreview.holder, starterPick, 1.5, null, { fit: 'contain' });
+}
+
+// ---- Hatched partners --------------------------------------------------------------------------
+// The egg button in the starter screen's top-right corner opens every Pokemon hatched so far (see
+// js/eggs.js), and picking one makes it this run's partner in place of the three cards. Picking is
+// immediate rather than pick-then-confirm like the evolution picker: nothing is spent here, and the
+// screen's own Enter Dungeon is the confirmation. The cards deselect and the egg button turns gold,
+// so it is clear where the partner in the preview came from; tapping a card goes back to it.
+//
+// The list can run to every Basic and Legendary in the game, so portraits that are not cached yet
+// are swapped in place as each one lands rather than redrawing the whole grid each time.
+let partnerOpen = false;
+
+function renderStarterEggButton() {
+  const btn = $('btn-starter-eggs');
+  if (!btn) return;
+  $('starter-egg-icon').innerHTML = eggIcon();
+  const n = hatchedDex().length;
+  $('starter-egg-count').textContent = String(n);
+  btn.classList.toggle('none', n === 0);
+  btn.classList.toggle('picked', starterFromEgg);
+}
+
+function partnerCell(dex) {
+  const c = CATALOG_BY_DEX.get(dex);
+  const art = portraitFor(dex);
+  const on = starterFromEgg && starterPick === dex;
+  return `<button class="evo-option ${on ? 'selected' : ''} ${c.stage === 'Legendary' ? 'is-legend' : ''}"
+       data-dex="${dex}" aria-pressed="${on}">
+    ${art ? `<img class="eo-art" src="${art}" alt="" />` : '<div class="eo-art"></div>'}
+    <div class="eo-name">${c.name}</div>
+    ${typeBadges(c.types)}
+  </button>`;
+}
+
+function renderPartnerPicker() {
+  const list = hatchedDex();
+  const { have, total } = hatchProgress();
+  $('partner-sub').textContent = list.length
+    ? `Take one into this run instead. ${have} of ${total} hatched.`
+    : `${have} of ${total} hatched.`;
+  const grid = $('partner-options');
+  grid.innerHTML = list.length
+    ? list.map(partnerCell).join('')
+    : `<div class="partner-empty">No partners yet. Eggs turn up on dungeon floors in place of a
+       present - finish the run you found one in, then hatch it from the title screen.</div>`;
+  grid.querySelectorAll('.evo-option').forEach(el => {
+    el.addEventListener('click', () => {
+      selectPartner(Number(el.dataset.dex));
+      closePartnerPicker();
+    });
+  });
+}
+
+function openPartnerPicker() {
+  partnerOpen = true;
+  renderPartnerPicker();
+  $('partner-picker').classList.add('open');
+  preloadPortraits(hatchedDex(), (dex, url) => {
+    if (!partnerOpen) return;
+    const slot = $('partner-options').querySelector(`[data-dex="${dex}"] .eo-art`);
+    if (slot && slot.tagName !== 'IMG') slot.outerHTML = `<img class="eo-art" src="${url}" alt="" />`;
+  });
+}
+
+function closePartnerPicker() {
+  partnerOpen = false;
+  $('partner-picker')?.classList.remove('open');
+}
+
+function selectPartner(dex) {
+  const c = CATALOG_BY_DEX.get(dex);
+  if (!c) return;
+  starterPick = dex;
+  starterFromEgg = true;
+  sfx('confirm');
+  $('starter-name').textContent = c.name;
+  $('starter-meta').innerHTML = typeBadges(c.types);
+  $('starter-row').querySelectorAll('.starter-card').forEach(el => el.classList.remove('selected'));
+  $('btn-starter-eggs').classList.add('picked');
+  starterPreview.holder.rotation.y = 0;
+  setPreviewModel(starterPreview.holder, dex, 1.5, null, { fit: 'contain' });
+}
+
+// ---- The egg icon --------------------------------------------------------------------------------
+// The 3D egg rendered once to a PNG (portraits.js) and used as an <img> everywhere an egg is drawn in
+// the DOM. Until that render lands — it is asked for at boot, so in practice only the first title
+// screen can catch it — a small drawn egg stands in: the same cream block with a narrower block on
+// top, and the same mint spots.
+const EGG_ICON_FALLBACK = `<svg viewBox="0 0 20 24" aria-hidden="true" shape-rendering="crispEdges">
+  <rect x="5" y="2" width="10" height="6" fill="#fff2d3" stroke="#17101f" stroke-width="1"/>
+  <rect x="2" y="7" width="16" height="15" fill="#fff2d3" stroke="#17101f" stroke-width="1"/>
+  <rect x="4" y="10" width="3" height="3" fill="#a9e3ad"/><rect x="10" y="13" width="3" height="3" fill="#a9e3ad"/>
+  <rect x="5" y="17" width="4" height="3" fill="#a9e3ad"/><rect x="14" y="9" width="2" height="4" fill="#a9e3ad"/>
+  <rect x="9" y="4" width="2" height="2" fill="#a9e3ad"/>
+</svg>`;
+
+export function eggIcon() {
+  const url = portraitForPath(EGG_MODEL);
+  return url ? `<img class="egg-art" src="${url}" alt="" draggable="false" />` : EGG_ICON_FALLBACK;
+}
+
+// ---- Title screen: the Hatch Eggs button ---------------------------------------------------------
+// The egg and the count of eggs ready to hatch, beside the label. Zero dims the badge rather than
+// hiding it: the button still opens the screen, which says how eggs are found.
+export function renderTitle() {
+  const n = eggsReady();
+  $('hatch-egg-icon').innerHTML = eggIcon();
+  $('hatch-count').textContent = String(n);
+  $('btn-hatch').classList.toggle('none', n === 0);
+  $('btn-hatch').setAttribute('aria-label', `Hatch Eggs, ${n} ready`);
+}
+
+// ---- The Hatch Eggs screen -----------------------------------------------------------------------
+// An inventory three across, one cell per egg ready to hatch and as many rows as that takes; the last
+// row is padded out with empty slots so it reads as a box with room left in it, the way the satchel
+// does. Every egg is the same — what is inside is decided when it is opened — so any of them opens the
+// hatch screen.
+export function renderEggs() {
+  const n = eggsReady();
+  const { have, total } = hatchProgress();
+  const inRuns = RUN_MODES.reduce((sum, m) => sum + Math.max(0, state.saves[m]?.eggs | 0), 0);
+  $('eggs-sub').textContent = n
+    ? `${n} egg${n === 1 ? '' : 's'} ready - tap one to hatch it.`
+    : have >= total ? 'Every egg has hatched.' : 'No eggs ready to hatch.';
+
+  const rows = Math.max(1, Math.ceil(n / 3));
+  const cells = [];
+  for (let i = 0; i < rows * 3; i++) {
+    cells.push(i < n
+      ? `<button class="egg-cell" aria-label="Hatch this egg">${eggIcon()}</button>`
+      : '<div class="egg-cell empty"></div>');
+  }
+  const grid = $('egg-grid');
+  grid.innerHTML = cells.join('');
+  grid.querySelectorAll('button.egg-cell').forEach(el => {
+    el.addEventListener('click', () => { sfx('confirm'); uiHooks.openHatch(); });
+  });
+
+  const note = $('eggs-empty');
+  note.hidden = n > 0;
+  note.textContent = have >= total
+    ? 'You have hatched every Pokemon an egg can hold. Eggs no longer turn up in the dungeon.'
+    : 'Eggs turn up on dungeon floors in place of a present. Finish the run you found one in - win or lose - and it is ready to hatch here.';
+
+  const pct = total ? Math.round((have / total) * 100) : 0;
+  $('eggs-progress').innerHTML = `
+    <div class="ep-line"><span>Partners hatched</span><span class="ep-val">${have} / ${total}</span></div>
+    <div class="ep-bar"><i style="width:${pct}%"></i></div>
+    ${inRuns ? `<div class="ep-note">+${inRuns} more egg${inRuns === 1 ? '' : 's'} waiting in a run in progress</div>` : ''}`;
+}
+
+// ---- The hatch screen ----------------------------------------------------------------------------
+// The egg on a lit stage, three pips under it for the three taps, and the reveal under those once it
+// is open. The 3D is js/hatch.js; this is the DOM around it and the sounds.
+//
+// The egg is NOT spent until the shell actually breaks (onBreak, below). Backing out before then
+// leaves it in the box, and from the third tap until the Pokemon is out the Back button is disabled —
+// that is the stretch where leaving would either strand a committed hatch without showing it or skip
+// the moment the screen exists for.
+const HATCH_LINES = [
+  'Tap the egg to help it hatch!',
+  'Something moved inside!',
+  'It is cracking - one more!',
+  'Here it comes...',
+];
+
+function setHatchPips(n) {
+  $('hatch-pips').querySelectorAll('i').forEach((el, i) => el.classList.toggle('on', i < n));
+}
+
+export function renderHatch() {
+  initHatchView($('hatch-canvas'));
+  const dex = rollHatch();
+  const stage = $('hatch-stage');
+  stage.dataset.cracks = '0';
+  stage.classList.remove('open');
+  $('hatch-flash').classList.remove('flash');
+  $('hatch-title').textContent = 'Hatching';
+  setHatchPips(0);
+  $('hatch-reveal').classList.remove('shown');
+  $('btn-hatch-next').hidden = true;
+  hatchCommitted = false;
+  const back = $('btn-hatch-back');
+  back.disabled = false;
+  back.textContent = 'Back';
+  if (dex == null) {
+    // Reached with nothing to hatch (an egg spent in another tab, or a pool edited out from under a
+    // banked egg): say so rather than show an egg that cannot open.
+    $('hatch-sub').textContent = 'There is no egg here to hatch.';
+    endHatch();
+    return;
+  }
+  $('hatch-sub').textContent = HATCH_LINES[0];
+  beginHatch(dex, { onBreak: onHatchBreak, onEmerged: onHatchEmerged });
+}
+
+// Whether the egg on screen was actually spent. It can only fail if the save changed under the screen
+// (the same game open in a second tab spent the last egg), and then the reveal says so instead of
+// announcing a partner that was never unlocked.
+let hatchCommitted = false;
+
+function onHatchBreak(dex) {
+  hatchCommitted = commitHatch(dex);
+  sfx('hatch');
+  const stage = $('hatch-stage');
+  stage.classList.add('open');
+  // The flash: lit instantly, then the class comes off and the CSS fades it back out.
+  const flash = $('hatch-flash');
+  flash.classList.add('flash');
+  setTimeout(() => flash.classList.remove('flash'), 90);
+}
+
+function onHatchEmerged(dex) {
+  const c = CATALOG_BY_DEX.get(dex);
+  sfx('join');
+  $('hatch-title').textContent = 'It hatched!';
+  // Never emptied: an empty sub-line collapses and the stage under it would jump.
+  $('hatch-sub').textContent = hatchCommitted ? 'Congratulations!' : 'Hmm...';
+  $('hatch-name').textContent = c?.name || '?';
+  $('hatch-types').innerHTML = c ? typeBadges(c.types) : '';
+  $('hatch-tag').textContent = !hatchCommitted ? 'This egg had already been hatched.'
+    : c?.stage === 'Legendary' ? 'Legendary!' : 'New partner!';
+  $('hatch-tag').classList.toggle('legend', hatchCommitted && c?.stage === 'Legendary');
+  $('hatch-note').hidden = !hatchCommitted;
+  $('hatch-reveal').classList.add('shown');
+  const back = $('btn-hatch-back');
+  back.disabled = false;
+  back.textContent = 'Done';
+  $('btn-hatch-next').hidden = eggsReady() <= 0;
+}
+
+function onHatchTap() {
+  if (state.mode !== 'hatch') return;
+  const n = tapHatchEgg();
+  if (!n) return;
+  sfx('eggtap');
+  if (n >= 2) sfx('eggcrack');
+  try { navigator.vibrate?.(n >= HATCH_TAPS ? 40 : 18); } catch { /* no vibration here */ }
+  setHatchPips(n);
+  $('hatch-stage').dataset.cracks = String(n);
+  $('hatch-sub').textContent = HATCH_LINES[Math.min(n, HATCH_LINES.length - 1)];
+  if (n >= HATCH_TAPS) $('btn-hatch-back').disabled = true;
 }
 
 // ---- Poke Ball strips ---------------------------------------------------------------------------
@@ -960,6 +1221,9 @@ export function renderSettings() {
 // making this the only place it can be had on demand. Both buttons on a row add rather than set,
 // so the quantities are the two step sizes rather than a target.
 export function renderDebug() {
+  // Eggs are not run state, so this row works from the title screen as well — it is how the hatch
+  // screen can be tested without playing floors until one turns up.
+  $('debug-eggs').textContent = String(eggsReady());
   const live = !!state.run;
   $('debug-norun').hidden = live;
   $('debug-body').hidden = !live;
@@ -1446,7 +1710,19 @@ export function swapSelection() { return swapSelected; }
 
 // ---- End of run -------------------------------------------------------------------------------
 export function renderEnd({ won, floorReached, caught, partyNames, abandoned = false,
-                           runMode = 'classic' }) {
+                           runMode = 'classic', eggs = 0 }) {
+  // The run's eggs were banked on the way here (js/eggs.js bankRunEggs), win or lose — so a wipe
+  // still says what it found, and where to go for it. On a loss it is worded as the exception it is,
+  // because the line above it has just said everything you were carrying stays down there.
+  const eggLine = $('end-eggs');
+  eggLine.hidden = !(eggs > 0);
+  if (eggs > 0) {
+    const what = eggs === 1 ? 'an Egg' : `${eggs} Eggs`;
+    const head = won ? `You found ${what}!`
+      : eggs === 1 ? 'Your Egg made it out anyway!' : `Your ${eggs} Eggs made it out anyway!`;
+    eggLine.innerHTML = `<span class="ee-icon">${eggIcon()}</span>
+      <span>${head} Hatch ${eggs === 1 ? 'it' : 'them'} from the title screen.</span>`;
+  }
   const endless = runMode === 'endless';
   $('end-kicker').textContent = won ? 'Run Complete' : 'Run Over';
   $('end-kicker').style.color = won ? 'var(--gold)' : 'var(--danger)';
@@ -1887,6 +2163,35 @@ export function bindUI() {
   for (const [id, n] of [['btn-debug-coins-10', 10], ['btn-debug-coins-50', 50], ['btn-debug-coins-100', 100]]) {
     click(id, () => { sfx('select'); uiHooks.debugGiveCoins(n); renderDebug(); });
   }
+  for (const [id, n] of [['btn-debug-egg-1', 1], ['btn-debug-egg-5', 5]]) {
+    click(id, () => {
+      const got = debugAddEggs(n);
+      sfx(got ? 'select' : 'back');
+      if (got < n) toast(got ? `Added ${got} - every Pokemon left is now spoken for.` : 'No room: every Pokemon left already has an egg.');
+      renderDebug();
+    });
+  }
+
+  // ---- Eggs ----
+  click('btn-hatch', () => { sfx('select'); uiHooks.openEggs(); });
+  click('btn-eggs-back', () => { sfx('back'); uiHooks.closeEggs(); });
+  $('hatch-canvas').addEventListener('pointerdown', onHatchTap);
+  click('btn-hatch-back', () => { sfx('back'); endHatch(); uiHooks.closeHatch(); });
+  click('btn-hatch-next', () => { sfx('confirm'); endHatch(); uiHooks.openHatch(); });
+  click('btn-starter-eggs', () => {
+    if (partnerOpen) { sfx('back'); closePartnerPicker(); return; }
+    sfx('select');
+    openPartnerPicker();
+  });
+  click('btn-partner-close', () => { sfx('back'); closePartnerPicker(); });
+  // The egg icon is one render through the shared stage, asked for here so it is cached long before
+  // anything needs it. Whatever is on screen when it lands is redrawn with it.
+  requestPathPortrait(EGG_MODEL, { brighten: 1.35 }).then(url => {
+    if (!url) return;
+    renderTitle();
+    renderStarterEggButton();
+    if ($('screen-eggs').classList.contains('visible')) renderEggs();
+  });
 
   click('btn-battle-continue', () => { sfx('confirm'); uiHooks.battleContinue(); });
   click('btn-battle-swap', () => { sfx('select'); uiHooks.openSwitch(); });
